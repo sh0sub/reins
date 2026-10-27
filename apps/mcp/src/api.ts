@@ -1,0 +1,62 @@
+/** Thin client for the Reins web REST API, authenticated with the agent's own key. */
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+export class ReinsApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ReinsApiError";
+  }
+}
+
+export interface PurchaseArgs {
+  merchant: string;
+  amount: string;
+  currency?: string;
+  items: string;
+  reason: string;
+  category?: string;
+  client_request_id?: string;
+}
+
+export class ReinsApi {
+  private readonly base: string;
+  private readonly fetchImpl: FetchLike;
+
+  constructor(
+    baseUrl: string,
+    private readonly apiKey: string,
+    fetchImpl?: FetchLike,
+  ) {
+    this.base = baseUrl.replace(/\/$/, "");
+    this.fetchImpl = fetchImpl ?? ((i, init) => fetch(i, init));
+  }
+
+  private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const res = await this.fetchImpl(`${this.base}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json", accept: "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    const json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    if (!res.ok) throw new ReinsApiError(res.status, String(json.error ?? "error"), String(json.message ?? res.statusText));
+    return json as T;
+  }
+
+  getMandate() {
+    return this.call<Record<string, unknown>>("GET", "/api/mandate");
+  }
+  requestPurchase(args: PurchaseArgs) {
+    return this.call<Record<string, unknown>>("POST", "/api/requests", args);
+  }
+  getRequestStatus(requestId: string) {
+    return this.call<Record<string, unknown>>("GET", `/api/requests/${encodeURIComponent(requestId)}`);
+  }
+  listTransactions(limit = 20) {
+    return this.call<{ transactions: unknown[] }>("GET", `/api/transactions?limit=${limit}`);
+  }
+}
