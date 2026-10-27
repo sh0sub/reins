@@ -1,0 +1,16 @@
+# Spike #31: Channel3 search + MCP
+
+Run: 2026-10-27T15:41:07.234Z (sandbox)
+
+## Search
+
+HTTP 200
+
+```json
+{"products":[{"id":"4hduvkc","title":"AI Agents: The Definitive Guide: Design, Deployment, and Evaluation for Production","description":"As AI agents move from research labs into production, engineering teams face mounting challenges—fragile tools, rising inference costs, erratic behavior, and unmet expectations. AI Agents: The Definitive Guide addresses what most books avoid: how to...","brands":[{"id":"BzDq","name":"O'Reilly"}],"images":[{"url":"https://cdn.trychannel3.com/0253f2a1-0d96-41a8-a1df-40889abeba74?aid=01M5Z0BEXK1HPQ3GZPC1CJH50A&mid=i2yC","cleaned_url":null,"is_main_image":true,"shot_type":"hero","alt_text":"Book cover for AI Agents: The Definitive Guide by Nicole Koenigstein."}],"category":{"slug":"books","title":"Books","path":[{"slug":"media","title":"Media"},{"slug":"books","title":"Books"}],"has_children":true},"gender":null,"age":null,"materials":[],"key_features":[],"colors":[{"hex":"#332b25","percentage":0.3592},{"hex":"#4f423a","percentage":0.2676},{"hex":"#d1cfcc","percentage":0.1533},{"hex":"#6c5f55","percentage":0.146},{"hex":"#9c948e","percentage":0.0739}],"offers":[{"url":"https://buy.trychannel3.com/4hduvkc-i2yC-quYvHV?o=01M5SFEXG160QDVJ01TSZZJ26J&aid=01M5Z0BEXK1HPQ3GZPC1CJH50A","domain":"barnesandnoble.com","price":{"price":79.99,"compare_at_price":null,"currency":"USD"},"availability":"InStock","condition":"new","max_commission_rate":0.036,"dimensions":null}],"variants":null,"structured_attributes":{"genre":["Technology"],"target-audience":["Adults"],"language-version":["ENG- English"]},"ratings":null},{"id":"Vj9gldQ","title":"AI agents and Harnesses foundations: Building from ReAct Loops to Long Horizon Agent Harnesses with LangChain and LangGraph","description":"Go beyond simple prompts and build production-grade AI agents with LangChain and LangGraph, from ReAct reasoning loops to tool-calling, RAG, and context engineering. Build and debug AI agents using LangChain, LangGraph, and LangSmithImplement ReAct...","brands":[{"id":"LrRk","name":"Packt Publishing"}],"images":[{"url":"https://cdn.trychannel3.com/01b2ee20-c9c6-48f6-b106-7012271f977e?aid=01M5Z0BEXK1HPQ3GZPC1CJH50A&mid=i2yC","cleaned_url":null,"is_main_image":true,"shot_type":"hero","alt_text":"Logo for AI Agents and Harnesses Foundations featuring a stylized blue octopus/agent."}],"category":{"slug":"books","title":"Books","path":[{"slug":"media","title":"Media"},{"slug":"books","title":"Books"}],"has_children":true},"gender":null,"age":null,"materials":[],"key_features":[],"colors":[{"hex":"#d1d6da","percentage":0.2576},{"hex":"#316094","percentage":0.1464},{"hex":"#b3adab","percentage":0.1375},{"hex":"#364562","percentage":0.1252},{"hex":"#6f7079","percentage":0.1148},{"hex":"#7499b9","percentage":0.113},{"hex":"#151a25","percentage":0.1055}],"offers":[{"url":"https://buy.trychannel3.com/Vj9gldQ-i2yC-quYvHV?o=01M5SFBD1YF18C393166QKEQTX&aid=01M5Z0BEXK1HPQ3GZPC1CJH50A","domain":"barnesandnoble.com","price":{"price":44.99,"compare_at_price":null,"currency":"
+```
+
+## MCP setup (fill in)
+
+- Channel3 MCP server URL/command from channel3.ai/docs/mcp: __
+- Add it next to Reins in agents/claude_desktop_config.json (M14).
