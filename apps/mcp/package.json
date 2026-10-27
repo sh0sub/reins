@@ -1,0 +1,18 @@
+{
+  "name": "@reins/mcp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "stdio": "tsx src/stdio.ts",
+    "http": "tsx src/http.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@reins/core": "workspace:^",
+    "zod": "^4.6.7"
+  }
+}

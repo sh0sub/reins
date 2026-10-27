@@ -1,0 +1,26 @@
+{
+  "name": "@reins/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env node_modules/next/dist/bin/next dev",
+    "build": "node --env-file-if-exists=../../.env node_modules/next/dist/bin/next build",
+    "start": "node --env-file-if-exists=../../.env node_modules/next/dist/bin/next start"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@reins/bot": "workspace:^",
+    "@reins/core": "workspace:^",
+    "@reins/db": "workspace:^",
+    "drizzle-orm": "^0.45.4",
+    "grammy": "^1.46.0",
+    "next": "^15.5.28",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

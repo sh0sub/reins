@@ -7,3 +7,8 @@ dist/
 .next/
 coverage/
 *.log
+.local/
+*.db
+*.db-journal
+next-env.d.ts
+*.tsbuildinfo

@@ -1,0 +1,17 @@
+{
+  "name": "@reins/bot",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {},
+  "dependencies": {
+    "@reins/core": "workspace:^",
+    "grammy": "^1.46.0"
+  },
+  "devDependencies": {
+    "@reins/db": "workspace:^"
+  }
+}

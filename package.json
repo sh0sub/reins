@@ -1,0 +1,39 @@
+{
+  "name": "reins",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Spending guardrails for AI agents on PayPal: budgets, rules, one-tap approval, audit trail, exposed over MCP.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/web/tsconfig.json",
+    "lint": "eslint .",
+    "db:generate": "pnpm --filter @reins/db generate",
+    "dev:web": "pnpm --filter @reins/web dev",
+    "mcp:stdio": "pnpm --filter @reins/mcp stdio",
+    "mcp:http": "pnpm --filter @reins/mcp http",
+    "spike": "tsx --env-file=.env",
+    "tokens": "tsx scripts/build-tokens.ts"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@reins/bot": "workspace:^",
+    "@reins/core": "workspace:^",
+    "@reins/db": "workspace:^",
+    "@reins/mcp": "workspace:^",
+    "@types/node": "22",
+    "eslint": "9",
+    "grammy": "^1.46.0",
+    "tsx": "^4.23.15",
+    "typescript": "5",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "3",
+    "zod": "^4.6.7"
+  }
+}

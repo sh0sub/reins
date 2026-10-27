@@ -1,0 +1,19 @@
+{
+  "name": "@reins/db",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.11"
+  }
+}
