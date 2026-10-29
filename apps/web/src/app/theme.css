@@ -1,0 +1,66 @@
+/*
+ * Reins product theme on top of the generated Peerly tokens (tokens.css).
+ * Source: docs/plan.md 07 화면 목업 "디자인 방향: 조용한 관제실" (mockup artifact, 2026-10-26):
+ *   Primary (PayPal navy) #003087 · Canvas #f7f9fc · Panel #ffffff · Ink #14213d
+ *   Success #1b8a5a · Warning #c77d12 · Danger #c62f2f · Telegram #517da2
+ * Peerly supplies spacing, radius, type scale, focus and motion; this file only swaps colour.
+ * Warning #c77d12 is 3.1:1 on white, so text uses a darker step (#8a560b, 5.9:1); #c77d12 stays for marks.
+ * Only this file holds product hex values; components reference the semantic/component variables.
+ */
+:root {
+  --reins-navy: #003087;
+  --reins-navy-hover: #00266b;
+  --reins-navy-soft: #e6ecf6;
+  --reins-canvas: #f7f9fc;
+  --reins-ink: #14213d;
+  --reins-ink-2: #4b5670;
+  --reins-line: #e3e8f0;
+  --reins-success: #1b8a5a;
+  --reins-success-soft: #e3f5ea;
+  --reins-warning: #c77d12;
+  --reins-warning-text: #8a560b;
+  --reins-warning-soft: #fdf3dd;
+  --reins-danger: #c62f2f;
+  --reins-danger-soft: #fdeceb;
+  --reins-telegram: #517da2;
+  --reins-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --semantic-color-text-primary: var(--reins-ink);
+  --semantic-color-text-secondary: var(--reins-ink-2);
+  --semantic-color-text-link: var(--reins-navy);
+  --semantic-color-surface-canvas: var(--reins-canvas);
+  --semantic-color-surface-selected: var(--reins-navy-soft);
+  --semantic-color-action-primary: var(--reins-navy);
+  --semantic-color-action-primary-hover: var(--reins-navy-hover);
+  --semantic-color-action-selected-text: var(--reins-navy);
+  --semantic-color-border-decorative: var(--reins-line);
+  --semantic-color-border-focus: var(--reins-navy);
+  --semantic-color-status-success-text: var(--reins-success);
+  --semantic-color-status-success-surface: var(--reins-success-soft);
+  --semantic-color-status-warning-text: var(--reins-warning-text);
+  --semantic-color-status-warning-surface: var(--reins-warning-soft);
+  --semantic-color-status-danger-text: var(--reins-danger);
+  --semantic-color-status-danger-surface: var(--reins-danger-soft);
+  --semantic-color-progress-fill: var(--reins-navy);
+
+  --component-button-primary-background: var(--reins-navy);
+  --component-button-primary-hover-background: var(--reins-navy-hover);
+  --component-button-secondary-foreground: var(--reins-ink);
+  --component-input-foreground: var(--reins-ink);
+  --component-input-error: var(--reins-danger);
+  --component-focus-color: var(--reins-navy);
+  --component-panel-border: var(--reins-line);
+  --component-table-header-background: var(--reins-canvas);
+  --component-table-divider: var(--reins-line);
+  --component-navigation-text: var(--reins-ink-2);
+  --component-navigation-selected-text: var(--reins-navy);
+  --component-navigation-selected-background: var(--reins-navy-soft);
+  --component-status-success-text: var(--reins-success);
+  --component-status-success-background: var(--reins-success-soft);
+  --component-status-warning-text: var(--reins-warning-text);
+  --component-status-warning-background: var(--reins-warning-soft);
+  --component-status-danger-text: var(--reins-danger);
+  --component-progress-fill: var(--reins-navy);
+  --component-list-row-divider: var(--reins-line);
+  --component-toast-background: var(--reins-ink);
+}

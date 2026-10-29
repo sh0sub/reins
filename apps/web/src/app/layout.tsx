@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
-import { Nav } from "@/components/Nav";
+import { Nav, SideFoot, TopBar } from "@/components/Nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,15 +14,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <a className="sr-only" href="#main">Skip to content</a>
+        <a className="skip" href="#main">Skip to content</a>
         <div className="shell">
           <aside className="sidebar">
-            <div className="brand">
-              Reins<small>Agent spending</small>
-            </div>
+            <Link className="brand" href="/inbox">
+              <span className="brand-mark" aria-hidden />
+              <span>
+                Reins<small>Agent spending</small>
+              </span>
+            </Link>
             <Nav />
+            <SideFoot />
           </aside>
-          <main id="main" className="main">{children}</main>
+          <div>
+            <TopBar />
+            <main id="main" className="main">{children}</main>
+          </div>
         </div>
       </body>
     </html>
