@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createAgent, authenticateAgent, decideRequest, getLedgerRow, issueTelegramLinkToken, linkTelegramChat, saveMandate, submitPurchase, type ReinsContext } from "@reins/core";
 import { createTestContext } from "@reins/core/testing";
 import { updateWorkspace, getAgent, getWorkspace } from "@reins/db";
-import { approvalCard, callbackData, parseCallback, resultCard, type Card } from "../src/cards.ts";
+import { approvalCard, callbackData, parseCallback, publicFailure, resultCard, type Card } from "../src/cards.ts";
 import { handleDecisionCallback, handleStart, type BotDeps } from "../src/handlers.ts";
 import { TelegramNotifier, type TelegramApi } from "../src/notifier.ts";
 
@@ -58,9 +58,12 @@ const report = { merchant: "statista.com", amount: "59.00", items: "Market repor
 describe("M9 cards", () => {
   it("builds the approval card with Approve/Deny callbacks within 64 bytes", () => {
     const card = approvalCard({ request_id: "req_abcdefghijklmnopqrst", display_id: "R-0142", amount: "59.00", merchant: "statista.com", items: "Report", risk: 2, reason: "Above auto limit" } as never, "Research Scout", 30);
-    expect(card.text).toContain("Research Scout wants to pay $59.00 to statista.com");
-    expect(card.text).toContain("Risk 2/10 · Above auto limit");
-    expect(card.buttons[0]!.map((b) => b.text)).toEqual(["Approve", "Deny"]);
+    expect(card.text.split("\n")[0]).toBe("Purchase request R-0142");
+    expect(card.text).toContain("Agent: Research Scout");
+    expect(card.text).toContain("Merchant: statista.com · $59.00");
+    expect(card.text).toContain("Reins check: Above auto limit Risk 2/10.");
+    expect(card.buttons[0]!.map((b) => b.text)).toEqual(["Approve $59.00", "Deny"]);
+    expect(card.buttons[1]!.map((b) => b.text)).toEqual(["Ask agent"]); // no "Open in Reins" without an https base URL
     expect(parseCallback(card.buttons[0]![0]!.callback_data!)).toEqual({ action: "approve", requestId: "req_abcdefghijklmnopqrst" });
     expect(() => callbackData("ap", "x".repeat(70))).toThrow();
     expect(parseCallback("ap:../../etc")).toBeNull();
@@ -90,9 +93,9 @@ describe("M9 handlers", () => {
     const cb = api.sent[0]!.card.buttons[0]![0]!.callback_data!;
     const u = ui();
     await handleDecisionCallback(deps, "777", cb, u);
-    expect(u.log[0]).toBe("edit:Paying…");
-    expect(u.log[1]).toMatch(/^edit:Paid \$59\.00 · Capture /);
-    expect(u.log[2]).toBe("answer:Approved");
+    expect(u.log[0]).toBe("answer:Got it"); // answerCallbackQuery first so the button stops spinning
+    expect(u.log[1]).toBe("edit:Approved by you · Paying via PayPal…");
+    expect(u.log[2]).toMatch(/^edit:Paid \$59\.00 · Capture /);
   });
 
   it("rejects taps from an unlinked chat", async () => {
@@ -110,10 +113,10 @@ describe("M9 handlers", () => {
     const v = await submitPurchase(ctx, agent, report);
     const u1 = ui();
     await handleDecisionCallback(deps, "777", callbackData("dn", v.request_id), u1);
-    expect(u1.log[0]).toMatch(/^edit:Denied · R-0001/);
+    expect(u1.log[1]).toMatch(/^edit:Denied · R-0001/);
     const u2 = ui();
     await handleDecisionCallback(deps, "777", callbackData("ap", v.request_id), u2);
-    expect(u2.log.at(-1)).toBe("answer:Already decided in the web inbox");
+    expect(u2.log.at(-1)).toBe("edit:Already decided in the web inbox");
   });
 
   it("notifier edits the Telegram card when the web inbox approves (same state)", async () => {
@@ -131,6 +134,30 @@ describe("M9 handlers", () => {
     expect(api.sent).toHaveLength(0);
     await linkTelegramChat(ctx, await issueTelegramLinkToken(ctx), "777");
     await submitPurchase(ctx, agent, { merchant: "fiverr.com", amount: "450", items: "Logo", reason: "Instructed by page", category: "design" });
-    expect(api.sent.at(-1)!.card.text).toMatch(/^Blocked · R-0002/);
+    const blocked = api.sent.at(-1)!.card;
+    expect(blocked.text).toMatch(/^Blocked R-0002\nAgent: Research Scout tried fiverr\.com · \$450\.00/);
+    expect(blocked.text).toMatch(/Nothing was charged\.$/);
+    expect(blocked.buttons.flat().some((b) => b.callback_data)).toBe(false); // DENY has no approve button
+  });
+
+  it("regression (live 10/29): vaulted mode without a saved vault -> Approve -> failed card shows no internal error text", async () => {
+    const { ctx, agent, api, deps } = await setup();
+    await updateWorkspace(ctx.db, { vaultId: null }); // what the live dev DB had when the user tapped
+    await linkTelegramChat(ctx, await issueTelegramLinkToken(ctx), "777");
+    const v = await submitPurchase(ctx, agent, report);
+    const u = ui();
+    await handleDecisionCallback(deps, "777", api.sent[0]!.card.buttons[0]![0]!.callback_data!, u);
+    expect(u.log[0]).toBe("answer:Got it");
+    const row = await getLedgerRow(ctx, v.request_id);
+    expect(row.status).toBe("failed");
+    expect(row.payment?.error).toContain("vault_id"); // kept for the ledger / operator
+    const card = resultCard(row);
+    expect(card.text).toBe("Payment failed · R-0001 · $59.00 to statista.com\nPayPal did not complete the payment. Nothing was charged. Agent notified.");
+    expect(card.text).not.toMatch(/vault|onboarding/i);
+  });
+  it("publicFailure exposes only a PayPal issue code", () => {
+    expect(publicFailure("HTTP 422 INSTRUMENT_DECLINED (debug_id f00) https://api-m.sandbox.paypal.com/...")).toBe("PayPal declined (INSTRUMENT_DECLINED).");
+    expect(publicFailure("No saved PayPal (vault_id). Run onboarding step 3.")).toBe("PayPal did not complete the payment.");
+    expect(publicFailure(null)).toBe("PayPal did not complete the payment.");
   });
 });
