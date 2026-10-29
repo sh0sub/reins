@@ -14,6 +14,8 @@ import {
   insertDecision,
   insertPayment,
   insertRequest,
+  insertRequestMessage,
+  listRequestMessages,
   listAgents,
   listDecisions,
   listRequests,
@@ -35,7 +37,7 @@ import { STRATEGIES, type PaymentMode, type StrategyResult } from "./pay/strateg
 import type { PayPalClient } from "./paypal/types.ts";
 import type { CategorySuggester } from "./policy/categories.ts";
 import { ReinsEvents, type Notifier } from "./events.ts";
-import { toLedgerRow, toRequestView, type LedgerRow, type RequestView } from "./views.ts";
+import { latestClarification, toLedgerRow, toRequestView, type LedgerRow, type RequestView } from "./views.ts";
 
 export interface ReinsConfig {
   publicBaseUrl: string;
@@ -208,7 +210,7 @@ export async function saveMandate(ctx: ReinsContext, agentId: string, raw: unkno
 // ---------------- purchase flow (M5 -> M6 -> M7/M8) ----------------
 
 async function viewOf(ctx: ReinsContext, r: PurchaseRequest): Promise<RequestView> {
-  return toRequestView(r, await getPaymentByRequest(ctx.db, r.id));
+  return toRequestView(r, await getPaymentByRequest(ctx.db, r.id), await listRequestMessages(ctx.db, r.id));
 }
 
 async function publish(ctx: ReinsContext, r: PurchaseRequest, type: "request.created" | "request.updated" = "request.updated") {
@@ -217,8 +219,8 @@ async function publish(ctx: ReinsContext, r: PurchaseRequest, type: "request.cre
   return view;
 }
 
-async function notify(ctx: ReinsContext, kind: "pendingHuman" | "resolved", view: RequestView) {
-  await Promise.all(ctx.notifiers.map((n) => n[kind](view).catch(() => undefined)));
+async function notify(ctx: ReinsContext, kind: "pendingHuman" | "resolved" | "updated", view: RequestView) {
+  await Promise.all(ctx.notifiers.map((n) => n[kind]?.(view).catch(() => undefined)));
 }
 
 /**
@@ -396,6 +398,7 @@ export async function decideRequest(
   requestId: string,
   action: "approve" | "deny",
   actor: string,
+  note?: string,
 ): Promise<RequestView> {
   const r = await getRequest(ctx.db, requestId);
   if (!r) throw new ReinsError(404, "not_found", "Request not found");
@@ -404,14 +407,15 @@ export async function decideRequest(
     throw new ReinsError(409, "expired", "This approval request has expired");
   }
   if (action === "deny") {
+    const why = note?.trim().slice(0, 200);
     const denied = await transitionRequest(ctx.db, requestId, ["pending_human"], {
       status: "denied",
       finalDecision: "DENY",
-      reasonEn: `Denied by ${actor}. ${r.reasonEn ?? ""}`.trim(),
-      reasonKo: `${actor}이(가) 거절함. ${r.reasonKo ?? ""}`.trim(),
+      reasonEn: `Denied by ${actor}${why ? `: ${why}` : ""}. ${r.reasonEn ?? ""}`.trim(),
+      reasonKo: `${actor}이(가) 거절함${why ? `: ${why}` : ""}. ${r.reasonKo ?? ""}`.trim(),
     });
     if (!denied) throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
-    await insertDecision(ctx.db, { requestId, stage: "human", decision: "DENY", risk: null, reasonEn: null, reasonKo: null, details: null, actor });
+    await insertDecision(ctx.db, { requestId, stage: "human", decision: "DENY", risk: null, reasonEn: why ?? null, reasonKo: null, details: null, actor });
     const view = await publish(ctx, denied);
     await notify(ctx, "resolved", view);
     return view;
@@ -444,6 +448,69 @@ export async function expireStale(ctx: ReinsContext): Promise<number> {
   return n;
 }
 
+// ---------------- S2 Ask agent (M10 "에이전트에게 질문") ----------------
+
+const QuestionSchema = z.string().trim().min(1, "question must not be empty").max(500);
+
+async function nextMessageTime(ctx: ReinsContext, requestId: string): Promise<number> {
+  const last = (await listRequestMessages(ctx.db, requestId)).at(-1);
+  return Math.max(ctx.now(), (last?.createdAt ?? 0) + 1);
+}
+
+/**
+ * Human asks the agent a question about a pending request (web inbox or Telegram). The request stays
+ * pending_human; the approval timer restarts so the agent has time to answer.
+ */
+export async function askAgent(ctx: ReinsContext, requestId: string, rawQuestion: unknown, actor: string): Promise<RequestView> {
+  const question = parseOr400(QuestionSchema, rawQuestion);
+  const r = await getRequest(ctx.db, requestId);
+  if (!r) throw new ReinsError(404, "not_found", "Request not found");
+  if (r.status !== "pending_human") throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
+  const current = latestClarification(await listRequestMessages(ctx.db, requestId));
+  if (current && current.answer == null) throw new ReinsError(409, "question_open", "Still waiting for the agent to answer the last question");
+  await insertRequestMessage(ctx.db, { requestId, role: "human", body: question, actor, createdAt: await nextMessageTime(ctx, requestId) });
+  const touched = await updateRequest(ctx.db, requestId, {});
+  const view = await publish(ctx, touched);
+  await notify(ctx, "updated", view);
+  return view;
+}
+
+/** Agent answers the open question through MCP get_request_status(answer). */
+export async function answerClarification(ctx: ReinsContext, agent: Agent, requestId: string, rawAnswer: unknown): Promise<RequestView> {
+  const answer = parseOr400(QuestionSchema, rawAnswer);
+  const r = await getRequest(ctx.db, requestId);
+  if (!r || r.agentId !== agent.id) throw new ReinsError(404, "not_found", "Request not found");
+  if (r.status !== "pending_human") throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
+  const current = latestClarification(await listRequestMessages(ctx.db, requestId));
+  if (!current || current.answer != null) throw new ReinsError(409, "no_question", "There is no open question for this request");
+  await insertRequestMessage(ctx.db, { requestId, role: "agent", body: answer, actor: agent.name, createdAt: await nextMessageTime(ctx, requestId) });
+  const touched = await updateRequest(ctx.db, requestId, {});
+  const view = await publish(ctx, touched);
+  await notify(ctx, "updated", view);
+  return view;
+}
+
+/** Inbox items with the agent's month-to-date budget, for "After approval: $41 of $60 left". */
+export async function getInbox(ctx: ReinsContext) {
+  await expireStale(ctx);
+  const rows = await getLedger(ctx, { status: ["pending_human"] });
+  const since = monthStartUtc(ctx.now());
+  return Promise.all(
+    rows.map(async (row) => {
+      const m = await getActiveMandate(ctx.db, row.agent_id);
+      return {
+        ...row,
+        budget: {
+          month_spent_cents: await spendSinceCents(ctx.db, row.agent_id, since),
+          monthly_limit_cents: m?.monthlyLimitCents ?? null,
+          auto_approve_limit_cents: m?.autoApproveLimitCents ?? null,
+        },
+      };
+    }),
+  );
+}
+export type InboxItem = Awaited<ReturnType<typeof getInbox>>[number];
+
 // ---------------- reads ----------------
 
 export async function getRequestForAgent(ctx: ReinsContext, agent: Agent, requestId: string): Promise<RequestView> {
@@ -471,6 +538,7 @@ export async function getLedger(
         r.mandateId ? await getMandate(ctx.db, r.mandateId) : undefined,
         await listDecisions(ctx.db, r.id),
         await getPaymentByRequest(ctx.db, r.id),
+        await listRequestMessages(ctx.db, r.id),
       ),
     ),
   );
@@ -486,6 +554,7 @@ export async function getLedgerRow(ctx: ReinsContext, requestId: string): Promis
     r.mandateId ? await getMandate(ctx.db, r.mandateId) : undefined,
     await listDecisions(ctx.db, r.id),
     await getPaymentByRequest(ctx.db, r.id),
+    await listRequestMessages(ctx.db, r.id),
   );
 }
 

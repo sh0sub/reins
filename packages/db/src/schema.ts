@@ -142,10 +142,33 @@ export const payments = sqliteTable(
     currency: text("currency").notNull().default("USD"),
     error: text("error"),
     reconciled: text("reconciled", { enum: ["unchecked", "matched", "mismatch"] }).notNull().default("unchecked"),
+    /** Last Transaction Search reconciliation (M11 nightly cron). */
+    reconciledAt: integer("reconciled_at"),
+    /** Short note from reconciliation, e.g. "amount 59.00 != 58.00" or the PayPal transaction status. */
+    reconcileNote: text("reconcile_note"),
     createdAt: integer("created_at").notNull().default(now),
     updatedAt: integer("updated_at").notNull().default(now),
   },
   (t) => [index("payments_order").on(t.paypalOrderId), index("payments_batch").on(t.payoutBatchId)],
+);
+
+/**
+ * S2 "Ask agent" thread on a pending request: the human asks (role human), the agent answers through MCP
+ * get_request_status(answer) (role agent). The request stays pending_human while a question is open.
+ */
+export const requestMessages = sqliteTable(
+  "request_messages",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => requests.id),
+    role: text("role", { enum: ["human", "agent"] }).notNull(),
+    body: text("body").notNull(),
+    actor: text("actor"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [index("request_messages_request").on(t.requestId, t.createdAt)],
 );
 
 export const webhookEvents = sqliteTable("webhook_events", {
@@ -166,3 +189,4 @@ export type PurchaseRequest = typeof requests.$inferSelect;
 export type Decision = typeof decisions.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type RequestMessage = typeof requestMessages.$inferSelect;

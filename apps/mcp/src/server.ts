@@ -20,6 +20,10 @@ export function summarize(v: Record<string, unknown>): string {
   const amount = `$${String(v.amount)}`;
   const merchant = String(v.merchant);
   const id = String(v.display_id ?? v.request_id);
+  const c = v.clarification as { question?: string } | null | undefined;
+  if (v.needs_clarification && c?.question) {
+    return `${id} (${amount} to ${merchant}) is on hold: the user asked "${c.question}". Answer by calling get_request_status with request_id and answer; then wait for the decision.`;
+  }
   switch (v.status) {
     case "paid": {
       const r = v.receipt as { capture_id?: string | null; payout_batch_id?: string | null } | null;
@@ -95,13 +99,17 @@ export function createReinsMcpServer(api: ReinsApi): McpServer {
     "get_request_status",
     {
       title: "Get purchase request status",
-      description: "Returns the current status, decision, reason and receipt of a purchase request created by this agent.",
-      inputSchema: { request_id: z.string().min(1).max(64).describe("request_id returned by request_purchase") },
-      annotations: { readOnlyHint: true },
+      description:
+        "Returns the current status, decision, reason and receipt of a purchase request created by this agent. If needs_clarification is true, the user asked a question (clarification.question): call this tool again with `answer` to reply in one or two sentences.",
+      inputSchema: {
+        request_id: z.string().min(1).max(64).describe("request_id returned by request_purchase"),
+        answer: z.string().min(1).max(500).optional().describe("Your answer when needs_clarification is true"),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
     },
-    async ({ request_id }) => {
+    async ({ request_id, answer }) => {
       try {
-        const v = await api.getRequestStatus(request_id);
+        const v = answer ? await api.answerClarification(request_id, answer) : await api.getRequestStatus(request_id);
         return ok(v, summarize(v));
       } catch (e) {
         return fail(e);

@@ -4,12 +4,14 @@ import { getActiveMandate, getWorkspace, listMandateVersions, REQUEST_STATUSES, 
 import {
   HttpPayPalClient,
   ReinsError,
+  answerClarification,
+  askAgent,
   authenticateAgent,
   completeVaultSetup,
   connectPayPal,
   createAgent,
   decideRequest,
-  expireStale,
+  getInbox,
   getLedger,
   getLedgerRow,
   getRequestForAgent,
@@ -18,6 +20,7 @@ import {
   listAgentSummaries,
   listTransactionsForAgent,
   mandateView,
+  reconcilePayments,
   saveMandate,
   setPaymentMode,
   startVaultSetup,
@@ -103,6 +106,11 @@ const routes: Route[] = [
     const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
     return json(await getRequestForAgent(ctx, agent, p.id!));
   }),
+  toRoute("POST", "/api/requests/:id/answer", "agent", async (req, ctx, p) => {
+    const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
+    const { answer } = (await readJson(req)) as { answer?: unknown };
+    return json(await answerClarification(ctx, agent, p.id!, answer));
+  }),
   toRoute("GET", "/api/transactions", "agent", async (req, ctx, _p, url) => {
     const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
     return json({ transactions: await listTransactionsForAgent(ctx, agent, Number(url.searchParams.get("limit") ?? 20)) });
@@ -126,14 +134,16 @@ const routes: Route[] = [
     const { purpose } = (await readJson(req)) as { purpose?: string };
     return json(await suggestCategories(ctx.categorySuggester, String(purpose ?? "")));
   }),
-  toRoute("GET", "/api/inbox", "admin", async (_r, ctx) => {
-    await expireStale(ctx);
-    return json({ items: await getLedger(ctx, { status: ["pending_human"] }) });
-  }),
+  toRoute("GET", "/api/inbox", "admin", async (_r, ctx) => json({ items: await getInbox(ctx) })),
   toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p) => {
-    const { action } = (await readJson(req)) as { action?: string };
+    const { action, note } = (await readJson(req)) as { action?: string; note?: unknown };
     if (action !== "approve" && action !== "deny") throw new ReinsError(400, "invalid_input", "action must be approve or deny");
-    await decideRequest(ctx, p.id!, action, "web");
+    await decideRequest(ctx, p.id!, action, "web", typeof note === "string" ? note : undefined);
+    return json(await getLedgerRow(ctx, p.id!));
+  }),
+  toRoute("POST", "/api/requests/:id/ask", "admin", async (req, ctx, p) => {
+    const { question } = (await readJson(req)) as { question?: unknown };
+    await askAgent(ctx, p.id!, question, "web");
     return json(await getLedgerRow(ctx, p.id!));
   }),
   toRoute("GET", "/api/ledger", "admin", async (_r, ctx, _p, url) =>
@@ -145,6 +155,16 @@ const routes: Route[] = [
       }),
     }),
   ),
+  toRoute("POST", "/api/reconcile", "admin", async (req, ctx) => {
+    const { days } = (await readJson(req)) as { days?: number };
+    const span = Math.min(Math.max(Number(days ?? 2), 1), 31) * 86_400_000;
+    try {
+      return json(await reconcilePayments(ctx, { start: ctx.now() - span }));
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      throw new ReinsError(502, "reconcile_failed", `Couldn't sync with PayPal Transaction Search${status ? ` (HTTP ${status})` : ""}. Showing cached data.`);
+    }
+  }),
   toRoute("GET", "/api/ledger/:id", "admin", async (_r, ctx, p) => json(await getLedgerRow(ctx, p.id!))),
   toRoute("GET", "/api/workspace", "admin", async (_r, ctx) => {
     const ws = await getWorkspace(ctx.db);
@@ -156,6 +176,7 @@ const routes: Route[] = [
       payment_mode: ws.paymentMode,
       has_vault: Boolean(ws.vaultId),
       telegram_linked: Boolean(ws.telegramChatId),
+      telegram_bot: process.env.TELEGRAM_BOT_USERNAME ?? "ReinsApproveBot",
       connected_at: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : null,
     });
   }),
@@ -189,7 +210,7 @@ const routes: Route[] = [
     const bot = process.env.TELEGRAM_BOT_USERNAME ?? "ReinsApproveBot";
     return json({ url: `https://t.me/${bot}?start=${token}` });
   }),
-  toRoute("GET", "/api/events", "admin", async (req, ctx) => sseResponse(req, ctx)),
+  toRoute("GET", "/api/events", "admin", async (req, ctx) => sseResponse(req, ctx, sseHeartbeatMs)),
 
   // ---- inbound webhooks ----
   toRoute("POST", "/api/webhooks/paypal", "public", async (req, ctx) => {
@@ -203,10 +224,18 @@ const routes: Route[] = [
   }),
 ];
 
-/** Server-Sent Events: pushes request.created / request.updated to the inbox and ledger. */
-function sseResponse(req: Request, ctx: ReinsContext): Response {
+let sseHeartbeatMs = 15_000;
+
+/**
+ * Server-Sent Events: pushes request.created / request.updated to the inbox, ledger and nav badge.
+ * - `retry: 3000` tells EventSource how long to wait before reconnecting
+ * - a named `ping` event every heartbeat lets the client detect a dead connection (comments are invisible to JS)
+ * - every event carries an increasing `id`; after a reconnect the client simply refetches
+ */
+function sseResponse(req: Request, ctx: ReinsContext, heartbeatMs: number): Response {
   const enc = new TextEncoder();
   let cleanup = () => {};
+  let seq = 0;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (chunk: string) => {
@@ -216,9 +245,9 @@ function sseResponse(req: Request, ctx: ReinsContext): Response {
           cleanup();
         }
       };
-      send(`retry: 3000\n: connected\n\n`);
-      const unsubscribe = ctx.events.subscribe((e) => send(`event: ${e.type}\ndata: ${JSON.stringify(e.request)}\n\n`));
-      const ping = setInterval(() => send(`: ping\n\n`), 25_000);
+      send(`retry: 3000\nevent: ready\nid: ${seq++}\ndata: {"heartbeat_ms":${heartbeatMs}}\n\n`);
+      const unsubscribe = ctx.events.subscribe((e) => send(`event: ${e.type}\nid: ${seq++}\ndata: ${JSON.stringify(e.request)}\n\n`));
+      const ping = setInterval(() => send(`event: ping\ndata: ${Date.now()}\n\n`), heartbeatMs);
       cleanup = () => {
         clearInterval(ping);
         unsubscribe();
@@ -235,11 +264,12 @@ function sseResponse(req: Request, ctx: ReinsContext): Response {
     },
   });
   return new Response(stream, {
-    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", connection: "keep-alive" },
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store, no-transform", connection: "keep-alive", "x-accel-buffering": "no" },
   });
 }
 
-export function createRouter(getCtx: () => Promise<ReinsContext>, opts: { adminToken?: string } = {}) {
+export function createRouter(getCtx: () => Promise<ReinsContext>, opts: { adminToken?: string; sseHeartbeatMs?: number } = {}) {
+  if (opts.sseHeartbeatMs) sseHeartbeatMs = opts.sseHeartbeatMs;
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const candidates = routes.filter((r) => r.pattern.test(url.pathname));

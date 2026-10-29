@@ -108,6 +108,32 @@ export interface WebhookEvent {
   summary?: string;
 }
 
+/** GET /v1/reporting/transactions (Transaction Search). Max 31-day window; data lags up to ~3 hours. */
+export interface TransactionSearchParams {
+  startDate: string;
+  endDate: string;
+  page?: number;
+  pageSize?: number;
+}
+export interface TransactionDetail {
+  transaction_info: {
+    transaction_id: string;
+    paypal_reference_id?: string;
+    transaction_event_code?: string;
+    /** S = success, P = pending, D = denied, V = reversed */
+    transaction_status?: string;
+    transaction_amount?: Money;
+    custom_field?: string;
+    transaction_initiation_date?: string;
+  };
+}
+export interface TransactionSearchResponse {
+  transaction_details: TransactionDetail[];
+  total_items?: number;
+  total_pages?: number;
+  page?: number;
+}
+
 export interface PayPalClient {
   /** OAuth2 client_credentials token (cached until shortly before expiry). Used by M1 Verify. */
   getAccessToken(): Promise<string>;
@@ -117,6 +143,8 @@ export interface PayPalClient {
   createPayout(body: CreatePayoutBody): Promise<PayoutBatch>;
   /** POST /v1/notifications/verify-webhook-signature -> verification_status */
   verifyWebhookSignature(headers: WebhookHeaders, event: unknown, webhookId: string): Promise<"SUCCESS" | "FAILURE">;
+  /** GET /v1/reporting/transactions (M11 nightly reconciliation). */
+  searchTransactions(params: TransactionSearchParams): Promise<TransactionSearchResponse>;
 }
 
 export class PayPalApiError extends Error {

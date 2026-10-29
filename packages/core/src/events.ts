@@ -35,4 +35,6 @@ export interface Notifier {
   readonly name: string;
   pendingHuman(view: RequestView): Promise<void>;
   resolved(view: RequestView): Promise<void>;
+  /** Optional: the card changed without a decision (S2 question asked or answered). */
+  updated?(view: RequestView): Promise<void>;
 }

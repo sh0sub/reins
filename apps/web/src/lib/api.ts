@@ -19,11 +19,5 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return json as T;
 }
 
-/** Subscribes to /api/events (SSE) and calls back on every request change. */
-export function subscribeEvents(onChange: () => void): () => void {
-  if (typeof EventSource === "undefined") return () => {};
-  const es = new EventSource("/api/events");
-  es.addEventListener("request.created", onChange);
-  es.addEventListener("request.updated", onChange);
-  return () => es.close();
-}
+/** Subscribes to the shared /api/events connection (see lib/live.ts) and calls back on every change. */
+export { liveConnection } from "./live";

@@ -6,6 +6,7 @@ import {
   decisions,
   mandates,
   payments,
+  requestMessages,
   requests,
   webhookEvents,
   workspace,
@@ -14,6 +15,7 @@ import {
   type Mandate,
   type Payment,
   type PurchaseRequest,
+  type RequestMessage,
   type RequestStatus,
   type Workspace,
 } from "./schema.ts";
@@ -251,7 +253,7 @@ export async function listDecisions(db: ReinsDb, requestId: string): Promise<Dec
 
 export async function insertPayment(
   db: ReinsDb,
-  input: Omit<Payment, "id" | "createdAt" | "updatedAt" | "reconciled"> & { reconciled?: Payment["reconciled"] },
+  input: Omit<Payment, "id" | "createdAt" | "updatedAt" | "reconciled" | "reconciledAt" | "reconcileNote"> & { reconciled?: Payment["reconciled"] },
 ): Promise<Payment> {
   const ts = Date.now();
   const [row] = await db
@@ -284,6 +286,36 @@ export async function getPaymentByOrderId(db: ReinsDb, orderId: string): Promise
 
 export async function getPaymentByBatchId(db: ReinsDb, batchId: string): Promise<Payment | undefined> {
   return db.query.payments.findFirst({ where: eq(payments.payoutBatchId, batchId) });
+}
+
+/** Payments with a PayPal transaction id created in [from, to) — candidates for Transaction Search. */
+export async function listPaymentsForReconcile(db: ReinsDb, from: number, to: number): Promise<Payment[]> {
+  return db
+    .select()
+    .from(payments)
+    .where(and(eq(payments.status, "completed"), gte(payments.createdAt, from), sql`${payments.createdAt} < ${to}`))
+    .orderBy(payments.createdAt);
+}
+
+// ---------- request messages (S2 Ask agent) ----------
+
+export async function insertRequestMessage(
+  db: ReinsDb,
+  input: { requestId: string; role: RequestMessage["role"]; body: string; actor?: string | null; createdAt?: number },
+): Promise<RequestMessage> {
+  const [row] = await db
+    .insert(requestMessages)
+    .values({ id: newId("msg"), actor: null, createdAt: Date.now(), ...input })
+    .returning();
+  return row!;
+}
+
+export async function listRequestMessages(db: ReinsDb, requestId: string): Promise<RequestMessage[]> {
+  return db
+    .select()
+    .from(requestMessages)
+    .where(eq(requestMessages.requestId, requestId))
+    .orderBy(requestMessages.createdAt, requestMessages.id);
 }
 
 // ---------- webhook events ----------

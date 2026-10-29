@@ -56,6 +56,9 @@ export class ReinsApi {
   getRequestStatus(requestId: string) {
     return this.call<Record<string, unknown>>("GET", `/api/requests/${encodeURIComponent(requestId)}`);
   }
+  answerClarification(requestId: string, answer: string) {
+    return this.call<Record<string, unknown>>("POST", `/api/requests/${encodeURIComponent(requestId)}/answer`, { answer });
+  }
   listTransactions(limit = 20) {
     return this.call<{ transactions: unknown[] }>("GET", `/api/transactions?limit=${limit}`);
   }

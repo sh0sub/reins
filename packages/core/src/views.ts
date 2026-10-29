@@ -1,4 +1,4 @@
-import type { Decision, Mandate, Payment, PurchaseRequest } from "@reins/db";
+import type { Decision, Mandate, Payment, PurchaseRequest, RequestMessage } from "@reins/db";
 import { centsToValue } from "./money.ts";
 import { displayId } from "./pay/strategies.ts";
 
@@ -16,12 +16,37 @@ export interface RequestView {
   amount: string;
   currency: string;
   items: string;
+  /** The agent's own justification as submitted (shown to the human; never fed back as the decision reason). */
+  agent_reason: string;
   created_at: string;
   updated_at: string;
   receipt: { capture_id: string | null; payout_batch_id: string | null; amount: string; merchant: string } | null;
+  /** S2 Ask agent: true while the human's latest question has no agent answer yet. */
+  needs_clarification: boolean;
+  /** Latest question/answer pair, or null when nobody asked. */
+  clarification: { question: string; asked_at: string; answer: string | null; answered_at: string | null } | null;
 }
 
-export function toRequestView(r: PurchaseRequest, payment?: Payment | null): RequestView {
+export function latestClarification(messages: RequestMessage[] = []): RequestView["clarification"] {
+  let q: RequestMessage | undefined;
+  let a: RequestMessage | undefined;
+  for (const m of messages) {
+    if (m.role === "human") {
+      q = m;
+      a = undefined;
+    } else if (q) a = m;
+  }
+  if (!q) return null;
+  return {
+    question: q.body,
+    asked_at: new Date(q.createdAt).toISOString(),
+    answer: a?.body ?? null,
+    answered_at: a ? new Date(a.createdAt).toISOString() : null,
+  };
+}
+
+export function toRequestView(r: PurchaseRequest, payment?: Payment | null, messages: RequestMessage[] = []): RequestView {
+  const clarification = latestClarification(messages);
   return {
     request_id: r.id,
     display_id: displayId(r.seq),
@@ -35,12 +60,15 @@ export function toRequestView(r: PurchaseRequest, payment?: Payment | null): Req
     amount: centsToValue(r.amountCents),
     currency: r.currency,
     items: r.items,
+    agent_reason: r.reason,
     created_at: new Date(r.createdAt).toISOString(),
     updated_at: new Date(r.updatedAt).toISOString(),
     receipt:
       r.status === "paid" && payment
         ? { capture_id: payment.captureId, payout_batch_id: payment.payoutBatchId, amount: centsToValue(payment.amountCents), merchant: r.merchant }
         : null,
+    needs_clarification: r.status === "pending_human" && clarification != null && clarification.answer == null,
+    clarification,
   };
 }
 
@@ -57,8 +85,11 @@ export interface LedgerRow extends RequestView {
     payout_batch_id: string | null;
     approve_url: string | null;
     reconciled: Payment["reconciled"];
+    reconciled_at: string | null;
+    reconcile_note: string | null;
     error: string | null;
   } | null;
+  messages: Array<{ role: RequestMessage["role"]; body: string; actor: string | null; created_at: string }>;
 }
 
 export function toLedgerRow(
@@ -67,9 +98,10 @@ export function toLedgerRow(
   mandate: Mandate | undefined,
   decisions: Decision[],
   payment: Payment | undefined,
+  messages: RequestMessage[] = [],
 ): LedgerRow {
   return {
-    ...toRequestView(r, payment),
+    ...toRequestView(r, payment, messages),
     agent_name: agentName,
     mandate_version: mandate?.version ?? null,
     decisions: decisions.map((d) => ({
@@ -91,9 +123,12 @@ export function toLedgerRow(
           payout_batch_id: payment.payoutBatchId,
           approve_url: payment.approveUrl,
           reconciled: payment.reconciled,
+          reconciled_at: payment.reconciledAt == null ? null : new Date(payment.reconciledAt).toISOString(),
+          reconcile_note: payment.reconcileNote ?? null,
           error: payment.error,
         }
       : null,
+    messages: messages.map((m) => ({ role: m.role, body: m.body, actor: m.actor, created_at: new Date(m.createdAt).toISOString() })),
   };
 }
 
