@@ -135,7 +135,7 @@ describe("integration: plan flow B, three endings", () => {
 
     const scout = await h.agentClient("Research Scout", scoutMandate);
     const r = await scout.call("request_purchase", { merchant: "statista.com", amount: "59.00", items: "Market report", reason: "User asked for a market research report", category: "research" });
-    expect(api.sent[0]!.text).toContain("Research Scout wants to pay $59.00 to statista.com");
+    expect(api.sent[0]!.text).toContain("Merchant: statista.com · $59.00");
 
     const log: string[] = [];
     await handleDecisionCallback(
@@ -144,8 +144,9 @@ describe("integration: plan flow B, three endings", () => {
       api.sent[0]!.buttons[0]![0]!.callback_data!,
       { answer: async (t) => void log.push(`answer:${t}`), edit: async (c) => void log.push(`edit:${c.text.split("\n")[0]}`) },
     );
-    expect(log[0]).toBe("edit:Paying…");
-    expect(log[1]).toMatch(/^edit:Paid \$59\.00 · Capture /);
+    expect(log[0]).toBe("answer:Got it");
+    expect(log[1]).toBe("edit:Approved by you · Paying via PayPal…");
+    expect(log[2]).toMatch(/^edit:Paid \$59\.00 · Capture /);
     expect((await scout.call("get_request_status", { request_id: r.data.request_id })).data.status).toBe("paid");
     // web inbox shows the same state
     expect((await h.admin("GET", "/api/inbox")).body.items).toEqual([]);

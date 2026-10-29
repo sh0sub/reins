@@ -6,6 +6,9 @@ import {
   type Order,
   type PayPalClient,
   type PayoutBatch,
+  type TransactionDetail,
+  type TransactionSearchParams,
+  type TransactionSearchResponse,
   type WebhookEvent,
   type WebhookHeaders,
 } from "./types.ts";
@@ -107,6 +110,30 @@ export class FakePayPalClient implements PayPalClient {
     const id = pid(13);
     this.payouts.set(id, body);
     return { batch_header: { payout_batch_id: id, batch_status: "PENDING", sender_batch_header: body.sender_batch_header } };
+  }
+
+  /** Extra rows tests inject (e.g. an amount mismatch); merged with captures from completed orders. */
+  readonly extraTransactions: TransactionDetail[] = [];
+  /** Set to make the next searchTransactions throw (e.g. HTTP 429). */
+  failNextSearch: Error | null = null;
+
+  async searchTransactions(p: TransactionSearchParams): Promise<TransactionSearchResponse> {
+    this.calls.push("searchTransactions");
+    if (this.failNextSearch) {
+      const e = this.failNextSearch;
+      this.failNextSearch = null;
+      throw e;
+    }
+    const rows: TransactionDetail[] = [];
+    for (const o of this.orders.values()) {
+      const cap = firstCapture(o);
+      if (o.status !== "COMPLETED" || !cap) continue;
+      const unit = o.purchase_units?.[0];
+      rows.push({ transaction_info: { transaction_id: cap.id, transaction_event_code: "T0006", transaction_status: "S", transaction_amount: unit?.amount, custom_field: unit?.custom_id } });
+    }
+    rows.push(...this.extraTransactions);
+    void p;
+    return { transaction_details: rows, total_items: rows.length, total_pages: 1, page: 1 };
   }
 
   async verifyWebhookSignature(_h: WebhookHeaders, _e: unknown, _id: string): Promise<"SUCCESS" | "FAILURE"> {

@@ -19,7 +19,9 @@
     "mcp:stdio": "pnpm --filter @reins/mcp stdio",
     "mcp:http": "pnpm --filter @reins/mcp http",
     "spike": "tsx --env-file=.env",
-    "tokens": "tsx scripts/build-tokens.ts"
+    "tokens": "tsx scripts/build-tokens.ts",
+    "reconcile": "tsx --env-file-if-exists=.env scripts/reconcile.ts",
+    "telegram:check": "tsx --env-file=.env scripts/telegram-check.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

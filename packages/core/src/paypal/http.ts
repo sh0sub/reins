@@ -7,6 +7,8 @@ import {
   type PayPalClient,
   type PayPalEnv,
   type PayoutBatch,
+  type TransactionSearchParams,
+  type TransactionSearchResponse,
   type WebhookHeaders,
 } from "./types.ts";
 
@@ -88,6 +90,17 @@ export class HttpPayPalClient implements PayPalClient {
 
   createPayout(body: CreatePayoutBody): Promise<PayoutBatch> {
     return this.call("POST", "/v1/payments/payouts", body);
+  }
+
+  searchTransactions(p: TransactionSearchParams): Promise<TransactionSearchResponse> {
+    const q = new URLSearchParams({
+      start_date: p.startDate,
+      end_date: p.endDate,
+      fields: "transaction_info",
+      page_size: String(p.pageSize ?? 500),
+      page: String(p.page ?? 1),
+    });
+    return this.call("GET", `/v1/reporting/transactions?${q.toString()}`);
   }
 
   async verifyWebhookSignature(headers: WebhookHeaders, event: unknown, webhookId: string): Promise<"SUCCESS" | "FAILURE"> {

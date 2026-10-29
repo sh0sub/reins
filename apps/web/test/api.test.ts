@@ -126,7 +126,7 @@ describe("D4 REST API", () => {
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const reader = res.body!.getReader();
     const dec = new TextDecoder();
-    expect(dec.decode((await reader.read()).value)).toContain("connected");
+    expect(dec.decode((await reader.read()).value)).toContain("event: ready");
     const a = (await call("POST", "/api/agents", { name: "A", mandate })).body;
     await call("POST", "/api/requests", { merchant: "statista.com", amount: "59.00", items: "report", reason: "market research report", category: "research" }, { authorization: `Bearer ${a.api_key}` });
     const chunk = dec.decode((await reader.read()).value);

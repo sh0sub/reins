@@ -87,6 +87,21 @@ importers:
       '@reins/db':
         specifier: workspace:^
         version: link:../../packages/db
+      ag-charts-community:
+        specifier: 14.2.0
+        version: 14.2.0
+      ag-charts-react:
+        specifier: 14.2.0
+        version: 14.2.0(react@19.3.1)
+      ag-grid-community:
+        specifier: 36.2.0
+        version: 36.2.0
+      ag-grid-enterprise:
+        specifier: 36.2.0
+        version: 36.2.0
+      ag-grid-react:
+        specifier: 36.2.0
+        version: 36.2.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@libsql/client@0.18.0)(@opentelemetry/api@1.10.0)
@@ -1218,6 +1233,41 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
+  ag-charts-community@14.2.0:
+    resolution: {integrity: sha512-AQ9u5jJGjCGWY19XMehZFhC5db6e9J5DGCurSGjm1h9MUkfTQfj9KMDHLhTQqdNhVvTXI7J4OB8ZNbWMh3TJug==}
+
+  ag-charts-core@14.2.0:
+    resolution: {integrity: sha512-te4u0sFYMNuzfZMU/uh3nVEctIFpsAfLFBJIJtlMqBKI8otYdB3y4M5Ax8KAAg888X6G1lDaBW8FoNGzX3caSg==}
+
+  ag-charts-enterprise@14.2.0:
+    resolution: {integrity: sha512-Qw/TICVK1lGfiz5L4QPgzTD2bffWfRWMydvnlH/fbWUUz7E9noE/bERD+E65nRKmzH+++i7hSvQDGEob13SRPA==}
+
+  ag-charts-locale@14.2.0:
+    resolution: {integrity: sha512-zoG9yxh193FKc7jvx9FFp8oWUTcYIzHJLNmq1+54KCIe0us9Ay5odkp31y7WJX5gDtty8hKq+uyOEBPXtE9GHw==}
+
+  ag-charts-react@14.2.0:
+    resolution: {integrity: sha512-AdhcRhyW6N7YuYCwnNfCe4ozbcsrMsMGK00VjeaFRNDZTU9PjbSSu0BKyZJFbCPgE0FhrTgDN2fBN0BKQsIx1w==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+
+  ag-charts-types@14.2.0:
+    resolution: {integrity: sha512-4pDV6/4zbzPN7t607Gr1o6DO9RhmPafQGr+hIpTJBaerbaMoC+WOO3v/wkxFbvCNrHKOexEKSfNTH7PaAR4UzA==}
+
+  ag-grid-community@36.2.0:
+    resolution: {integrity: sha512-tK0Toj7t0fV/OMLPnDc0xlYKAqDbnCT3iJodYSn2TJ541caU8jPdYwWhMdW+AP2+pUNwFiJVgc04eJNfvBPsWw==}
+
+  ag-grid-enterprise@36.2.0:
+    resolution: {integrity: sha512-xwc8yVqjSaJPb0sPzFeLoidtF+cGBMyqXQHmkRzuBj1o44cibCoTP3ICshhc5upfc+ewhSYknBC8KPxcB+d0Ag==}
+
+  ag-grid-react@36.2.0:
+    resolution: {integrity: sha512-7dsaR4Ga8/bJAOov7XJqxsDc1JAjUU5Bmh9+s4U9+/TKIdSsaVo53SuZb2yEFSB1elv3eh6aZP8a1fqGZehXwA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  ag-stack@36.2.0:
+    resolution: {integrity: sha512-f3XT2htFs9dUPcHni2z9ak69QNta5ODEpooHuuNvbjN98JkokpEqRQ9YLQHQJFdCcgi9Ybs/j3zkkvmNRamIPg==}
+
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
     peerDependencies:
@@ -1755,6 +1805,9 @@ packages:
   js-base64@3.9.5:
     resolution: {integrity: sha512-u0CFDUca8BbBRkMkF/fDcuoLCx9nTNbXdVtbjVnBqySA9E221u0uYKbACiYGOEk1heY69qM4caeX3OwjSyxevw==}
 
+  js-tokens@4.0.0:
+    resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
+
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
 
@@ -1799,6 +1852,10 @@ packages:
 
   lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
+
+  loose-envify@1.4.0:
+    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
+    hasBin: true
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
@@ -1957,6 +2014,9 @@ packages:
   promise-limit@2.7.0:
     resolution: {integrity: sha512-7nJ6v5lnJsXwGprnGXga4wx6d1POjvi5Qmf1ivTRxTjH4Z/9Czja/UCMLVmB9N93GeWOU93XaFaEt6jbuoagNw==}
 
+  prop-types@15.8.1:
+    resolution: {integrity: sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==}
+
   proxy-addr@2.0.8:
     resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
     engines: {node: '>= 0.10'}
@@ -1981,6 +2041,9 @@ packages:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
       react: ^19.3.1
+
+  react-is@16.13.1:
+    resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
   react@19.3.1:
     resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
@@ -3109,6 +3172,53 @@ snapshots:
 
   acorn@8.19.0: {}
 
+  ag-charts-community@14.2.0:
+    dependencies:
+      ag-charts-core: 14.2.0
+      ag-charts-locale: 14.2.0
+      ag-charts-types: 14.2.0
+
+  ag-charts-core@14.2.0:
+    dependencies:
+      ag-charts-types: 14.2.0
+
+  ag-charts-enterprise@14.2.0:
+    dependencies:
+      ag-charts-community: 14.2.0
+      ag-charts-core: 14.2.0
+    optional: true
+
+  ag-charts-locale@14.2.0: {}
+
+  ag-charts-react@14.2.0(react@19.3.1):
+    dependencies:
+      ag-charts-community: 14.2.0
+      react: 19.3.1
+
+  ag-charts-types@14.2.0: {}
+
+  ag-grid-community@36.2.0:
+    dependencies:
+      ag-charts-types: 14.2.0
+      ag-stack: 36.2.0
+
+  ag-grid-enterprise@36.2.0:
+    dependencies:
+      ag-grid-community: 36.2.0
+      ag-stack: 36.2.0
+    optionalDependencies:
+      ag-charts-community: 14.2.0
+      ag-charts-enterprise: 14.2.0
+
+  ag-grid-react@36.2.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    dependencies:
+      ag-grid-community: 36.2.0
+      prop-types: 15.8.1
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
+  ag-stack@36.2.0: {}
+
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
       ajv: 8.20.0
@@ -3632,6 +3742,8 @@ snapshots:
 
   js-base64@3.9.5: {}
 
+  js-tokens@4.0.0: {}
+
   js-tokens@9.0.1: {}
 
   js-yaml@4.3.2:
@@ -3682,6 +3794,10 @@ snapshots:
       p-locate: 5.0.0
 
   lodash.merge@4.6.2: {}
+
+  loose-envify@1.4.0:
+    dependencies:
+      js-tokens: 4.0.0
 
   loupe@3.2.1: {}
 
@@ -3815,6 +3931,12 @@ snapshots:
 
   promise-limit@2.7.0: {}
 
+  prop-types@15.8.1:
+    dependencies:
+      loose-envify: 1.4.0
+      object-assign: 4.1.1
+      react-is: 16.13.1
+
   proxy-addr@2.0.8:
     dependencies:
       forwarded: 0.2.0
@@ -3840,6 +3962,8 @@ snapshots:
     dependencies:
       react: 19.3.1
       scheduler: 0.28.0
+
+  react-is@16.13.1: {}
 
   react@19.3.1: {}
 
