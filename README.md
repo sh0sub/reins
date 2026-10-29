@@ -11,7 +11,9 @@ Built for the PayPal AI Hackathon 2026 (deadline 2026-11-12 PST). Targets: Best 
 
 ## Status
 
-Backend core in progress (2026-10-27): policy engine (hard rules + Claude auditor), Reins MCP server, PayPal Orders/Payouts/Webhooks client, Telegram approval handlers, web approvals inbox and mandate editor. Sandbox spikes are scripted but not run yet.
+D10 checkpoint (2026-10-29): plan flow B runs end to end (AUTO paid, ASK_HUMAN approved on web or Telegram, DENY blocked),
+covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes ran on 2026-10-27/28 (vault auto-pay, payouts, webhook
+signatures OK; results in `docs/spikes/`).
 
 ## Develop
 
@@ -26,7 +28,13 @@ pnpm dev:web                # http://localhost:3000 (API under /api)
 pnpm mcp:stdio              # MCP over stdio (REINS_API_KEY=rk_live_...)
 pnpm mcp:http               # MCP over Streamable HTTP on :3333/mcp
 pnpm tokens                 # regenerate design tokens CSS
+pnpm reconcile              # M11 nightly Transaction Search reconciliation (Render Cron), counts only
+pnpm telegram:check         # #9 real bot check: getMe, finds your /start, sends one demo card
 ```
+
+Screens: `/setup` (S1 connect PayPal, payment mode, Telegram), `/agents` (S2 mandates), `/inbox` (S5 approvals with Ask agent),
+`/ledger` (S4 AG Grid + AG Charts). Telegram uses long polling when `PUBLIC_BASE_URL` is not https, so approval buttons
+work locally without a tunnel. Demo walkthrough: [docs/demo-checkpoint.md](docs/demo-checkpoint.md).
 
 Sandbox spikes (need keys in `.env`, write results to `docs/spikes/`):
 
@@ -38,6 +46,10 @@ pnpm spike scripts/spikes/channel3.ts             # #31 Channel3 search
 ```
 
 Layout: `apps/web` (Next.js 15 UI + REST + webhooks), `apps/mcp` (MCP server), `apps/bot` (grammY handlers), `packages/core` (policy, PayPal client, payment strategies), `packages/db` (Drizzle, SQLite/libsql locally).
+
+## Demo agent A (Claude Desktop / Claude Code)
+
+Config snippets that expose the 4 Reins MCP tools (plus Channel3 product search) to Claude Desktop (`agents/claude_desktop_config.json`) and Claude Code (`.mcp.json.example`). Setup steps and demo prompts: [agents/README.md](agents/README.md).
 
 ## License
 

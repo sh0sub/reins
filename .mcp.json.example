@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "reins": {
+      "command": "npx",
+      "args": ["-y", "tsx", "apps/mcp/src/stdio.ts"],
+      "env": {
+        "REINS_API_URL": "${REINS_API_URL:-http://localhost:3000}",
+        "REINS_API_KEY": "${REINS_API_KEY}"
+      }
+    },
+    "channel3": {
+      "type": "http",
+      "url": "https://mcp.trychannel3.com/",
+      "headers": {
+        "X-API-Key": "${CHANNEL3_API_KEY}"
+      }
+    }
+  }
+}

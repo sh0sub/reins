@@ -12,5 +12,7 @@ HTTP 200
 
 ## MCP setup (fill in)
 
-- Channel3 MCP server URL/command from channel3.ai/docs/mcp: __
-- Add it next to Reins in agents/claude_desktop_config.json (M14).
+- Channel3 MCP server: `https://mcp.trychannel3.com/` (Streamable HTTP), optional `X-API-Key` header lifts limits.
+  Source: https://channel3.mintlify.dev/docs/use-cases/mcp-agent.md (linked from the docs llms.txt), read 2026-10-29.
+- Wired next to Reins in `agents/claude_desktop_config.json` (via `npx mcp-remote`, not run yet) and `.mcp.json.example`
+  (Claude Code `type: "http"`). Live MCP call not verified (M14 #14).

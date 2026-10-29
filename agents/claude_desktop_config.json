@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "reins": {
+      "command": "npx",
+      "args": ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"],
+      "env": {
+        "REINS_API_URL": "${REINS_API_URL}",
+        "REINS_API_KEY": "${REINS_API_KEY}"
+      }
+    },
+    "channel3": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.trychannel3.com/", "--header", "X-API-Key:${CHANNEL3_API_KEY}"],
+      "env": {
+        "CHANNEL3_API_KEY": "${CHANNEL3_API_KEY}"
+      }
+    }
+  }
+}
