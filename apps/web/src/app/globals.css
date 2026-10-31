@@ -70,7 +70,7 @@ p { margin: 0; }
 .page-head p { margin-top: var(--sp-1); }
 
 @media (max-width: 949px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .sidebar { position: sticky; top: 0; z-index: 6; height: auto; flex-direction: row; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-4); border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
   .brand small, .side-foot { display: none; }
   .brand { padding: 0; }
