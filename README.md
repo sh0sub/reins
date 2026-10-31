@@ -34,7 +34,7 @@ pnpm dev:web                # http://localhost:3000 (API under /api)
 pnpm mcp:stdio              # MCP over stdio (REINS_API_KEY=rk_live_...)
 pnpm mcp:http               # MCP over Streamable HTTP on :3333/mcp
 pnpm tokens                 # regenerate design tokens CSS
-pnpm reconcile              # M11 nightly Transaction Search reconciliation (Render Cron), counts only
+pnpm reconcile              # M11 Transaction Search reconciliation on the local DB, counts only (Render: POST /api/cron/reconcile)
 pnpm telegram:check         # #9 real bot check: getMe, finds your /start, sends one demo card
 ```
 
@@ -53,12 +53,18 @@ pnpm spike scripts/spikes/channel3.ts             # #31 Channel3 search
 
 Layout: `apps/web` (Next.js 15 UI + REST + webhooks), `apps/mcp` (MCP server), `apps/bot` (grammY handlers), `packages/core` (policy, PayPal client, payment strategies), `packages/db` (Drizzle, SQLite/libsql locally).
 
+## Deploy
+
+Render Blueprint (`render.yaml`): web + MCP HTTP + two cron jobs, SQLite on a persistent disk, demo data seeded on first boot.
+Step-by-step (Korean), env vars, PayPal/Telegram webhook URLs and smoke checks: [docs/deploy.md](docs/deploy.md).
+
 ## Demo data
 
 ```bash
 pnpm seed                        # 3 agents, 3 mandates, 24 requests in apps/web/.local/reins.db (what `pnpm dev:web` uses)
 pnpm seed -- --db ./scratch.db   # another file; point the app at it with DATABASE_URL=file:./scratch.db
 pnpm seed -- --force             # also run against a DB that has real data (only the seed rows are replaced)
+pnpm seed -- --if-empty          # first boot (Render start command): seed only if the DB has no agents, never forces
 ```
 
 Matches the plan's flow C: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,

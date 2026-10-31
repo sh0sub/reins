@@ -10,7 +10,7 @@ import { LiveConnection, type EventSourceLike, type LiveEvent } from "../src/lib
 const BASE = "http://localhost:3000";
 const mandate = { monthly_limit: "60.00", auto_approve_limit: "25.00", per_purchase_cap: "100.00", blocked_merchants: ["fiverr.com"], categories: ["research"], purpose: "Buy market research reports" };
 
-async function setup(opts: { sseHeartbeatMs?: number } = {}) {
+async function setup(opts: { sseHeartbeatMs?: number; cronSecret?: string } = {}) {
   const ctx = await createTestContext();
   const handle = createRouter(async () => ctx, opts);
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
@@ -159,5 +159,42 @@ describe("#11 reconcile route", () => {
     const rec = await call("POST", "/api/reconcile", {});
     expect(rec.status).toBe(502);
     expect(rec.body.message).toBe("Couldn't sync with PayPal Transaction Search (HTTP 429). Showing cached data.");
+  });
+});
+
+describe("#38 cron reconcile route (Render Cron can't share the web disk)", () => {
+  it("needs REINS_CRON_SECRET even in open demo mode; the right secret runs the same reconcile", async () => {
+    const { ctx, call, auth } = await setup({ cronSecret: "cron-s3cret" });
+    await updateWorkspace(ctx.db, { paymentMode: "vaulted", vaultId: "VAULT-1" });
+    await call("POST", "/api/requests", { ...report, amount: "12.00" }, auth);
+    expect((await call("POST", "/api/cron/reconcile", {})).status).toBe(401);
+    expect((await call("POST", "/api/cron/reconcile", {}, { authorization: "Bearer wrong" })).status).toBe(401);
+    const rec = await call("POST", "/api/cron/reconcile", { days: 2 }, { authorization: "Bearer cron-s3cret" });
+    expect(rec.status).toBe(200);
+    expect(rec.body).toMatchObject({ checked: 1, matched: 1, mismatch: 0 });
+  });
+  it("is disabled (503) when no secret is configured, and the admin token does not open it", async () => {
+    const ctx = await createTestContext();
+    const handle = createRouter(async () => ctx, { adminToken: "admin-tok" });
+    const res = await handle(new Request(`${BASE}/api/cron/reconcile`, { method: "POST", headers: { authorization: "Bearer admin-tok" } }));
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toBe("cron_disabled");
+  });
+});
+
+describe("POST /api/paypal/connect on the public demo", () => {
+  it("refuses custom credentials but still connects the demo merchant", async () => {
+    process.env.REINS_PUBLIC_DEMO = "1";
+    try {
+      const ctx = await createTestContext();
+      const handle = createRouter(async () => ctx, {});
+      const post = (body: unknown) => handle(new Request(`${BASE}/api/paypal/connect`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+      const custom = await post({ client_id: "x", client_secret: "y" });
+      expect(custom.status).toBe(403);
+      expect((await custom.json()).error).toBe("demo_only");
+      expect((await post({ demo: true })).status).toBe(200);
+    } finally {
+      delete process.env.REINS_PUBLIC_DEMO;
+    }
   });
 });

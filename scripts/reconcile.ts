@@ -1,5 +1,6 @@
 /**
- * M11 nightly reconciliation (Render Cron: `pnpm reconcile` once a day).
+ * M11 nightly reconciliation against a local DB file (`pnpm reconcile`). On Render the cron job calls
+ * POST /api/cron/reconcile on reins-web instead, because cron jobs cannot mount the web service disk (render.yaml).
  * Pulls PayPal Transaction Search for the last N days (default 2, max 31) and marks payments matched/mismatch.
  * Prints counts only (no ids, emails or amounts per row).
  *   pnpm reconcile            # uses DATABASE_URL and PayPal keys from .env

@@ -34,6 +34,16 @@ export function createMcpHttpHandler(apiBaseUrl: string, fetchImpl?: FetchLike) 
   };
 }
 
+/**
+ * Reins web API base URL: REINS_API_URL, else REINS_API_HOSTPORT over Render's private network
+ * (render.yaml fills it from the web service's `hostport`, e.g. "reins-web:10000").
+ */
+export function apiBaseUrlFromEnv(env: Record<string, string | undefined>): string {
+  if (env.REINS_API_URL) return env.REINS_API_URL;
+  if (env.REINS_API_HOSTPORT) return `http://${env.REINS_API_HOSTPORT}`;
+  return "http://localhost:3000";
+}
+
 async function toRequest(req: IncomingMessage, origin: string): Promise<Request> {
   const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c as Buffer);
@@ -45,7 +55,7 @@ async function toRequest(req: IncomingMessage, origin: string): Promise<Request>
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const port = Number(process.env.PORT ?? 3333);
-  const handle = createMcpHttpHandler(process.env.REINS_API_URL ?? "http://localhost:3000");
+  const handle = createMcpHttpHandler(apiBaseUrlFromEnv(process.env));
   createServer(async (req, res) => {
     try {
       const response = await handle(await toRequest(req, `http://localhost:${port}`));

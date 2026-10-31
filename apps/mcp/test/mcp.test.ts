@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ReinsApi } from "../src/api.ts";
 import { createReinsMcpServer, summarize, TOOL_NAMES } from "../src/server.ts";
-import { createMcpHttpHandler } from "../src/http.ts";
+import { apiBaseUrlFromEnv, createMcpHttpHandler } from "../src/http.ts";
 
 type Seen = { url: string; method: string; auth: string | null; body: unknown };
 function stubFetch(responses: Record<string, { status?: number; body: unknown }>) {
@@ -109,5 +109,13 @@ describe("M4 Streamable HTTP transport", () => {
     const r3 = await handle(rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_mandate", arguments: {} } }, "Bearer rk_live_http"));
     expect(r3.status).toBe(200);
     expect(f.seen[0]!.auth).toBe("Bearer rk_live_http");
+  });
+});
+
+describe("#38 MCP HTTP on Render: web API base URL", () => {
+  it("REINS_API_URL wins, else the private-network hostport, else localhost", () => {
+    expect(apiBaseUrlFromEnv({ REINS_API_URL: "https://reins-web.onrender.com", REINS_API_HOSTPORT: "reins-web:10000" })).toBe("https://reins-web.onrender.com");
+    expect(apiBaseUrlFromEnv({ REINS_API_HOSTPORT: "reins-web:10000" })).toBe("http://reins-web:10000");
+    expect(apiBaseUrlFromEnv({})).toBe("http://localhost:3000");
   });
 });

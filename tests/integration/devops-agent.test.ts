@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
-import { loadBills, nextDue, runDevOpsCheck, type InfraBill } from "../../agents/devops/devops-agent.ts";
+import { loadBills, mcpUrlFromEnv, nextDue, runDevOpsCheck, type InfraBill } from "../../agents/devops/devops-agent.ts";
 import { devopsMandate, harness } from "./harness.ts";
 
 const NOV_1 = Date.parse("2026-11-01T00:30:00Z");
@@ -82,5 +82,13 @@ describe("S6 DevOps cron agent", () => {
     const sheet = loadBills(resolve(import.meta.dirname, "../../agents/devops/infra-costs.json"));
     expect(sheet.length).toBeGreaterThanOrEqual(3);
     expect(sheet.every((b) => b.due_day >= 1 && b.due_day <= 28)).toBe(true);
+  });
+});
+
+describe("#38 DevOps cron on Render: MCP transport choice", () => {
+  it("REINS_MCP_URL, else the private-network hostport (/mcp), else null = stdio child process", () => {
+    expect(mcpUrlFromEnv({ REINS_MCP_URL: "https://reins-mcp.onrender.com/mcp", REINS_MCP_HOSTPORT: "reins-mcp:10000" })).toBe("https://reins-mcp.onrender.com/mcp");
+    expect(mcpUrlFromEnv({ REINS_MCP_HOSTPORT: "reins-mcp:10000" })).toBe("http://reins-mcp:10000/mcp");
+    expect(mcpUrlFromEnv({})).toBeNull();
   });
 });

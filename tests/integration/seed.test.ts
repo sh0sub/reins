@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createDb, insertAgent, listAgents, listDecisions, listRequests, migrateDb, getPaymentByRequest, type ReinsDb } from "@reins/db";
 import { formatUsd, generateApiKey, listAgentSummaries, getLedger } from "@reins/core";
 import { createTestContext } from "@reins/core/testing";
-import { SEED_KEY_PREFIX, SeedRefusal, dashboardTotals, seedDemo } from "../../scripts/seed.ts";
+import { SEED_KEY_PREFIX, SeedRefusal, dashboardTotals, seedDemo, seedIfEmpty } from "../../scripts/seed.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "reins-seed-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -96,5 +96,23 @@ describe("M13 seed", () => {
     expect(names).toContain("Real agent");
     expect(names).toHaveLength(4);
     expect((await listAgents(db)).filter((a) => a.keyPrefix.startsWith(SEED_KEY_PREFIX))).toHaveLength(3);
+  });
+
+  it("#38 first-boot --if-empty: seeds an empty DB once, then never touches it again (seed rows or real data)", async () => {
+    const db = await tempDb("d.db");
+    const first = await seedIfEmpty(db);
+    expect(first).toMatchObject({ agents: 3, mandates: 3, requests: 24, replaced: 0 });
+    const totals = await dashboardTotals(db);
+    expect(`${formatUsd(totals.spentCents)} of ${formatUsd(totals.limitCents)}`).toBe("$117.97 of $410.00");
+    const ids = (await listAgents(db)).map((a) => a.id);
+
+    expect(await seedIfEmpty(db)).toBeNull(); // restart / redeploy: no re-seed
+    expect((await listAgents(db)).map((a) => a.id)).toEqual(ids);
+
+    const real = await tempDb("e.db");
+    const k = generateApiKey();
+    await insertAgent(real, { name: "Real agent", keyHash: k.hash, keyPrefix: k.displayPrefix });
+    expect(await seedIfEmpty(real)).toBeNull();
+    expect(await listRequests(real, { limit: 10 })).toHaveLength(0);
   });
 });

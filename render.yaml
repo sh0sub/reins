@@ -1,0 +1,138 @@
+# Render Blueprint for Reins (#38 D11). Steps for a first deploy: docs/deploy.md
+# Spec: https://render.com/docs/blueprint-spec
+#
+# reins-web             Next.js dashboard + REST API + PayPal/Telegram webhooks, SQLite (libsql) on a persistent disk
+# reins-mcp             MCP Streamable HTTP server (POST /mcp); calls reins-web over Render's private network
+# reins-devops-cron     Demo agent B, daily, talks to reins-mcp over MCP (needs an agent key from /agents)
+# reins-reconcile-cron  Nightly PayPal Transaction Search reconciliation; cron jobs can't mount the disk, so it calls
+#                       reins-web's POST /api/cron/reconcile with REINS_CRON_SECRET
+#
+# All four services must stay in one region (private network). Secrets use `sync: false`: Render asks for them once,
+# when the Blueprint is created; later changes go in each service's Environment tab.
+# NODE_ENV is not set here on purpose: Render sets NODE_ENV=production at runtime only. Setting it for the build
+# would make pnpm skip devDependencies (typescript, tsx) that the build and the start command need.
+
+services:
+  - type: web
+    name: reins-web
+    runtime: node
+    region: oregon
+    plan: 0.5c-512mb # paid instance: a persistent disk needs one; free instances sleep and lose local files
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @reins/web build
+    # First boot seeds the demo data (3 agents, $117.97 of $410.00) only if the DB has no agents; never --force.
+    # The disk is not mounted during build/pre-deploy, so seeding happens here. Migrations run in seed and on first request.
+    startCommand: cd apps/web && node --import tsx ../../scripts/seed.ts --if-empty --db "$DATABASE_URL" && exec node node_modules/next/dist/bin/next start -H 0.0.0.0
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    disk:
+      name: reins-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        value: file:/var/data/reins.db
+      # PUBLIC_BASE_URL is optional: the app falls back to RENDER_EXTERNAL_URL (https://reins-web.onrender.com)
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_PAYMENT_MODE
+        value: supervised
+      - key: PAYPAL_VAULT_STORED_CREDENTIAL
+        value: "0"
+      - key: REINS_TIMEZONE
+        value: Asia/Seoul
+      # Quiet hours are off for the public demo: judges in other time zones would hit Seoul's night window
+      - key: REINS_QUIET_HOURS
+        value: "off"
+      # Public demo: only the server's demo merchant can be connected (no swapping in visitors' PayPal keys)
+      - key: REINS_PUBLIC_DEMO
+        value: "1"
+      - key: REINS_APPROVAL_TTL_MINUTES
+        value: "30"
+      - key: REINS_EXPLAIN_DENIALS
+        value: "1"
+      - key: TELEGRAM_BOT_USERNAME
+        value: ReinsApproveBot
+      - key: REINS_TELEGRAM_LOG
+        value: "0"
+      # Shared with reins-reconcile-cron through fromService below; nobody has to type it
+      - key: REINS_CRON_SECRET
+        generateValue: true
+      # ---- secrets (prompted once at Blueprint creation) ----
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID # known only after registering the webhook URL; can be filled in after the first deploy
+        sync: false
+      - key: PAYPAL_SANDBOX_MERCHANT_EMAIL
+        sync: false
+      - key: TREASURY_PAYEE_EMAIL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET # letters, digits, _ and - only (Telegram secret_token rule)
+        sync: false
+
+  - type: web
+    name: reins-mcp
+    runtime: node
+    region: oregon
+    plan: 0.5c-512mb # stays awake for MCP clients and can receive private-network calls from the cron job
+    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    startCommand: node --import tsx apps/mcp/src/http.ts
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: REINS_API_HOSTPORT # e.g. reins-web:10000 -> REINS_API_URL=http://reins-web:10000
+        fromService:
+          name: reins-web
+          type: web
+          property: hostport
+
+  - type: cron
+    name: reins-devops-cron
+    runtime: node
+    region: oregon
+    plan: 0.5c-512mb
+    schedule: "0 0 * * *" # 00:00 UTC = 09:00 KST
+    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    startCommand: node --import tsx agents/devops/devops-agent.ts
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: REINS_MCP_HOSTPORT # e.g. reins-mcp:10000 -> http://reins-mcp:10000/mcp
+        fromService:
+          name: reins-mcp
+          type: web
+          property: hostport
+      - key: REINS_API_KEY # rk_live_... of the "Claude Code - DevOps" agent created in /agents after the first deploy
+        sync: false
+
+  - type: cron
+    name: reins-reconcile-cron
+    runtime: node
+    region: oregon
+    plan: 0.5c-512mb
+    schedule: "30 18 * * *" # 18:30 UTC = 03:30 KST
+    buildCommand: "true"
+    startCommand: >-
+      curl -fsS --max-time 120 -X POST
+      -H "Authorization: Bearer $REINS_CRON_SECRET" -H "content-type: application/json" -d '{"days":2}'
+      "http://$REINS_WEB_HOSTPORT/api/cron/reconcile"
+    envVars:
+      - key: REINS_WEB_HOSTPORT
+        fromService:
+          name: reins-web
+          type: web
+          property: hostport
+      - key: REINS_CRON_SECRET
+        fromService:
+          name: reins-web
+          type: web
+          envVarKey: REINS_CRON_SECRET

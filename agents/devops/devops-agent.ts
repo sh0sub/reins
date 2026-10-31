@@ -6,7 +6,9 @@
  *
  *   REINS_API_URL=http://localhost:3000 REINS_API_KEY=rk_live_... pnpm agent:devops [--ask] [--days 3] [--dry-run]
  *
- * The agent only talks MCP: it spawns the Reins stdio MCP server (apps/mcp/src/stdio.ts) as a child process.
+ * The agent only talks MCP: it spawns the Reins stdio MCP server (apps/mcp/src/stdio.ts) as a child process, or, when
+ * REINS_MCP_URL (or REINS_MCP_HOSTPORT, Render private network) is set, connects to the Streamable HTTP server instead
+ * (the Render Cron job in render.yaml does this).
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -126,6 +128,13 @@ export async function runDevOpsCheck(opts: { call: CallTool; bills: InfraBill[];
   return { checked: bills.length, due: due.length, outcomes, lines };
 }
 
+/** Streamable HTTP MCP endpoint, or null for the stdio child process. */
+export function mcpUrlFromEnv(env: Record<string, string | undefined>): string | null {
+  if (env.REINS_MCP_URL) return env.REINS_MCP_URL;
+  if (env.REINS_MCP_HOSTPORT) return `http://${env.REINS_MCP_HOSTPORT}/mcp`;
+  return null;
+}
+
 export function loadBills(file: string): InfraBill[] {
   const raw = JSON.parse(readFileSync(file, "utf8")) as { bills?: InfraBill[] };
   return (raw.bills ?? []).filter((b) => b.merchant && b.item && /^\d+(\.\d{1,2})?$/.test(b.amount) && b.due_day >= 1 && b.due_day <= 28);
@@ -143,14 +152,18 @@ async function main() {
   const bills = loadBills(process.env.DEVOPS_COSTS_FILE ?? resolve(root, "agents/devops/infra-costs.json"));
 
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-  const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["--import", "tsx", resolve(root, "apps/mcp/src/stdio.ts")],
-    cwd: root,
-    env: { PATH: process.env.PATH ?? "", REINS_API_URL: process.env.REINS_API_URL ?? "http://localhost:3000", REINS_API_KEY: key },
-    stderr: "ignore",
-  });
+  const mcpUrl = mcpUrlFromEnv(process.env);
+  const transport = mcpUrl
+    ? new (await import("@modelcontextprotocol/sdk/client/streamableHttp.js")).StreamableHTTPClientTransport(new URL(mcpUrl), {
+        requestInit: { headers: { authorization: `Bearer ${key}` } },
+      })
+    : new (await import("@modelcontextprotocol/sdk/client/stdio.js")).StdioClientTransport({
+        command: process.execPath,
+        args: ["--import", "tsx", resolve(root, "apps/mcp/src/stdio.ts")],
+        cwd: root,
+        env: { PATH: process.env.PATH ?? "", REINS_API_URL: process.env.REINS_API_URL ?? "http://localhost:3000", REINS_API_KEY: key },
+        stderr: "ignore",
+      });
   const client = new Client({ name: "reins-devops-cron", version: "0.1.0" });
   await client.connect(transport);
   const call: CallTool = async (name, a) => {

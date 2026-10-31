@@ -3,6 +3,7 @@
  *   pnpm seed                       # default dev DB (apps/web/.local/reins.db, the one `pnpm dev:web` uses)
  *   pnpm seed -- --db ./some.db     # another file (or a libsql URL)
  *   pnpm seed -- --force            # wipe seed data even if the DB also holds non-seed data (only seed rows are removed)
+ *   pnpm seed -- --if-empty         # first-boot mode (Render start command): seed only when the DB has no agents, else no-op
  *
  * Calls neither PayPal nor Claude: ids are fake (FAKE-ORDER-*, FAKE-CAPTURE-*), verdicts are scripted but shaped like
  * the real auditor output, and hard-rule results come from the real evaluateHardRules. Rows are written through the
@@ -430,15 +431,26 @@ async function replayItem(db: ReinsDb, agent: Agent, mandate: Mandate, item: Ite
   await finish({ status: failed ? "failed" : "paid" }, payAt);
 }
 
+/**
+ * First-boot seed (#38 Render deploy): seeds only a database without any agent, so restarts and redeploys never touch
+ * live data or re-seed. Never forces. Returns null when it skipped.
+ */
+export async function seedIfEmpty(db: ReinsDb, opts: Omit<SeedOptions, "force"> = {}): Promise<SeedResult | null> {
+  if ((await listAgents(db)).length > 0) return null;
+  return seedDemo(db, { now: opts.now });
+}
+
 // ---------------- CLI ----------------
 
 function parseArgs(argv: string[]) {
   const args = argv.filter((a) => a !== "--");
   const force = args.includes("--force");
+  const ifEmpty = args.includes("--if-empty");
+  if (force && ifEmpty) throw new Error("--if-empty never forces; drop --force");
   const i = args.indexOf("--db");
   const db = i >= 0 ? args[i + 1] : undefined;
   if (i >= 0 && !db) throw new Error("--db needs a path");
-  return { force, db };
+  return { force, ifEmpty, db };
 }
 
 function toUrl(db: string | undefined): string {
@@ -448,11 +460,15 @@ function toUrl(db: string | undefined): string {
 }
 
 async function main() {
-  const { force, db: dbArg } = parseArgs(process.argv.slice(2));
+  const { force, ifEmpty, db: dbArg } = parseArgs(process.argv.slice(2));
   const url = toUrl(dbArg);
   const db = createDb(url);
   await migrateDb(db, process.env.REINS_MIGRATIONS_DIR ?? resolve(ROOT, "packages/db/drizzle"));
-  const r = await seedDemo(db, { force });
+  const r = ifEmpty ? await seedIfEmpty(db) : await seedDemo(db, { force });
+  if (!r) {
+    console.log(`seed: skipped (--if-empty: the database already has ${(await listAgents(db)).length} agent(s))`);
+    process.exit(0);
+  }
   const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
   const where = url.startsWith("file:") ? url.slice(5) : url;
   console.log(`seed: ${r.agents} agents, ${r.mandates} mandates, ${r.requests} requests -> ${existsSync(where) ? where : url}`);

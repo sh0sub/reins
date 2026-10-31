@@ -43,5 +43,7 @@ REINS_API_URL=http://localhost:3000 REINS_API_KEY=rk_live_... pnpm agent:devops 
 REINS_API_URL=http://localhost:3000 REINS_API_KEY=rk_live_... pnpm agent:devops --dry-run  # report only
 ```
 
-Render Cron Job (not deployed yet): command `pnpm agent:devops`, schedule `0 0 * * *` (daily 09:00 KST), env `REINS_API_URL`
-(the web service URL) and `REINS_API_KEY`. The cost sheet is demo data; real Render/Vercel billing APIs are not called.
+Render Cron Job `reins-devops-cron` in `render.yaml`: schedule `0 0 * * *` (daily 09:00 KST), connects to the `reins-mcp`
+Streamable HTTP server (`REINS_MCP_HOSTPORT`, or `REINS_MCP_URL=https://.../mcp` anywhere else) with `REINS_API_KEY`. Without
+either variable it spawns the stdio server as before. Setup: [docs/deploy.md](../docs/deploy.md). The cost sheet is demo data;
+real Render/Vercel billing APIs are not called.

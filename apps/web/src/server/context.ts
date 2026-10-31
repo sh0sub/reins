@@ -67,8 +67,18 @@ export function quietHoursFromEnv(env: Env): QuietHours | null {
   return { timeZone, startHour: Number(m[1]), endHour: Number(m[2]) };
 }
 
+/**
+ * Public URL of apps/web: PUBLIC_BASE_URL, else Render's RENDER_EXTERNAL_URL (https://<service>.onrender.com, set on
+ * every Render web service), so a Blueprint deploy needs no hand-typed URL.
+ */
+export function publicBaseUrlFromEnv(env: Env): string | undefined {
+  return env.PUBLIC_BASE_URL || env.RENDER_EXTERNAL_URL || undefined;
+}
+
 /** Builds the runtime context from environment variables (see .env.example). */
-export async function createContextFromEnv(env: Env = process.env): Promise<ReinsContext> {
+export async function createContextFromEnv(rawEnv: Env = process.env): Promise<ReinsContext> {
+  const publicBase = publicBaseUrlFromEnv(rawEnv);
+  const env: Env = publicBase ? { ...rawEnv, PUBLIC_BASE_URL: publicBase } : rawEnv;
   const db = createDb(env.DATABASE_URL ?? "file:./.local/reins.db");
   await migrateDb(db, env.REINS_MIGRATIONS_DIR ?? resolve(process.cwd(), "../../packages/db/drizzle"));
   const paypal = paypalFromEnv(env);
@@ -117,7 +127,7 @@ export async function createContextFromEnv(env: Env = process.env): Promise<Rein
 export function telegramMode(env: Env): "webhook" | "polling" | "off" {
   if (env.TELEGRAM_MODE === "off") return "off";
   if (env.TELEGRAM_MODE === "webhook" || env.TELEGRAM_MODE === "polling") return env.TELEGRAM_MODE;
-  return /^https:\/\//.test(env.PUBLIC_BASE_URL ?? "") ? "webhook" : "polling";
+  return /^https:\/\//.test(publicBaseUrlFromEnv(env) ?? "") ? "webhook" : "polling";
 }
 
 async function wireTelegram(ctx: ReinsContext, env: Env, ttlMinutes: number) {
