@@ -13,10 +13,10 @@ const INK = "#14213d";
 const INK_2 = "#4b5670";
 
 /** AG Charts donut: committed spend this month by request category, total in the centre. */
-export function CategoryDonut({ slices, totalCents }: { slices: CategorySlice[]; totalCents: number }) {
+export function CategoryDonut({ slices, totalCents, caption, onSelect }: { slices: CategorySlice[]; totalCents: number; caption: string; onSelect?: (s: CategorySlice) => void }) {
   const options = useMemo<AgPolarChartOptions>(
     () => ({
-      data: slices.map((s) => ({ category: s.category, dollars: s.cents / 100 })),
+      data: slices.map((s, i) => ({ category: s.category, dollars: s.cents / 100, i })),
       height: 200,
       minWidth: 160,
       background: { visible: false },
@@ -34,18 +34,21 @@ export function CategoryDonut({ slices, totalCents }: { slices: CategorySlice[];
           innerRadiusRatio: 0.66,
           innerLabels: [
             { text: usd(totalCents), fontSize: 20, fontWeight: "bold", color: INK },
-            { text: "this month", fontSize: 12, color: INK_2, spacing: 4 },
+            { text: caption, fontSize: 12, color: INK_2, spacing: 4 },
           ],
+          cursor: onSelect ? "pointer" : undefined,
+          // S7: a slice click filters the ledger by that category (the legend links next to the chart do the same by keyboard)
+          listeners: onSelect ? { seriesNodeClick: ({ datum }: { datum: { i: number } }) => slices[datum.i] && onSelect(slices[datum.i]!) } : undefined,
           tooltip: {
             renderer: ({ datum }: { datum: { category: string; dollars: number } }) => ({
               heading: datum.category,
-              data: [{ label: "Spent", value: `$${datum.dollars.toFixed(2)}` }],
+              data: [{ label: "Spent", value: `$${datum.dollars.toFixed(2)}` }, ...(onSelect ? [{ label: "Click", value: "open in ledger" }] : [])],
             }),
           },
         },
       ],
     }),
-    [slices, totalCents],
+    [slices, totalCents, caption, onSelect],
   );
   return <AgCharts options={options} />;
 }

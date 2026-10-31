@@ -630,6 +630,10 @@ export async function getInbox(ctx: ReinsContext) {
           monthly_limit_cents: m?.monthlyLimitCents ?? null,
           auto_approve_limit_cents: m?.autoApproveLimitCents ?? null,
         },
+        /** Active mandate summary for the S5 "Mandate v3 · Monthly · Auto · Per purchase · Allowed" strip. */
+        mandate: m
+          ? { version: m.version, monthly_limit_cents: m.monthlyLimitCents, auto_approve_limit_cents: m.autoApproveLimitCents, per_tx_cap_cents: m.perTxCapCents, allowed_merchants: m.allowedMerchants }
+          : null,
       };
     }),
   );

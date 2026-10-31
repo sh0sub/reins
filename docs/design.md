@@ -18,3 +18,11 @@
   editor shows saved merchant rules as removable chips (36px chip height, same as category chips, below the 48px target);
   receipt page `/receipts/:id` (S4) uses the panel + `dl.receipt` grid. Checked in headless Chrome at 360 and 1440 with seed data:
   no page-level horizontal overflow (the pre-existing nowrap date row in the mandate editor overflows its form column by ~28px at 360).
+- Plan-vs-app pass (2026-10-31): S7 gets a "This month / Last 30 days" segmented toggle (`.segmented`, 48px; `/api/overview?period=30d`;
+  caps and the status chip stay month to date). Clicking a donut slice or a legend row (48px links) opens `/ledger?category=…&period=…`.
+  The ledger gets a period select (default this month, all time for `?r=` deep links), a removable category chip and paid/blocked totals in the footer.
+  S2: merchants are Enter-to-add chips (36px visual, 48px hit area), a changed field gets a light navy background, "Discard changes",
+  a read-only "Automatic payment" line (workspace setting) and "Copy snippet"; the versions list says what each version changed and lists
+  merchant rules. S5: free-text deny reason, Auto/Approved/Rejected/Blocked labels in recent decisions (blocked rows red), "This month" and
+  Telegram cards under the queue, active mandate strip. The mandate date row now wraps (fixes the 28px overflow at 360).
+  Checked in headless Chrome at 360/390/720/1440 with seed data: no page-level horizontal overflow.

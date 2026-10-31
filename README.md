@@ -42,7 +42,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410"
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 198 tests
+pnpm test                   # 200 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.

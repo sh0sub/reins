@@ -2,11 +2,11 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import type { InboxItem, LedgerRow } from "@reins/core";
+import type { InboxItem, LedgerRow, Overview } from "@reins/core";
 import { api, ApiError } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { Icon } from "@/components/Icon";
-import { ago, decisionLabel, hardRules, riskClass, statusChip, usd } from "@/lib/format";
+import { ago, hardRules, riskClass, statusChip, usd } from "@/lib/format";
 
 const DENY_REASONS = ["Not needed", "Wrong item", "Too expensive"];
 
@@ -41,7 +41,7 @@ function Activity({ row }: { row: InboxItem }) {
     <ol className="timeline" aria-label={`Activity for ${row.display_id}`}>
       <li>
         <span className="label">Request received via MCP</span>
-        <span className="caption">{new Date(row.created_at).toLocaleTimeString()}</span>
+        <span className="caption">{new Date(row.created_at).toLocaleTimeString("en-US")}</span>
       </li>
       {hard && (
         <li className={hard.decision === "DENY" ? "bad" : undefined}>
@@ -57,7 +57,7 @@ function Activity({ row }: { row: InboxItem }) {
       {row.messages.map((m, i) => (
         <li key={i}>
           <span className="label">{m.role === "human" ? `You asked (${m.actor ?? "web"})` : `${row.agent_name} answered`}</span>
-          <span className="caption">{new Date(m.created_at).toLocaleTimeString()}</span>
+          <span className="caption">{new Date(m.created_at).toLocaleTimeString("en-US")}</span>
         </li>
       ))}
       <li className="wait">
@@ -266,17 +266,38 @@ function Detail({
         <AskAgent row={row} onAsked={onAsked} />
       </div>
 
+      {row.mandate && (
+        <p className="mandate-strip caption" aria-label="Active mandate">
+          <b>Mandate v{row.mandate.version}</b>
+          <span>Monthly {usd(row.mandate.monthly_limit_cents)}</span>
+          <span>Auto ≤ {usd(row.mandate.auto_approve_limit_cents)}</span>
+          <span>Per purchase ≤ {row.mandate.per_tx_cap_cents == null ? "no cap" : usd(row.mandate.per_tx_cap_cents)}</span>
+          <span>Allowed: {row.mandate.allowed_merchants.length ? row.mandate.allowed_merchants.join(" · ") : "any merchant"}</span>
+        </p>
+      )}
+
       <footer className="stack-s">
         {denyOpen ? (
           <div className="stack-s" role="group" aria-label="Deny reason">
             <span className="label">Why deny? (sent to the agent)</span>
             <div className="row">
               {DENY_REASONS.map((r) => (
-                <button key={r} type="button" className="chip-btn" aria-pressed={denyNote === r} onClick={() => setDenyNote(r)}>
+                <button key={r} type="button" className="chip-btn" aria-pressed={denyNote === r} onClick={() => setDenyNote(denyNote === r ? "" : r)}>
                   {r}
                 </button>
               ))}
             </div>
+            <label className="sr-only" htmlFor={`deny-${row.request_id}`}>
+              Or write your own reason
+            </label>
+            <input
+              id={`deny-${row.request_id}`}
+              className="input"
+              placeholder="Or write your own reason (optional)"
+              value={DENY_REASONS.includes(denyNote) ? "" : denyNote}
+              onChange={(e) => setDenyNote(e.target.value)}
+              maxLength={300}
+            />
             <div className="row">
               <button className="btn btn-danger" disabled={busy} onClick={() => onDecide("deny", denyNote || undefined)} autoFocus>
                 Deny {row.display_id}
@@ -314,6 +335,14 @@ function Detail({
   );
 }
 
+/** S5 recent decisions: who settled it (Auto / Approved / Rejected / Blocked), blocked rows stay red. */
+function outcomeChip(r: LedgerRow): { label: string; className: string; bad: boolean } {
+  const human = r.decisions.some((d) => d.stage === "human");
+  if (r.status === "denied") return human ? { label: "Rejected", className: "status status-bad", bad: false } : { label: "Blocked", className: "status status-bad", bad: true };
+  if (r.status === "paid") return human ? { label: "Approved", className: "status status-ok", bad: false } : { label: "Auto", className: "status status-ok", bad: false };
+  return { ...statusChip(r), bad: false };
+}
+
 function RecentDecisions({ rows }: { rows: LedgerRow[] | null }) {
   if (!rows?.length) return null;
   return (
@@ -321,13 +350,13 @@ function RecentDecisions({ rows }: { rows: LedgerRow[] | null }) {
       <h3 id="recent-h" className="section-title">Recent decisions</h3>
       <ul className="list">
         {rows.map((r) => {
-          const chip = statusChip(r);
+          const chip = outcomeChip(r);
           return (
-            <li key={r.request_id} className="row between">
+            <li key={r.request_id} className={chip.bad ? "row between recent-bad" : "row between"}>
               <span className="stack-s" style={{ gap: 0 }}>
                 <span className="label">{r.agent_name}</span>
                 <span className="caption">
-                  {r.merchant} · {decisionLabel(r)}
+                  {r.merchant} · {ago(r.created_at)}
                 </span>
               </span>
               <span className="row">
@@ -342,6 +371,53 @@ function RecentDecisions({ rows }: { rows: LedgerRow[] | null }) {
   );
 }
 
+/** S5 queue footer: this month's decision split + whether Telegram gets the same cards. */
+function QueueSummary({ month, telegram }: { month: Overview["decisions"] | null; telegram: boolean | null }) {
+  const segs = month
+    ? [
+        { key: "auto", label: "Auto", n: month.auto },
+        { key: "human", label: "Human", n: month.human },
+        { key: "blocked", label: "Blocked", n: month.blocked },
+      ]
+    : [];
+  return (
+    <div className="stack-s">
+      {month && (
+        <section className="mini-card stack-s" aria-labelledby="month-h">
+          <div className="row between">
+            <h3 id="month-h" className="label">
+              This month
+            </h3>
+            <span className="caption num">
+              {month.total} {month.total === 1 ? "request" : "requests"}
+            </span>
+          </div>
+          <span className="stackbar" aria-hidden>
+            {month.auto + month.human + month.blocked > 0 ? segs.filter((s) => s.n > 0).map((s) => <i key={s.key} className={`seg-${s.key}`} style={{ flexGrow: s.n }} />) : <i className="seg-none" style={{ flexGrow: 1 }} />}
+          </span>
+          <ul className="legend caption num" aria-label="Decision distribution this month">
+            {segs.map((s) => (
+              <li key={s.key}>
+                <i className={`sw seg-${s.key}`} aria-hidden />
+                {s.label} {s.n}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {telegram != null && (
+        <section className="mini-card row" aria-label="Telegram">
+          <span className={telegram ? "dot dot-ok" : "dot"} aria-hidden />
+          <span className="stack-s" style={{ gap: 0 }}>
+            <span className="label">{telegram ? "Telegram linked" : "Telegram not linked"}</span>
+            <span className="caption">{telegram ? "The same cards arrive on your phone." : "Approvals work here; link Telegram in Setup to approve from your phone."}</span>
+          </span>
+        </section>
+      )}
+    </div>
+  );
+}
+
 function InboxScreen() {
   const params = useSearchParams();
   const [rows, setRows] = useState<InboxItem[] | null>(null);
@@ -350,6 +426,8 @@ function InboxScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(params.get("r"));
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [month, setMonth] = useState<Overview["decisions"] | null>(null);
+  const [telegram, setTelegram] = useState<boolean | null>(null);
 
   const load = useCallback(() => {
     api<{ items: InboxItem[] }>("/api/inbox")
@@ -361,6 +439,12 @@ function InboxScreen() {
     api<{ rows: LedgerRow[] }>("/api/ledger?limit=3&status=paid,denied,expired,failed,awaiting_buyer")
       .then((r) => setRecent(r.rows))
       .catch(() => setRecent(null));
+    api<Overview>("/api/overview")
+      .then((o) => setMonth(o.decisions))
+      .catch(() => setMonth(null));
+    api<{ telegram_linked: boolean }>("/api/workspace")
+      .then((w) => setTelegram(w.telegram_linked))
+      .catch(() => setTelegram(null));
   }, []);
 
   useEffect(load, [load]);
@@ -444,6 +528,7 @@ function InboxScreen() {
               <p className="muted">Nothing waiting for you. New requests appear here and on Telegram instantly.</p>
             </div>
             <RecentDecisions rows={recent} />
+            <QueueSummary month={month} telegram={telegram} />
           </section>
         </div>
       ) : (
@@ -455,6 +540,7 @@ function InboxScreen() {
               ))}
             </ul>
             <RecentDecisions rows={recent} />
+            <QueueSummary month={month} telegram={telegram} />
           </section>
           {selected && <Detail row={selected} busy={busy === selected.request_id} onDecide={(a, n, allow) => decide(selected.request_id, a, n, allow)} onAsked={onAsked} />}
         </div>

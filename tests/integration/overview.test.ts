@@ -69,6 +69,39 @@ describe("S1 overview aggregation (seeded demo)", () => {
     expect(body.totals.spent_cents).toBe(11797);
   });
 
+  it("period toggle: last 30 days widens spend, decisions and categories; caps and status stay month to date", async () => {
+    const ctx = await createTestContext({ db });
+    const month = await getOverview(ctx);
+    const rolling = await getOverview(ctx, "30d");
+    expect(month.period.kind).toBe("month");
+    expect(rolling.period.kind).toBe("30d");
+    expect(Date.parse(rolling.period.now) - Date.parse(rolling.period.start)).toBe(30 * 86_400_000);
+    expect(rolling.period.month_start).toBe(month.period.month_start);
+    // monthly caps and the status chip do not depend on the toggle
+    expect(rolling.agents).toEqual(month.agents);
+    expect(rolling.totals.limit_cents).toBe(month.totals.limit_cents);
+    expect(rolling.status).toEqual(month.status);
+    // totals, categories and decisions all count from the same start, so they stay consistent with each other
+    expect(rolling.categories.reduce((s, c) => s + c.cents, 0)).toBe(rolling.totals.spent_cents);
+    expect(rolling.decisions.total).toBeGreaterThanOrEqual(month.decisions.total);
+    expect(rolling.totals.spent_cents).toBeGreaterThanOrEqual(month.totals.spent_cents);
+
+    const res = await createRouter(async () => ctx)(new Request("http://localhost/api/overview?period=30d"));
+    expect(((await res.json()) as { period: { kind: string } }).period.kind).toBe("30d");
+    const bad = await createRouter(async () => ctx)(new Request("http://localhost/api/overview?period=year"));
+    expect(((await bad.json()) as { period: { kind: string } }).period.kind).toBe("month");
+  });
+
+  it("ledger rows carry the request category for the donut -> ledger filter", async () => {
+    const ctx = await createTestContext({ db });
+    const res = await createRouter(async () => ctx)(new Request("http://localhost/api/ledger?limit=500"));
+    const rows = ((await res.json()) as { rows: Array<{ category: string | null; status: string; amount: string; created_at: string }> }).rows;
+    const o = await getOverview(ctx);
+    const since = Date.parse(o.period.start);
+    const research = rows.filter((r) => r.category === "research" && Date.parse(r.created_at) >= since && ["approved", "awaiting_buyer", "paying", "paid"].includes(r.status));
+    expect(Math.round(research.reduce((s, r) => s + Number(r.amount), 0) * 100)).toBe(o.categories.find((c) => c.category === "research")!.cents);
+  });
+
   it("empty workspace: zeros, no agents, no feed", async () => {
     const o = await getOverview(await createTestContext());
     expect(o.totals).toEqual({ spent_cents: 0, limit_cents: 0, agents: 0, pct: 0 });

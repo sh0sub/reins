@@ -108,6 +108,8 @@ export function toRequestView(r: PurchaseRequest, payment?: Payment | null, mess
 /** Admin/ledger view: adds the decision trail and payment ids (still no vault id). */
 export interface LedgerRow extends RequestView {
   agent_name: string;
+  /** Category the agent filed the request under (overview donut -> ledger filter); null when none was given. */
+  category: string | null;
   mandate_version: number | null;
   decisions: Array<Pick<Decision, "stage" | "decision" | "risk" | "reasonEn" | "reasonKo" | "details" | "actor"> & { created_at: string }>;
   payment: {
@@ -137,6 +139,7 @@ export function toLedgerRow(
   return {
     ...toRequestView(r, payment, messages, baseUrl),
     agent_name: agentName,
+    category: r.category?.trim() || null,
     mandate_version: mandate?.version ?? null,
     decisions: decisions.map((d) => ({
       stage: d.stage,

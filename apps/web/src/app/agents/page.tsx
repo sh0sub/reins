@@ -148,6 +148,55 @@ function AgentCard({ a, selected, onSelect }: { a: AgentSummary; selected: boole
   );
 }
 
+const diffList = (now: string[], before: string[], verb: string) => {
+  const added = now.filter((x) => !before.includes(x));
+  const removed = before.filter((x) => !now.includes(x));
+  return [...(added.length ? [`${verb} ${added.join(", ")}`] : []), ...(removed.length ? [`un-${verb.toLowerCase()} ${removed.join(", ")}`] : [])];
+};
+
+/** S2 "Mandate versions": what each version changed against the one before it (v1: created with the agent). */
+function versionChanges(v: MandateView, prev: MandateView | undefined): string {
+  if (!prev) return "Created with the agent";
+  const rules = Object.keys(v.merchant_auto_limits ?? {});
+  const prevRules = Object.keys(prev.merchant_auto_limits ?? {});
+  const changes = [
+    ...diffList(v.blocked_merchants, prev.blocked_merchants, "Blocked"),
+    ...diffList(v.allowed_merchants, prev.allowed_merchants, "Allowed"),
+    ...rules.filter((m) => !prevRules.includes(m) || prev.merchant_auto_limits?.[m] !== v.merchant_auto_limits?.[m]).map((m) => `Always allow ${m} up to $${v.merchant_auto_limits![m]}`),
+    ...prevRules.filter((m) => !rules.includes(m)).map((m) => `Removed rule ${m}`),
+    ...(v.monthly_limit !== prev.monthly_limit ? [`Monthly $${prev.monthly_limit} → $${v.monthly_limit}`] : []),
+    ...(v.auto_approve_limit !== prev.auto_approve_limit ? [`Auto $${prev.auto_approve_limit} → $${v.auto_approve_limit}`] : []),
+    ...(v.per_purchase_cap !== prev.per_purchase_cap ? [`Cap ${prev.per_purchase_cap ? `$${prev.per_purchase_cap}` : "none"} → ${v.per_purchase_cap ? `$${v.per_purchase_cap}` : "none"}`] : []),
+    ...(v.purpose !== prev.purpose ? ["Purpose edited"] : []),
+    ...(JSON.stringify(v.categories) !== JSON.stringify(prev.categories) ? ["Categories edited"] : []),
+  ];
+  return changes.length ? changes.join(" · ") : "Saved without changes";
+}
+
+const PAYMENT_LINE: Record<string, { on: boolean; text: string }> = {
+  vaulted: { on: true, text: "On · PayPal vault. Approved purchases inside the mandate are paid without you." },
+  treasury: { on: true, text: "On · Treasury payouts from the prefunded Reins balance." },
+  supervised: { on: false, text: "Off · supervised checkout. Every approved purchase waits for you to finish PayPal checkout." },
+};
+
+function PaymentLine({ mode }: { mode: string | null }) {
+  const line = mode ? PAYMENT_LINE[mode] : null;
+  return (
+    <section className="row between pay-line" aria-labelledby="pay-h">
+      <span className="stack-s" style={{ gap: 2 }}>
+        <h3 id="pay-h">Automatic payment</h3>
+        <span className="caption">{line ? line.text : "Payment mode unavailable"} Workspace setting, shared by all agents.</span>
+      </span>
+      <span className="row">
+        {line && <span className={line.on ? "status status-ok" : "status"}>{line.on ? "On" : "Off"}</span>}
+        <a className="link-48" href="/setup">
+          Change in Setup
+        </a>
+      </span>
+    </section>
+  );
+}
+
 function McpConnection({ agent }: { agent: AgentSummary }) {
   const snippet = JSON.stringify(
     { mcpServers: { reins: { command: "npx", args: ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"], env: { REINS_API_URL: "${REINS_API_URL}", REINS_API_KEY: `${agent.key_prefix}…` } } } },
@@ -156,8 +205,13 @@ function McpConnection({ agent }: { agent: AgentSummary }) {
   );
   return (
     <section className="stack-s" aria-labelledby="mcp-h">
-      <h3 id="mcp-h">MCP connection</h3>
-      <p className="caption mono">{agent.key_prefix}… (full key was shown once at creation)</p>
+      <div className="row between">
+        <h3 id="mcp-h">MCP connection</h3>
+        <span className="row">
+          <CopyButton text={snippet} label="Copy snippet" />
+        </span>
+      </div>
+      <p className="caption mono">{agent.key_prefix}… (full key was shown once at creation; paste it in place of the masked value)</p>
       <div className="code">{snippet}</div>
       <p className="caption">Agents only see get_mandate / request_purchase / get_request_status / list_transactions. They never see PayPal credentials.</p>
     </section>
@@ -174,6 +228,7 @@ function AgentsScreen() {
   const [versions, setVersions] = useState<MandateView[] | null>(null);
   const [recent, setRecent] = useState<LedgerRow[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [paymentMode, setPaymentMode] = useState<string | null>(null);
   const prefill: MandatePrefill | null =
     params.get("block") || params.get("cap") ? { block: params.get("block")?.split(",").filter(Boolean), cap: params.get("cap") ?? undefined } : null;
 
@@ -187,6 +242,11 @@ function AgentsScreen() {
       .catch((e: Error) => setError(e.message));
   }, []);
   useEffect(load, [load]);
+  useEffect(() => {
+    api<{ payment_mode: string }>("/api/workspace")
+      .then((w) => setPaymentMode(w.payment_mode))
+      .catch(() => setPaymentMode(null));
+  }, []);
   useLive((e) => {
     if (e.type === "resync" || e.request?.status === "paid") load();
   });
@@ -303,6 +363,7 @@ function AgentsScreen() {
                     if (prefill) router.replace(`/agents?agent=${agent.id}`);
                     load();
                   }}
+                  onDiscard={() => prefill && router.replace(`/agents?agent=${agent.id}`)}
                 />
               )}
               <div className="grid-2">
@@ -310,18 +371,23 @@ function AgentsScreen() {
                   <h3 id="ver-h">Mandate versions</h3>
                   {versions?.length ? (
                     <ul className="list">
-                      {versions.map((v, i) => (
-                        <li key={v.mandate_id} className="stack-s" style={{ gap: 2 }}>
-                          <span className="label">
-                            v{v.version}
-                            {i === 0 ? " · current" : ""}
-                          </span>
-                          <span className="caption">
-                            ${v.monthly_limit}/mo · auto ≤ ${v.auto_approve_limit}
-                            {v.per_purchase_cap ? ` · cap $${v.per_purchase_cap}` : ""} · blocked {v.blocked_merchants.join(", ") || "none"}
-                          </span>
-                        </li>
-                      ))}
+                      {versions.map((v, i) => {
+                        const rules = Object.entries(v.merchant_auto_limits ?? {});
+                        return (
+                          <li key={v.mandate_id} className="stack-s" style={{ gap: 2 }}>
+                            <span className="label">
+                              v{v.version}
+                              {i === 0 ? " · current" : ""}
+                            </span>
+                            <span>{versionChanges(v, versions[i + 1])}</span>
+                            <span className="caption">
+                              ${v.monthly_limit}/mo · auto ≤ ${v.auto_approve_limit}
+                              {v.per_purchase_cap ? ` · cap $${v.per_purchase_cap}` : ""} · blocked {v.blocked_merchants.join(", ") || "none"}
+                            </span>
+                            {rules.length > 0 && <span className="caption">Always allowed: {rules.map(([m, lim]) => `${m} ≤ $${lim}`).join(", ")}</span>}
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : (
                     <p className="caption">No versions yet.</p>
@@ -351,6 +417,7 @@ function AgentsScreen() {
                   )}
                 </section>
               </div>
+              <PaymentLine mode={paymentMode} />
               <McpConnection agent={agent} />
             </section>
           ) : (

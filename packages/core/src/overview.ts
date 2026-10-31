@@ -22,6 +22,10 @@ import type { ReinsContext } from "./service.ts";
 /** Cap usage at or above this share turns the status chip amber. */
 export const CAP_WARN_PCT = 80;
 export const RECENT_FEED_SIZE = 8;
+/** S7 period toggle: calendar month to date (default) or a rolling 30 days. Caps stay monthly either way. */
+export type OverviewPeriod = "month" | "30d";
+export const ROLLING_DAYS = 30;
+export const parsePeriod = (v: string | null | undefined): OverviewPeriod => (v === "30d" ? "30d" : "month");
 
 /** How a request was settled: by policy alone (auto / blocked), by a person (human), or still in review. */
 export type Outcome = "auto" | "human" | "blocked" | "reviewing";
@@ -75,7 +79,9 @@ export interface FeedItem {
 export interface Overview {
   generated_at: string;
   paypal_env: string;
-  period: { month_start: string; now: string };
+  /** `start` is the first instant counted by totals, decisions, categories and the feed (month start or now - 30 days). */
+  period: { kind: OverviewPeriod; start: string; month_start: string; now: string };
+  /** spent_cents covers the period; limit_cents is the sum of monthly caps (the status chip and cap bars stay month to date). */
   totals: { spent_cents: number; limit_cents: number; agents: number; pct: number };
   status: { level: "ok" | "warn" | "bad"; message: string };
   decisions: { total: number; auto: number; human: number; blocked: number; pending: number };
@@ -98,10 +104,11 @@ function viaOf(r: PurchaseRequest, outcome: Outcome, decisions: Decision[]): str
   return "in review";
 }
 
-export async function getOverview(ctx: ReinsContext): Promise<Overview> {
+export async function getOverview(ctx: ReinsContext, period: OverviewPeriod = "month"): Promise<Overview> {
   const { db } = ctx;
   const now = ctx.now();
-  const since = monthStartUtc(now);
+  const monthStart = monthStartUtc(now);
+  const since = period === "30d" ? now - ROLLING_DAYS * 86_400_000 : monthStart;
   const [ws, budgets, allAgents, monthRequests] = await Promise.all([getWorkspace(db), agentBudgets(db, now), listAgents(db), listRequestsSince(db, since)]);
   const names = new Map(allAgents.map((a) => [a.id, a.name]));
   const decisions = await listDecisionsFor(db, monthRequests.map((r) => r.id));
@@ -120,7 +127,8 @@ export async function getOverview(ctx: ReinsContext): Promise<Overview> {
     }
   }
 
-  const spent = budgets.reduce((s, a) => s + a.spent_cents, 0);
+  const spent =
+    period === "month" ? budgets.reduce((s, a) => s + a.spent_cents, 0) : (await Promise.all(budgets.map((a) => spendSinceCents(db, a.id, since)))).reduce((s, c) => s + c, 0);
   const limit = budgets.reduce((s, a) => s + (a.limit_cents ?? 0), 0);
   const over = budgets.filter((a) => a.limit_cents && a.pct >= 100);
   const near = budgets.filter((a) => a.limit_cents && a.pct >= CAP_WARN_PCT && a.pct < 100);
@@ -153,7 +161,7 @@ export async function getOverview(ctx: ReinsContext): Promise<Overview> {
   return {
     generated_at: new Date(now).toISOString(),
     paypal_env: ws.paypalEnv,
-    period: { month_start: new Date(since).toISOString(), now: new Date(now).toISOString() },
+    period: { kind: period, start: new Date(since).toISOString(), month_start: new Date(monthStart).toISOString(), now: new Date(now).toISOString() },
     totals: { spent_cents: spent, limit_cents: limit, agents: budgets.length, pct: limit ? Math.round((spent / limit) * 100) : 0 },
     status,
     decisions: counts,

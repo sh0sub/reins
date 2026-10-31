@@ -20,11 +20,32 @@ const STATUS_FILTERS: Array<{ id: string; label: string; match: (r: LedgerRow) =
   { id: "open", label: "Open", match: (r) => ["pending_human", "awaiting_buyer", "paying", "approved"].includes(r.status) },
 ];
 
+type Period = "month" | "30d" | "all";
+const PERIODS: Array<{ id: Period; label: string }> = [
+  { id: "month", label: "This month" },
+  { id: "30d", label: "Last 30 days" },
+  { id: "all", label: "All time" },
+];
+function periodStart(p: Period, now = new Date()): number {
+  if (p === "month") return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  if (p === "30d") return now.getTime() - 30 * 86_400_000;
+  return 0;
+}
+const catOf = (r: LedgerRow) => r.category ?? "uncategorized";
+const money = (n: number) => `$${n.toFixed(2)}`;
+
 function LedgerScreen() {
   const params = useSearchParams();
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agent, setAgent] = useState<string>(() => params.get("agent") ?? "all");
+  // month to date like the overview; a deep link to one request (?r=) opens all time so the row is never filtered out
+  const [period, setPeriod] = useState<Period>(() => {
+    const p = params.get("period");
+    return p === "month" || p === "30d" || p === "all" ? p : params.get("r") ? "all" : "month";
+  });
+  // S7 donut slice -> ?category=research (or several for "Other")
+  const [categories, setCategories] = useState<string[]>(() => params.get("category")?.split(",").filter(Boolean) ?? []);
   const [status, setStatus] = useState("any");
   const [group, setGroup] = useState(true);
   const [q, setQ] = useState("");
@@ -52,13 +73,25 @@ function LedgerScreen() {
   }, [flash]);
 
   const agents = useMemo(() => [...new Map((rows ?? []).map((r) => [r.agent_id, r.agent_name])).entries()], [rows]);
+  // period + category scope the KPIs, the chart and the grid; agent/status/search narrow the grid only
+  const scoped = useMemo(() => {
+    const since = periodStart(period);
+    return (rows ?? []).filter((r) => Date.parse(r.created_at) >= since && (categories.length === 0 || categories.includes(catOf(r))));
+  }, [rows, period, categories]);
   const filtered = useMemo(() => {
     const f = STATUS_FILTERS.find((s) => s.id === status) ?? STATUS_FILTERS[0]!;
-    return (rows ?? []).filter((r) => (agent === "all" || r.agent_id === agent) && f.match(r));
-  }, [rows, agent, status]);
+    return scoped.filter((r) => (agent === "all" || r.agent_id === agent) && f.match(r));
+  }, [scoped, agent, status]);
+  const shownTotals = useMemo(
+    () => ({
+      paid: filtered.filter((r) => r.status === "paid").reduce((s, r) => s + Number(r.amount), 0),
+      blocked: filtered.filter((r) => r.status === "denied").reduce((s, r) => s + Number(r.amount), 0),
+    }),
+    [filtered],
+  );
 
   const kpi = useMemo(() => {
-    const all = rows ?? [];
+    const all = scoped;
     const paid = all.filter((r) => r.status === "paid");
     const denied = all.filter((r) => r.status === "denied");
     const sum = (xs: LedgerRow[]) => xs.reduce((s, r) => s + Number(r.amount), 0);
@@ -74,7 +107,8 @@ function LedgerScreen() {
       human: by("HUMAN"),
       denied: by("DENIED"),
     };
-  }, [rows]);
+  }, [scoped]);
+  const periodLabel = PERIODS.find((p) => p.id === period)!.label.toLowerCase();
 
   async function reconcile() {
     setSync({ busy: true, msg: null });
@@ -135,7 +169,9 @@ function LedgerScreen() {
               <div className="panel panel-tight stack-s">
                 <span className="caption">Blocked</span>
                 <span className="metric">${kpi.blocked.toFixed(2)}</span>
-                <span className="caption">{kpi.blockedCount} request(s) · nothing charged</span>
+                <span className="caption">
+                  {kpi.blockedCount} {kpi.blockedCount === 1 ? "request" : "requests"} · nothing charged
+                </span>
               </div>
               <div className="panel panel-tight stack-s">
                 <span className="caption">Requests</span>
@@ -149,7 +185,7 @@ function LedgerScreen() {
               <h2 id="chart-h" className="section-title">
                 Paid by agent
               </h2>
-              {rows ? <SpendChart rows={rows} /> : <div className="skeleton" style={{ minHeight: 220 }} />}
+              {rows ? <SpendChart rows={scoped} /> : <div className="skeleton" style={{ minHeight: 220 }} />}
             </section>
           </div>
 
@@ -166,6 +202,14 @@ function LedgerScreen() {
                 ))}
               </div>
               <div className="row">
+                <label className="sr-only" htmlFor="period-f">Period</label>
+                <select id="period-f" className="input" style={{ width: "auto" }} value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
+                  {PERIODS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
                 <label className="sr-only" htmlFor="status-f">Status</label>
                 <select id="status-f" className="input" style={{ width: "auto" }} value={status} onChange={(e) => setStatus(e.target.value)}>
                   {STATUS_FILTERS.map((s) => (
@@ -181,6 +225,14 @@ function LedgerScreen() {
                 <input id="ledger-q" className="input" style={{ width: 200 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
             </div>
+            {categories.length > 0 && (
+              <div className="row" role="group" aria-label="Active filters">
+                <span className="caption">Category</span>
+                <button type="button" className="chip-btn chip-48" aria-pressed="true" aria-label={`Remove category filter ${categories.join(", ")}`} onClick={() => setCategories([])}>
+                  <span className="cap-first">{categories.join(", ")}</span> ×
+                </button>
+              </div>
+            )}
             {rows === null ? (
               <div className="skeleton" style={{ minHeight: 420 }} aria-label="Loading transactions" />
             ) : rows.length === 0 ? (
@@ -188,11 +240,28 @@ function LedgerScreen() {
                 <h2>No activity yet</h2>
                 <p className="muted">Connect an agent (Agents) and its purchase requests appear here in real time.</p>
               </div>
+            ) : filtered.length === 0 && !q ? (
+              <div className="empty">
+                <h2>No requests match these filters</h2>
+                <p className="muted">Nothing in {periodLabel} for this agent, status or category.</p>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setPeriod("all");
+                    setCategories([]);
+                    setAgent("all");
+                    setStatus("any");
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
             ) : (
               <LedgerGrid key={group ? "g" : "f"} rows={filtered} group={group} quickFilter={q} focusId={params.get("r")} onApi={(a) => (gridApi.current = a)} />
             )}
             <p className="caption">
-              {filtered.length} of {rows?.length ?? 0} rows · expand a row for the auditor reason, mandate version, capture id and reconciliation.
+              {filtered.length} of {scoped.length} rows ({periodLabel}) · {money(shownTotals.paid)} paid · {money(shownTotals.blocked)} blocked · expand a row for the auditor reason, mandate
+              version, capture id and reconciliation.
             </p>
           </section>
         </div>

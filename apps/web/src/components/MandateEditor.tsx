@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { usd } from "@/lib/format";
 
@@ -26,13 +26,91 @@ export interface MandatePrefill {
   cap?: string;
 }
 
-const lines = (s: string) => s.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+/** "https://www.Fiverr.com/x, statista.com" -> ["www.fiverr.com", "statista.com"] (the server normalizes again). */
+export const domains = (s: string) =>
+  s
+    .split(/[\s,]+/)
+    .map((x) => x.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, ""))
+    .filter(Boolean);
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 const toIso = (d: string, end = false) => (d ? new Date(`${d}T${end ? "23:59:59" : "00:00:00"}Z`).toISOString() : null);
 const same = (a: string[] | undefined, b: string[] | undefined) => JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort());
 
 function Changed({ show, version }: { show: boolean; version: number }) {
   return show ? <span className="status status-info">changed in v{version}</span> : null;
+}
+
+/** S2 merchant chips: Enter (or comma/space, or Add) turns the typed domain into a removable chip. */
+function DomainChips({
+  id,
+  label,
+  values,
+  draft,
+  onDraft,
+  onChange,
+  placeholder,
+  hint,
+  tone,
+}: {
+  id: string;
+  label: ReactNode;
+  values: string[];
+  draft: string;
+  onDraft: (v: string) => void;
+  onChange: (v: string[]) => void;
+  placeholder: string;
+  hint?: string;
+  tone?: "bad";
+}) {
+  const add = () => {
+    const next = [...new Set([...values, ...domains(draft)])];
+    if (next.length !== values.length) onChange(next);
+    onDraft("");
+  };
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      {values.length > 0 && (
+        <ul className="chips" aria-label={`${typeof label === "string" ? label : id} list`}>
+          {values.map((d) => (
+            <li key={d}>
+              <button type="button" className={tone === "bad" ? "chip-btn chip-domain chip-bad" : "chip-btn chip-domain"} aria-label={`Remove ${d}`} onClick={() => onChange(values.filter((x) => x !== d))}>
+                <span className="mono">{d}</span> ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="row" style={{ flexWrap: "nowrap" }}>
+        <input
+          id={id}
+          className="input"
+          value={draft}
+          onChange={(e) => onDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              add();
+            } else if (e.key === "Backspace" && !draft && values.length) onChange(values.slice(0, -1));
+          }}
+          placeholder={placeholder}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="url"
+          aria-describedby={hint ? `${id}-hint` : undefined}
+        />
+        <button type="button" className="btn" onClick={add} disabled={!draft.trim()}>
+          Add
+        </button>
+      </div>
+      {hint && (
+        <span id={`${id}-hint`} className="hint">
+          {hint}
+        </span>
+      )}
+    </div>
+  );
 }
 
 /** M3 / screen S2: amounts, purpose + AI category suggestions, allow/block domains, validity. Saving creates v+1. */
@@ -43,6 +121,7 @@ export function MandateEditor({
   monthSpentCents,
   prefill,
   onSaved,
+  onDiscard,
 }: {
   agentId: string;
   current: MandateView | null;
@@ -50,19 +129,25 @@ export function MandateEditor({
   monthSpentCents: number;
   prefill?: MandatePrefill | null;
   onSaved: (m: MandateView) => void;
+  /** Called after "Discard changes" (the agents page drops a Tighten-mandate prefill from the URL). */
+  onDiscard?: () => void;
 }) {
-  const [form, setForm] = useState(() => ({
+  const initial = (withPrefill: boolean) => ({
     monthly_limit: current?.monthly_limit ?? "150.00",
     auto_approve_limit: current?.auto_approve_limit ?? "30.00",
-    per_purchase_cap: prefill?.cap ?? current?.per_purchase_cap ?? "",
-    allowed: (current?.allowed_merchants ?? []).join("\n"),
-    blocked: [...new Set([...(current?.blocked_merchants ?? []), ...(prefill?.block ?? [])])].join("\n"),
+    per_purchase_cap: (withPrefill ? prefill?.cap : undefined) ?? current?.per_purchase_cap ?? "",
+    allowed: current?.allowed_merchants ?? [],
+    blocked: [...new Set([...(current?.blocked_merchants ?? []), ...((withPrefill ? prefill?.block : undefined) ?? [])])],
     categories: current?.categories ?? [],
     merchantRules: current?.merchant_auto_limits ?? {},
     purpose: current?.purpose ?? "",
     valid_from: day(current?.valid_from ?? null),
     valid_until: day(current?.valid_until ?? null),
-  }));
+  });
+  const [form, setForm] = useState(() => initial(true));
+  const [allowDraft, setAllowDraft] = useState("");
+  const [blockDraft, setBlockDraft] = useState("");
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial(false)) || !!allowDraft.trim() || !!blockDraft.trim();
   const [catInput, setCatInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -119,8 +204,9 @@ export function MandateEditor({
           monthly_limit: form.monthly_limit,
           auto_approve_limit: form.auto_approve_limit,
           per_purchase_cap: form.per_purchase_cap || null,
-          allowed_merchants: lines(form.allowed),
-          blocked_merchants: lines(form.blocked),
+          // a domain typed but not yet turned into a chip still counts
+          allowed_merchants: [...new Set([...form.allowed, ...domains(allowDraft)])],
+          blocked_merchants: [...new Set([...form.blocked, ...domains(blockDraft)])],
           categories: form.categories,
           merchant_auto_limits: form.merchantRules,
           purpose: form.purpose,
@@ -205,18 +291,37 @@ export function MandateEditor({
       </div>
 
       <div className="grid-2">
-        <div className="field">
-          <label htmlFor="m-allow">
-            Allowed merchants <Changed show={!!diff?.allowed} version={v} />
-          </label>
-          <textarea id="m-allow" className="input" value={form.allowed} onChange={set("allowed")} placeholder={"namecheap.com\nvercel.com"} aria-describedby="m-allow-hint" />
-          <span id="m-allow-hint" className="hint">One domain per line. Empty means any merchant (the auditor still checks purpose).</span>
+        <div className={diff?.allowed ? "diff-hl" : undefined}>
+          <DomainChips
+            id="m-allow"
+            label={
+              <>
+                Allowed merchants <Changed show={!!diff?.allowed} version={v} />
+              </>
+            }
+            values={form.allowed}
+            draft={allowDraft}
+            onDraft={setAllowDraft}
+            onChange={(allowed) => setForm((f) => ({ ...f, allowed }))}
+            placeholder="Add domain, press Enter"
+            hint="Empty means any merchant (the auditor still checks purpose)."
+          />
         </div>
-        <div className="field">
-          <label htmlFor="m-block">
-            Blocked merchants <Changed show={!!diff?.blocked || !!prefill?.block?.length} version={prefill?.block?.length ? v + 1 : v} />
-          </label>
-          <textarea id="m-block" className="input" value={form.blocked} onChange={set("blocked")} placeholder="fiverr.com" />
+        <div className={diff?.blocked || prefill?.block?.length ? "diff-hl" : undefined}>
+          <DomainChips
+            id="m-block"
+            label={
+              <>
+                Blocked merchants <Changed show={!!diff?.blocked || !!prefill?.block?.length} version={prefill?.block?.length ? v + 1 : v} />
+              </>
+            }
+            values={form.blocked}
+            draft={blockDraft}
+            onDraft={setBlockDraft}
+            onChange={(blocked) => setForm((f) => ({ ...f, blocked }))}
+            placeholder="Add domain, press Enter"
+            tone="bad"
+          />
         </div>
       </div>
 
@@ -245,7 +350,7 @@ export function MandateEditor({
 
       <div className="field">
         <span className="field-label" id="m-valid">Valid from / until (optional)</span>
-        <div className="row" style={{ flexWrap: "nowrap" }} role="group" aria-labelledby="m-valid">
+        <div className="grid-2" role="group" aria-labelledby="m-valid">
           <input type="date" className="input" value={form.valid_from} onChange={set("valid_from")} aria-label="Valid from" />
           <input type="date" className="input" value={form.valid_until} onChange={set("valid_until")} aria-label="Valid until" />
         </div>
@@ -260,6 +365,23 @@ export function MandateEditor({
         <button className="btn btn-primary" type="submit" disabled={saving}>
           {saving ? "Saving…" : current ? `Save mandate as v${v + 1}` : "Save mandate"}
         </button>
+        {current && dirty && (
+          <button
+            className="btn"
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              setForm(initial(false));
+              setAllowDraft("");
+              setBlockDraft("");
+              setCatInput("");
+              setError(null);
+              onDiscard?.();
+            }}
+          >
+            Discard changes
+          </button>
+        )}
         <span className="caption">Applies to new requests from this agent.</span>
       </div>
     </form>

@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import type { FeedItem, Overview, WeeklySummary } from "@reins/core";
+import { useRouter, useSearchParams } from "next/navigation";
+import type { FeedItem, Overview, OverviewPeriod, WeeklySummary } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { statusChip, usd } from "@/lib/format";
 import { Icon } from "@/components/Icon";
-import { toSlices } from "./slices";
+import { sliceHref, toSlices } from "./slices";
 
 // AG Charts touches window: client only.
 const CategoryDonut = dynamic(() => import("./CategoryDonut").then((m) => m.CategoryDonut), { ssr: false, loading: () => <div className="skeleton donut-skeleton" /> });
@@ -33,11 +34,35 @@ function when(iso: string, now = Date.now()) {
 }
 const envLabel = (env: string) => (env === "sandbox" ? "PayPal Sandbox" : env === "fake" ? "Fake PayPal (offline)" : env);
 
-function monthRange(o: Overview) {
-  const start = new Date(o.period.month_start);
+const PERIODS: Array<{ id: OverviewPeriod; label: string }> = [
+  { id: "month", label: "This month" },
+  { id: "30d", label: "Last 30 days" },
+];
+/** Wording that changes with the S7 period toggle. */
+function periodWords(p: OverviewPeriod) {
+  return p === "30d"
+    ? { lead: "Last 30 days", spent: "Spent in the last 30 days", within: "in the last 30 days", short: "last 30 days" }
+    : { lead: "This month", spent: "Spent this month", within: "this month", short: "this month" };
+}
+
+function headRange(o: Overview) {
+  const start = new Date(o.period.start);
   const now = new Date(o.period.now);
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  return { month: start.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }), range: `${fmt(start)} – ${fmt(now)}` };
+  const title = o.period.kind === "30d" ? "Last 30 days at a glance" : `${start.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" })} at a glance`;
+  return { title, range: `${fmt(start)} – ${fmt(now)}` };
+}
+
+function PeriodToggle({ value, onChange }: { value: OverviewPeriod; onChange: (p: OverviewPeriod) => void }) {
+  return (
+    <div className="segmented" role="group" aria-label="Period">
+      {PERIODS.map((p) => (
+        <button key={p.id} type="button" aria-pressed={value === p.id} onClick={() => onChange(p.id)}>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function feedChip(f: FeedItem) {
@@ -57,6 +82,7 @@ function StatusChip({ status }: { status: Overview["status"] }) {
 
 function Kpis({ o }: { o: Overview }) {
   const d = o.decisions;
+  const w = periodWords(o.period.kind);
   const segs = [
     { key: "auto", label: "Auto", n: d.auto },
     { key: "human", label: "Human", n: d.human },
@@ -67,7 +93,7 @@ function Kpis({ o }: { o: Overview }) {
     <div className="kpis kpis-3">
       <section className="panel panel-tight stack-s" aria-labelledby="kpi-spent">
         <h2 id="kpi-spent" className="caption kpi-k">
-          Spent this month
+          {w.spent}
         </h2>
         <p className="row kpi-v">
           <span className="metric">{usd(o.totals.spent_cents)}</span>
@@ -76,7 +102,9 @@ function Kpis({ o }: { o: Overview }) {
         <span className={barClass(o.totals.pct)} aria-hidden>
           <i style={{ width: `${Math.min(o.totals.pct, 100)}%` }} />
         </span>
-        <span className="caption num">{o.totals.pct}% of combined caps</span>
+        <span className="caption num">
+          {o.totals.pct}% of combined {o.period.kind === "30d" ? "monthly " : ""}caps
+        </span>
       </section>
 
       <section className="panel panel-tight stack-s" aria-labelledby="kpi-dec">
@@ -113,7 +141,7 @@ function Kpis({ o }: { o: Overview }) {
           vs. approving every request by hand
         </span>
         <span className="caption">
-          Only {d.human} needed your tap this month
+          Only {d.human} needed your tap {w.within}
           {d.pending > 0 && (
             <>
               {" · "}
@@ -127,18 +155,19 @@ function Kpis({ o }: { o: Overview }) {
 }
 
 function Caps({ o }: { o: Overview }) {
+  const period = o.period.kind;
   return (
     <section className="panel panel-tight stack" aria-labelledby="caps-h">
       <div className="card-h">
         <h2 id="caps-h" className="h-card">
           Cap used by agent
         </h2>
-        <span className="caption">Select an agent to filter the ledger</span>
+        <span className="caption">{period === "30d" ? "Month to date (caps reset monthly) · select to filter the ledger" : "Select an agent to filter the ledger"}</span>
       </div>
       <ul className="caps">
         {o.agents.map((a) => (
           <li key={a.id}>
-            <Link className="cap-row" href={`/ledger?agent=${a.id}`} aria-label={`${a.name}: ${usd(a.spent_cents)} of ${a.limit_cents == null ? "no cap" : usd(a.limit_cents)}, ${a.pct}% used. Open in ledger`}>
+            <Link className="cap-row" href={`/ledger?agent=${a.id}&period=month`} aria-label={`${a.name}: ${usd(a.spent_cents)} of ${a.limit_cents == null ? "no cap" : usd(a.limit_cents)}, ${a.pct}% used. Open in ledger`}>
               <span className="row cap-top">
                 <span className="status status-info" aria-hidden>
                   {initials(a.name)}
@@ -158,7 +187,9 @@ function Caps({ o }: { o: Overview }) {
   );
 }
 
-function Categories({ o }: { o: Overview }) {
+function Categories({ o, onSelect }: { o: Overview; onSelect: (href: string) => void }) {
+  const period = o.period.kind;
+  const w = periodWords(period);
   const slices = toSlices(o.categories);
   const total = slices.reduce((s, c) => s + c.cents, 0);
   return (
@@ -167,22 +198,24 @@ function Categories({ o }: { o: Overview }) {
         <h2 id="cat-h" className="h-card">
           By category
         </h2>
-        <span className="caption">Paid and committed</span>
+        <span className="caption">Select a category to filter the ledger</span>
       </div>
       {slices.length === 0 ? (
-        <p className="muted">No spending this month yet.</p>
+        <p className="muted">No spending {w.within} yet.</p>
       ) : (
         <div className="donut-wrap">
           <div className="donut" role="img" aria-label={`Spend by category this month, ${usd(total)} total: ${slices.map((s) => `${s.category} ${usd(s.cents)} (${pctOf(s.cents, total)}%)`).join(", ")}`}>
-            <CategoryDonut slices={slices} totalCents={total} />
+            <CategoryDonut slices={slices} totalCents={total} caption={w.short} onSelect={(s) => onSelect(sliceHref(s, period))} />
           </div>
-          <ul className="dleg num">
+          <ul className="dleg num" aria-label="Categories, paid and committed">
             {slices.map((s) => (
               <li key={s.category}>
-                <i className="sw" style={{ background: s.color }} aria-hidden />
-                <span className="dleg-name">{s.category}</span>
-                <span className="caption">{usd(s.cents)}</span>
-                <b>{pctOf(s.cents, total)}%</b>
+                <Link className="dleg-row" href={sliceHref(s, period)} aria-label={`${s.category}: ${usd(s.cents)}, ${pctOf(s.cents, total)}%. Show in ledger`}>
+                  <i className="sw" style={{ background: s.color }} aria-hidden />
+                  <span className="dleg-name">{s.category}</span>
+                  <span className="caption">{usd(s.cents)}</span>
+                  <b>{pctOf(s.cents, total)}%</b>
+                </Link>
               </li>
             ))}
           </ul>
@@ -193,6 +226,7 @@ function Categories({ o }: { o: Overview }) {
 }
 
 function Feed({ o }: { o: Overview }) {
+  const w = periodWords(o.period.kind);
   return (
     <section className="panel panel-tight stack" aria-labelledby="feed-h">
       <div className="card-h">
@@ -205,7 +239,7 @@ function Feed({ o }: { o: Overview }) {
         </Link>
       </div>
       {o.recent.length === 0 ? (
-        <p className="muted">No decisions yet this month.</p>
+        <p className="muted">No decisions yet {w.within}.</p>
       ) : (
         <ul className="feed">
           {o.recent.map((f) => {
@@ -318,7 +352,10 @@ function Loading() {
   );
 }
 
-export default function OverviewPage() {
+function OverviewScreen() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const period: OverviewPeriod = params.get("period") === "30d" ? "30d" : "month";
   const [o, setO] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
@@ -326,13 +363,13 @@ export default function OverviewPage() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(() => {
-    api<Overview>("/api/overview")
+    api<Overview>(`/api/overview?period=${period}`)
       .then((r) => {
         setO(r);
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [period]);
   // The summary may call Claude: fetched separately so it never blocks the numbers.
   const loadSummary = useCallback(() => {
     setSummaryError(null);
@@ -353,20 +390,26 @@ export default function OverviewPage() {
   });
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
-  const head = o ? monthRange(o) : null;
+  // the weekly summary is period-independent; only the numbers reload when the toggle changes
+  const shown = o && o.period.kind === period ? o : null;
+  const head = shown ? headRange(shown) : null;
+  const w = periodWords(period);
 
   return (
     <>
       <div className="page-head ov-head">
         <div>
-          <h1>{head ? `${head.month} at a glance` : "Overview"}</h1>
-          {o && head && (
+          <h1>{head ? head.title : "Overview"}</h1>
+          {shown && head && (
             <p className="muted">
-              This month {usd(o.totals.spent_cents)} of {usd(o.totals.limit_cents)} across {o.totals.agents} {o.totals.agents === 1 ? "agent" : "agents"} · {head.range} · {envLabel(o.paypal_env)}
+              {w.lead} {usd(shown.totals.spent_cents)} of {usd(shown.totals.limit_cents)} across {shown.totals.agents} {shown.totals.agents === 1 ? "agent" : "agents"} · {head.range} · {envLabel(shown.paypal_env)}
             </p>
           )}
         </div>
-        {o && o.totals.agents > 0 && <StatusChip status={o.status} />}
+        <div className="row ov-tools">
+          {shown && shown.totals.agents > 0 && <StatusChip status={shown.status} />}
+          <PeriodToggle value={period} onChange={(p) => router.replace(p === "month" ? "/overview" : `/overview?period=${p}`, { scroll: false })} />
+        </div>
       </div>
 
       {error ? (
@@ -380,9 +423,9 @@ export default function OverviewPage() {
             </button>
           </div>
         </div>
-      ) : !o ? (
+      ) : !shown ? (
         <Loading />
-      ) : o.totals.agents === 0 ? (
+      ) : shown.totals.agents === 0 ? (
         <div className="empty">
           <h2>Your agents haven&apos;t spent anything yet.</h2>
           <p className="muted">Add an agent, give it a mandate, and its spending, decisions and caps show up here.</p>
@@ -392,17 +435,25 @@ export default function OverviewPage() {
         </div>
       ) : (
         <div className="stack-l">
-          <Kpis o={o} />
+          <Kpis o={shown} />
           <div className="ov-mid">
-            <Caps o={o} />
-            <Categories o={o} />
+            <Caps o={shown} />
+            <Categories o={shown} onSelect={(href) => router.push(href)} />
           </div>
           <div className="ov-bot">
-            <Feed o={o} />
+            <Feed o={shown} />
             <WeeklyCard summary={summary} error={summaryError} onRetry={loadSummary} />
           </div>
         </div>
       )}
     </>
+  );
+}
+
+export default function OverviewPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <OverviewScreen />
+    </Suspense>
   );
 }

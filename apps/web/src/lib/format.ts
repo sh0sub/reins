@@ -7,7 +7,7 @@ export function ago(iso: string, now = Date.now()): string {
   if (s < 45) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "2-digit" });
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "2-digit" });
 }
 
 export type RuleResult = { rule: string; ok: boolean; detail: string };
