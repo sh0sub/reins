@@ -17,7 +17,7 @@ const pid = (n = 17) => randomBytes(16).toString("hex").toUpperCase().slice(0, n
 
 /**
  * In-memory PayPal used by tests and PAYPAL_ENV=fake. Behaves like the sandbox for the flows Reins uses:
- * - vault_id orders complete immediately with a capture (미확인 for real sandbox; spike #28)
+ * - vault_id orders complete immediately with a capture (matches the real sandbox, spike #28)
  * - other orders are CREATED with a payer-action link until `approveOrder()` simulates the buyer
  * - payouts return PENDING; `payoutWebhook()` builds the SUCCEEDED event
  */

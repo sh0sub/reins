@@ -19,7 +19,7 @@ export interface PaymentEnv {
   vaultId?: string | null;
   /** Required for treasury mode: who receives the payout (sandbox personal/business email). */
   treasuryPayeeEmail?: string | null;
-  /** Adds stored_credential{MERCHANT, UNSCHEDULED, SUBSEQUENT} to vault orders (미확인, spike #28). */
+  /** Adds stored_credential{MERCHANT, UNSCHEDULED, SUBSEQUENT} to vault orders. Optional: spike #28 confirmed a vault_id-only reorder also COMPLETES. */
   vaultStoredCredential?: boolean;
 }
 
@@ -75,7 +75,7 @@ export const vaultedStrategy: PaymentStrategy = {
         },
       };
       let order = await env.paypal.createOrder(body, `reins-create-${req.id}`);
-      // (미확인) Sandbox may return COMPLETED directly for vault_id orders, or CREATED/APPROVED needing capture.
+      // Sandbox returns COMPLETED directly for vault_id orders (spike #28); the capture call is a fallback for CREATED/APPROVED.
       if (order.status !== "COMPLETED") order = await env.paypal.captureOrder(order.id, `reins-capture-${req.id}`);
       const cap = firstCapture(order);
       if (order.status !== "COMPLETED" || !cap || cap.status !== "COMPLETED") {

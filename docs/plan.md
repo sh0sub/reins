@@ -48,7 +48,7 @@ Reins gives every AI agent a PayPal wallet with a leash: budgets, rules, one-tap
 - **핵심 가치**: "전부 아니면 전무"를 에이전트별·금액별·목적별 규칙으로 대체. 사람은 예외만 처리.
 - **노리는 상**: Best Use of Agentic Commerce $5,000 AG Grid 1st $5,000 Most Creative Best Use of PayPal + AI Grand 3위권 APIMatic $1,000 Render 크레딧
 - **포기**: Bryntum(일정 컴포넌트 부자연스러움), Channel3 단독상(데모 에이전트 상품 검색에만 사용)
-- **PayPal API**: Orders v2(create/capture), Payment Method Tokens v3(vault_id), Payouts v1(Treasury 대체 경로), Webhooks(verify-signature), Transaction Search(원장 대사)
+- **PayPal API**: Orders v2(create/capture), Vault(Orders v2 store_in_vault → vault_id), Payouts v1(Treasury 대체 경로), Webhooks(verify-signature), Transaction Search(원장 대사)
 - **AI**: Claude API: 구매 심사(JSON 구조화 출력), 위임장 카테고리 제안, 주간 요약, 거절 사유 EN/KO
 
 03
@@ -58,7 +58,7 @@ Reins gives every AI agent a PayPal wallet with a leash: budgets, rules, one-tap
 
 Technological Implementation20%
 
-PayPal 4개 API 실사용(Orders v2 create/capture, Payment Method Tokens v3 vault, Payouts, Webhooks verify-signature) + Transaction Search로 원장 대사. 자체 MCP 서버(Streamable HTTP + stdio, 에이전트별 API 키). Claude를 "정책 심사관"으로 쓰되 **하드 룰이 선행하는 2단 구조**(LLM 단독 판단 금지)를 코드로 보여준다. 데모 에이전트는 Claude Desktop에 Reins MCP + Channel3 MCP를 함께 붙여 실제 상품 검색→구매까지.
+PayPal 4개 API 실사용(Orders v2 create/capture, Vault via Orders v2 store_in_vault, Payouts, Webhooks verify-signature) + Transaction Search로 원장 대사. 자체 MCP 서버(Streamable HTTP + stdio, 에이전트별 API 키). Claude를 "정책 심사관"으로 쓰되 **하드 룰이 선행하는 2단 구조**(LLM 단독 판단 금지)를 코드로 보여준다. 데모 에이전트는 Claude Desktop에 Reins MCP + Channel3 MCP를 함께 붙여 실제 상품 검색→구매까지.
 
 Design20%
 
@@ -151,7 +151,7 @@ GitHub 이슈 현상금을 PR 머지 시 AI가 요건 검증 후 기여자에게
 | 기능 | 핵심 엔드포인트 / 패키지 | 샌드박스 | 출처 |
 |---|---|---|---|
 | Orders v2 | POST /v2/checkout/orders, GET /{id}, PATCH, confirm-payment-source, authorize, capture, track | O | docs |
-| Payment Method Tokens v3 (Vault) | /v3/vault/setup-tokens, /payment-tokens; 첫 주문 store_in_vault: ON_SUCCESS, usage_type: MERCHANT → 이후 payment_source.paypal.vault_id. payer 부재 청구 가능 | 확인 필요 문서는 Live 앱 "Save payment methods" 토글만 기술 | API · 가이드 · md |
+| Vault (Orders v2 store_in_vault) | /v3/vault/setup-tokens, /payment-tokens; 첫 주문 store_in_vault: ON_SUCCESS, usage_type: MERCHANT → 이후 payment_source.paypal.vault_id. payer 부재 청구 가능 | 샌드박스 확인: 별도 /v3/vault 호출 없이 Orders v2만으로 저장·재결제(10/28 스파이크) | API · 가이드 · md |
 | Payouts v1 | POST /v1/payments/payouts, 배치/아이템 조회, cancel | O 비즈니스→개인 테스트 가능, Live는 별도 승인 | API · setup |
 | Subscriptions v1 | /v1/billing/plans, /v1/billing/subscriptions(revise/suspend/cancel/capture) | O | docs |
 | Invoicing v2 | invoices, send, remind, payments, generate-qr-code, search-invoices, templates | O | docs |
@@ -367,7 +367,7 @@ D18 11/12 (목)**제출 KST 20:00 이전**마감까지 9시간 버퍼, 이후 �
 
 1:40–2:10**3막 차단.** 주입 페이지 → $450 fiverr → Denied → 텔레그램 경고 → S6 FAIL 3개 + "looks like prompt injection". "Rules first, then an AI auditor explains." S6 확대
 
-2:10–2:30**기술 15초.** Orders v2 + Vault v3(또는 Payouts) + Webhooks + Transaction Search, 자체 MCP, Claude 심사, AG Grid, Render. 정적 아키텍처 그림
+2:10–2:30**기술 15초.** Orders v2(+Vault 저장 결제) + Payouts + Webhooks + Transaction Search, 자체 MCP, Claude 심사, AG Grid, Render. 정적 아키텍처 그림
 
 2:30–2:50**임팩트.** "PayPal's Agent Ready already distinguishes supervised from automatic shopping. Reins is where you decide which is which — per agent, per dollar. Open source, MIT, connect in 5 minutes." S7 → 엔드 카드(GitHub·데모 URL)
 
@@ -396,7 +396,7 @@ D18 11/12 (목)**제출 KST 20:00 이전**마감까지 9시간 버퍼, 이후 �
 
 - Devpost 프로젝트 생성, 제목 "Reins — spending guardrails for AI agents on PayPal", 태그라인 1문장
 - 텍스트 설명: 문제/해결/작동 원리/PayPal API 목록(엔드포인트명)/AI 사용 방식/선행 제품 대비 차이/한계와 다음 단계
-- "Tools": Claude API(용도 4가지), Orders v2·Payment Method Tokens v3(또는 Payouts v1)·Webhooks·Transaction Search, Channel3, AG Grid·AG Charts, Render, APIMatic Context Plugin
+- "Tools": Claude API(용도 4가지), Orders v2(Vault store_in_vault 포함)·Payouts v1·Webhooks·Transaction Search, Channel3, AG Grid·AG Charts, Render, APIMatic Context Plugin
 - 공개 GitHub 저장소, 루트 LICENSE(MIT) + About 라이선스 표시, README 5분 설치·실행, .env.example, 시드 명령, MCP 스니펫, 데모 계정 안내
 - Render 호스팅 데모 URL + "Use demo merchant"로 자격증명 없이 체험, 웹 승인함으로 텔레그램 없이 전 플로우
 - YouTube 공개 영상 < 3:00, 갤럭시 실기기 텔레그램 장면, 상표·저작권 음악 없음

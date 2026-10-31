@@ -1,0 +1,100 @@
+/** M13 demo seed: counts, the plan's flow C dashboard line, outcome mix, idempotency and the non-seed guard. */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { createDb, insertAgent, listAgents, listDecisions, listRequests, migrateDb, getPaymentByRequest, type ReinsDb } from "@reins/db";
+import { formatUsd, generateApiKey, listAgentSummaries, getLedger } from "@reins/core";
+import { createTestContext } from "@reins/core/testing";
+import { SEED_KEY_PREFIX, SeedRefusal, dashboardTotals, seedDemo } from "../../scripts/seed.ts";
+
+const dir = mkdtempSync(join(tmpdir(), "reins-seed-"));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+async function tempDb(name: string): Promise<ReinsDb> {
+  const db = createDb(`file:${join(dir, name)}`);
+  await migrateDb(db);
+  return db;
+}
+
+describe("M13 seed", () => {
+  it("creates 3 agents, 3 mandates, 24 requests and the plan's dashboard numbers", async () => {
+    const db = await tempDb("a.db");
+    const r = await seedDemo(db);
+    expect(r).toMatchObject({ agents: 3, mandates: 3, requests: 24, replaced: 0 });
+
+    const ctx = await createTestContext({ db });
+    const summaries = await listAgentSummaries(ctx);
+    expect(summaries).toHaveLength(3);
+    expect(summaries.every((s) => s.mandate_version === 1)).toBe(true);
+
+    // same query as the dashboard: per-agent month spend + active mandate limits
+    const totals = await dashboardTotals(db);
+    expect(`This month ${formatUsd(totals.spentCents)} of ${formatUsd(totals.limitCents)} across ${totals.agents} agents`).toBe("This month $117.97 of $410.00 across 3 agents");
+    expect(summaries.reduce((s, a) => s + a.month_spent_cents, 0)).toBe(11797);
+    expect(summaries.reduce((s, a) => s + (a.monthly_limit_cents ?? 0), 0)).toBe(41000);
+  });
+
+  it("covers every decision outcome, last month and this month, with consistent trails", async () => {
+    const db = await tempDb("b.db");
+    await seedDemo(db);
+    const rows = await listRequests(db, { limit: 100 });
+    expect(rows).toHaveLength(24);
+    const by = (s: string) => rows.filter((x) => x.status === s).length;
+    expect(by("paid")).toBeGreaterThanOrEqual(10);
+    expect(by("pending_human")).toBe(2);
+    expect(by("expired")).toBe(1);
+    expect(by("failed")).toBe(1);
+    expect(by("denied")).toBeGreaterThanOrEqual(6);
+    expect(new Set(rows.map((x) => new Date(x.createdAt).getUTCMonth())).size).toBe(2);
+    expect(rows.every((x) => x.createdAt <= Date.now())).toBe(true);
+
+    const ledger = await getLedger(await createTestContext({ db }), { limit: 100 });
+    const stages = (id: string) => ledger.find((l) => l.request_id === id)!.decisions.map((d) => `${d.stage}:${d.decision}`);
+    const kinds = new Set<string>();
+    for (const r of rows) {
+      const trail = stages(r.id).join(",");
+      if (r.status === "denied" && trail.startsWith("hard_rules:DENY")) kinds.add("hard");
+      else if (r.status === "denied" && trail.includes("human:DENY")) kinds.add("human_rejected");
+      else if (r.status === "denied" && trail.includes("llm:DENY")) kinds.add("auditor");
+      else if (r.status === "paid" && trail.includes("human:APPROVE")) kinds.add("human_approved");
+      else if (r.status === "paid" && trail.includes("llm:AUTO_APPROVE")) kinds.add("auto");
+      if (r.status === "paid") {
+        const p = await getPaymentByRequest(db, r.id);
+        expect(p).toMatchObject({ status: "completed", amountCents: r.amountCents });
+        expect(p!.captureId).toMatch(/^FAKE-CAPTURE-/);
+      }
+      expect((await listDecisions(db, r.id)).length).toBeGreaterThan(0);
+    }
+    expect([...kinds].sort()).toEqual(["auditor", "auto", "hard", "human_approved", "human_rejected"]);
+
+    // video act 3: fiverr $450 blocked by 3 failing hard rules with an explanation
+    const fiverr = rows.find((x) => x.merchant === "fiverr.com")!;
+    expect(fiverr.amountCents).toBe(45000);
+    expect(ledger.find((l) => l.request_id === fiverr.id)!.decisions[0]!.details).toMatchObject({ results: expect.any(Array) });
+    expect(fiverr.reasonEn).toMatch(/prompt injection/);
+    // video act 2: $59 statista approved by a human, $41 of Scout's $100 left
+    const statista = rows.find((x) => x.merchant === "statista.com" && x.amountCents === 5900)!;
+    expect(statista.status).toBe("paid");
+  });
+
+  it("is re-runnable, and refuses a DB with non-seed data unless --force", async () => {
+    const db = await tempDb("c.db");
+    await seedDemo(db);
+    const again = await seedDemo(db);
+    expect(again).toMatchObject({ agents: 3, requests: 24, replaced: 3 });
+    expect(await listAgents(db)).toHaveLength(3);
+    expect(await listRequests(db, { limit: 100 })).toHaveLength(24);
+
+    const k = generateApiKey();
+    await insertAgent(db, { name: "Real agent", keyHash: k.hash, keyPrefix: k.displayPrefix });
+    await expect(seedDemo(db)).rejects.toBeInstanceOf(SeedRefusal);
+    expect(await listAgents(db)).toHaveLength(4);
+
+    await seedDemo(db, { force: true });
+    const names = (await listAgents(db)).map((a) => a.name);
+    expect(names).toContain("Real agent");
+    expect(names).toHaveLength(4);
+    expect((await listAgents(db)).filter((a) => a.keyPrefix.startsWith(SEED_KEY_PREFIX))).toHaveLength(3);
+  });
+});

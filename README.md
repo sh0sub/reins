@@ -47,6 +47,20 @@ pnpm spike scripts/spikes/channel3.ts             # #31 Channel3 search
 
 Layout: `apps/web` (Next.js 15 UI + REST + webhooks), `apps/mcp` (MCP server), `apps/bot` (grammY handlers), `packages/core` (policy, PayPal client, payment strategies), `packages/db` (Drizzle, SQLite/libsql locally).
 
+## Demo data
+
+```bash
+pnpm seed                        # 3 agents, 3 mandates, 24 requests in apps/web/.local/reins.db (what `pnpm dev:web` uses)
+pnpm seed -- --db ./scratch.db   # another file; point the app at it with DATABASE_URL=file:./scratch.db
+pnpm seed -- --force             # also run against a DB that has real data (only the seed rows are replaced)
+```
+
+Matches the plan's flow C: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,
+human-rejected, hard-rule-blocked (the $450 fiverr.com injection), auditor-blocked, failed, expired and 2 pending items across this and last month.
+No PayPal or Claude calls (fake `FAKE-ORDER-*` / `FAKE-CAPTURE-*` ids). Seed agents use `rk_demo_` keys that are never stored or printed, so create
+a fresh agent for live MCP runs. Re-running replaces only seed rows and refuses a DB with other data unless `--force`. Pending approvals
+expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before a demo.
+
 ## Demo agent A (Claude Desktop / Claude Code)
 
 Config snippets that expose the 4 Reins MCP tools (plus Channel3 product search) to Claude Desktop (`agents/claude_desktop_config.json`) and Claude Code (`.mcp.json.example`). Setup steps and demo prompts: [agents/README.md](agents/README.md).

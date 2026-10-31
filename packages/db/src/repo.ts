@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, max, sql, count } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, max, notInArray, sql, count } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { ReinsDb } from "./client.ts";
 import {
@@ -345,4 +345,34 @@ export async function markWebhookProcessed(db: ReinsDb, id: string, outcome: str
 export async function countWebhookEvents(db: ReinsDb): Promise<number> {
   const [row] = await db.select({ n: count() }).from(webhookEvents);
   return row?.n ?? 0;
+}
+
+// ---------- seed support (scripts/seed.ts) ----------
+
+/** Deletes agents and everything hanging off them (messages, decisions, payments, requests, mandates). */
+export async function purgeAgents(db: ReinsDb, agentIds: string[]): Promise<void> {
+  if (!agentIds.length) return;
+  const reqIds = db.select({ id: requests.id }).from(requests).where(inArray(requests.agentId, agentIds));
+  await db.delete(requestMessages).where(inArray(requestMessages.requestId, reqIds));
+  await db.delete(decisions).where(inArray(decisions.requestId, reqIds));
+  await db.delete(payments).where(inArray(payments.requestId, reqIds));
+  await db.delete(requests).where(inArray(requests.agentId, agentIds));
+  await db.delete(mandates).where(inArray(mandates.agentId, agentIds));
+  await db.delete(agents).where(inArray(agents.id, agentIds));
+}
+
+/** Requests whose agent is not in `agentIds` (detects non-seed data before a wipe). */
+export async function countRequestsOutside(db: ReinsDb, agentIds: string[]): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(requests)
+    .where(agentIds.length ? notInArray(requests.agentId, agentIds) : undefined);
+  return row?.n ?? 0;
+}
+
+/** Repo updates stamp updatedAt with Date.now(); this restores a believable timeline for seeded history. */
+export async function setTimestamps(db: ReinsDb, target: { request?: string; payment?: string; agent?: string }, ts: number): Promise<void> {
+  if (target.agent) await db.update(agents).set({ createdAt: ts }).where(eq(agents.id, target.agent));
+  if (target.request) await db.update(requests).set({ updatedAt: ts }).where(eq(requests.id, target.request));
+  if (target.payment) await db.update(payments).set({ createdAt: ts, updatedAt: ts }).where(eq(payments.id, target.payment));
 }
