@@ -62,7 +62,9 @@ p { margin: 0; }
 .badge { min-width: 22px; padding: 0 7px; border-radius: var(--semantic-radius-pill); background: var(--semantic-color-status-danger-text); color: var(--semantic-color-text-inverse); font-size: var(--semantic-typography-caption-size); font-weight: 700; text-align: center; line-height: 20px; }
 .side-foot { margin-top: auto; display: grid; gap: var(--sp-3); padding: var(--sp-3); border-top: 1px solid var(--line); }
 .topbar { height: var(--topbar); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 0 var(--sp-10); border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
-.topbar .crumb { font-weight: 700; }
+.topbar .crumb { font-weight: 700; white-space: nowrap; }
+.topbar > .row { flex-wrap: nowrap; flex: none; }
+@media (max-width: 559px) { .topbar { gap: var(--sp-2); } .topbar .live-lbl, .topbar .bell { display: none; } }
 .main { padding: var(--sp-6) var(--sp-10) var(--sp-10); max-width: var(--semantic-size-content-max); width: 100%; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-6); flex-wrap: wrap; }
 .page-head p { margin-top: var(--sp-1); }
@@ -481,3 +483,6 @@ select.select-version { width: auto; min-width: 150px; font-weight: 700; color: 
 .bell:hover { background: var(--semantic-color-surface-selected); color: var(--primary); }
 .bell svg { width: 20px; height: 20px; }
 .bell-dot { position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--reins-danger); border: 2px solid var(--panel); box-sizing: content-box; }
+
+/* AG Grid cells set line-height to the row height; keep chips at their own height so they sit centred and are not clipped. */
+.ag-cell .status { line-height: 1.5; vertical-align: middle; }

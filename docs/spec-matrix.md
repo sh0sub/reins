@@ -92,3 +92,17 @@ Status: match / gap / blocked.
 | R6-ledger-blocked-total | S4 Ledger | One blocked total | match | r6 fix: grid footer and Blocked tile share bucketTotal(): rule/auditor blocks only, so both read $450.00; the human-denied $64 is a Human decision (format.ts, ledger/page.tsx, test/ledger-kpi.test.ts; scratchpad converge/reins/fix-r6/ledger-1440.png) |
 | R6-ledger-decision-clip | S4 Ledger | Decision chip fully visible | gap | low: PENDING and EXPIRED chips are clipped by the narrow Decision column at 1440 |
 | R6-ledger-390-chart | S4 Ledger | Paid-by-agent chart labels readable at 390 | gap | low: short bars ($14.02, $9.00) have their value labels clipped at 390 |
+
+Audit round 7, 2026-11-01 (R7-* rows). Fresh temp-DB seed (`pnpm seed --db`), `PAYPAL_ENV=fake`, port 3102, Chrome at 1440 and 390 (scrollWidth equals viewport on all 6 pages, no 4xx and no page errors). Driven: Cmd+K, sidebar agents, Agents KPI, drawer deep link, Approve R-0142, Tighten mandate link. Screenshots: scratchpad `converge/reins/r7/`.
+
+| id | artifact section | expected | status | evidence |
+|---|---|---|---|---|
+| R7-tests | Tests | pnpm test green every run | match | r7 fix: listPaymentsForReconcile upper bound is inclusive (lte), regression test "includes a payment created in the same millisecond as the window end"; pnpm test 223 pass x3 (repo.ts, core/test/reconcile.test.ts) |
+| R7-candidates | Shell/S4/S2 | Cmd+K, sidebar agents, Agents KPI, version dropdown | match | r7 driven: Cmd+K "statista" lists R-0142/R-0120; sidebar agents with cap % and paused dot; Ledger Agents tile "3 / 2 active · 1 paused"; Scout select "v3 · current" (r7/agents-1440.png, ledger-1440.png) |
+| R7-s5-approve | S5 | Approve R-0142 | match | toast "Approved. Finish checkout on PayPal", pending 1 to 0, "All clear" (r7/inbox-approved.png) |
+| R7-s6-drawer | S6 | Timeline, 3 FAIL table, risk card with Model line, snapshot, raw MCP, Tighten, Pause | match | drawer text verified (r7/drawer-tall.png); Mark as expected only on unusual-pattern flags (design.md:35) |
+| R7-overview-tighten-cap | S6 flow C | Tighten prefills block fiverr.com and cap $60 | match | r7 fix: weekly summary action carries cap_failed; Overview link is /agents?...&block=fiverr.com&cap=60 (weeklySummary.ts, overview/page.tsx, tests/integration/overview.test.ts; fix-r7/overview-1440.png) |
+| R7-inbox-390-topbar | S5 shell at 390 | Top bar fits on one row | match | r7 fix: topbar row is nowrap and hides the live label and bell below 560px; one row at 390, scrollWidth 390 (globals.css, Nav.tsx; scratchpad converge/reins/fix-r7/inbox-390.png) |
+| R7-ledger-decision-clip | S4 | Decision chip fully visible | match | r7 fix: Decision column 112px and chips keep line-height 1.5 inside AG cells; DENIED/PENDING/EXPIRED fully visible at 1440 (fix-r7/ledger-1440.png) |
+| R7-ledger-390-chart | S4 | Chart labels readable at 390 | match | r7 fix: bar labels placed outside-end in navy with right padding; $14.02 and $9.00 readable at 390 (SpendChart.tsx; fix-r7/ledger-390.png) |
+| R7-win-not-connected | S1/shell | Sidebar Connected on first look | match | r7 fix: every seed connects the demo merchant (REINS_FIRST_RUN=1 opts out); sidebar shows PayPal Sandbox Connected on first screen (scripts/seed.ts; fix-r7/ledger-1440.png) |

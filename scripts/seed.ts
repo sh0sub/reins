@@ -531,11 +531,11 @@ function toUrl(db: string | undefined): string {
 async function main() {
   const { force, ifEmpty, db: dbArg } = parseArgs(process.argv.slice(2));
   const url = toUrl(dbArg);
-  // Public demo (render.yaml sets REINS_PUBLIC_DEMO=1): the demo merchant is already connected; local seeds keep the S1 first-run story
-  const publicDemo = process.env.REINS_PUBLIC_DEMO === "1";
+  // The demo merchant is connected on every seed so a judge sees "PayPal Sandbox Connected" from the first screen; REINS_FIRST_RUN=1 keeps the unconnected S1 story.
+  const connectDemoMerchant = process.env.REINS_FIRST_RUN !== "1";
   const db = createDb(url);
   await migrateDb(db, process.env.REINS_MIGRATIONS_DIR ?? resolve(ROOT, "packages/db/drizzle"));
-  const r = ifEmpty ? await seedIfEmpty(db, { connectDemoMerchant: publicDemo }) : await seedDemo(db, { force, connectDemoMerchant: publicDemo });
+  const r = ifEmpty ? await seedIfEmpty(db, { connectDemoMerchant }) : await seedDemo(db, { force, connectDemoMerchant });
   if (!r) {
     console.log(`seed: skipped (--if-empty: the database already has ${(await listAgents(db)).length} agent(s))`);
     process.exit(0);

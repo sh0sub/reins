@@ -125,7 +125,7 @@ describe("S1 AI weekly summary", () => {
     const text = JSON.stringify(input);
     expect(text).not.toMatch(/rk_|FAKE-|agt_|req_|@|vault|Instructed by page/i);
     expect(input.blocked_this_month[0]).toMatchObject({ merchant: "fiverr.com", amount: "450.00", stage: "hard_rules", suspected_prompt_injection: true, agent: "Research Scout" });
-    expect(action).toMatchObject({ merchant: "fiverr.com", agent_name: "Research Scout" });
+    expect(action).toMatchObject({ merchant: "fiverr.com", agent_name: "Research Scout", cap_failed: true });
   });
 
   it("without Claude uses the labelled template and names the fiverr injection", async () => {

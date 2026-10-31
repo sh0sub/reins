@@ -232,7 +232,7 @@ export function LedgerGrid({
       { headerName: "Merchant", field: "merchant", hide: narrow, width: 112, filter: "agSetColumnFilter" },
       // Group/grand totals sum only paid rows (blocked and failed requests were never charged).
       { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: 84, minWidth: narrow ? 66 : undefined, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Decision", colId: "decision", hide: narrow, valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 98, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Decision", colId: "decision", hide: narrow, valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 112, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
       { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 138, minWidth: narrow ? 84 : 130, filter: "agSetColumnFilter", enableCellChangeFlash: true },
       { headerName: "PayPal ID", colId: "paypal", hide: narrow, valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 100, suppressHeaderFilterButton: true },
       { headerName: "Recon", colId: "recon", hide: narrow, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPaymentByRequest, updateWorkspace } from "@reins/db";
+import { getPaymentByRequest, listPaymentsForReconcile, updateWorkspace } from "@reins/db";
 import { authenticateAgent, createAgent, judge, reconcilePayments, saveMandate, submitPurchase } from "../src/index.ts";
 import { createTestContext } from "../src/testing.ts";
 
@@ -48,6 +48,12 @@ describe("M11 Transaction Search reconciliation", () => {
     expect((await getPaymentByRequest(ctx.db, ids[2]!))!.reconciled).toBe("unchecked");
     expect(a!.captureId).toBeTruthy();
     expect(ctx.paypal.calls.filter((x) => x === "searchTransactions")).toHaveLength(1);
+  });
+
+  it("includes a payment created in the same millisecond as the window end", async () => {
+    const { ctx, ids } = await paidRequests(1);
+    const p = (await getPaymentByRequest(ctx.db, ids[0]!))!;
+    expect((await listPaymentsForReconcile(ctx.db, p.createdAt - 1, p.createdAt)).map((x) => x.id)).toEqual([p.id]);
   });
 
   it("matches by custom_id when the capture id is unknown, and caps the window at 31 days", async () => {

@@ -119,7 +119,7 @@ export interface WeeklySummary extends WeeklySummaryText {
   generated_at: string;
   stats: { week_spent_cents: number; week_purchases: number; top_agent: { id: string; name: string; pct: number } | null };
   /** The request the warning is about, for "Review R-0143" / "Tighten mandate". */
-  action: { request_id: string; display_id: string; agent_id: string; agent_name: string; merchant: string } | null;
+  action: { request_id: string; display_id: string; agent_id: string; agent_name: string; merchant: string; cap_failed: boolean } | null;
 }
 
 interface Built {
@@ -191,7 +191,7 @@ export async function buildWeeklySummaryInput(ctx: ReinsContext): Promise<Built>
       blocked_this_month: blocked.map((b) => b.item),
     },
     stats: { week_spent_cents: sum(weekPaid), week_purchases: weekPaid.length, top_agent: top ? { id: top.id, name: top.name, pct: top.pct } : null },
-    action: first ? { request_id: first.r.id, display_id: displayId(first.r.seq), agent_id: first.r.agentId, agent_name: first.item.agent, merchant: first.r.merchant } : null,
+    action: first ? { request_id: first.r.id, display_id: displayId(first.r.seq), agent_id: first.r.agentId, agent_name: first.item.agent, merchant: first.r.merchant, cap_failed: first.item.rules_failed.includes("per_tx_cap") } : null,
   };
 }
 

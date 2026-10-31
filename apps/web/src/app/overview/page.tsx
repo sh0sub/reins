@@ -334,7 +334,7 @@ function WeeklyCard({ summary, error, onRetry }: { summary: WeeklySummary | null
                 <Icon name="eye" className="ico" />
                 Review {summary.action.display_id}
               </Link>
-              <Link className="btn" href={`/agents?agent=${summary.action.agent_id}&block=${encodeURIComponent(summary.action.merchant)}`}>
+              <Link className="btn" href={`/agents?agent=${summary.action.agent_id}&block=${encodeURIComponent(summary.action.merchant)}${summary.action.cap_failed ? "&cap=60" : ""}`}>
                 <Icon name="edit" className="ico" />
                 Tighten mandate
               </Link>

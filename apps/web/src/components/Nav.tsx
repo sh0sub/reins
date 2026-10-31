@@ -193,7 +193,7 @@ export function TopBar() {
       <div className="row">
         <span className="live" role="status" aria-live="polite">
           <span className={status === "live" ? "dot dot-ok" : status === "offline" ? "dot dot-bad" : "dot dot-warn"} />
-          {label}
+          <span className="live-lbl">{label}</span>
         </span>
         {pending ? (
           <Link className="btn" href="/inbox">

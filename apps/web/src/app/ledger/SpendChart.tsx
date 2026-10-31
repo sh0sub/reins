@@ -27,7 +27,7 @@ export function SpendChart({ rows }: { rows: LedgerRow[] }) {
       data,
       height: 220,
       background: { visible: false },
-      padding: { top: 8, right: 16, bottom: 8, left: 8 },
+      padding: { top: 8, right: 56, bottom: 8, left: 8 },
       series: [
         {
           type: "bar",
@@ -37,7 +37,7 @@ export function SpendChart({ rows }: { rows: LedgerRow[] }) {
           yName: "Paid this month",
           fill: "#003087",
           cornerRadius: 4,
-          label: { formatter: ({ value }: { value: number }) => `$${value.toFixed(2)}`, placement: "inside-end", color: "#ffffff", fontWeight: "bold" },
+          label: { formatter: ({ value }: { value: number }) => `$${value.toFixed(2)}`, placement: "outside-end", color: "#0b1f4d", fontWeight: "bold" },
         },
       ],
       axes: {

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, max, notInArray, sql, count } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, max, notInArray, sql, count } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { ReinsDb } from "./client.ts";
 import {
@@ -346,12 +346,12 @@ export async function getPaymentByBatchId(db: ReinsDb, batchId: string): Promise
   return db.query.payments.findFirst({ where: eq(payments.payoutBatchId, batchId) });
 }
 
-/** Payments with a PayPal transaction id created in [from, to) — candidates for Transaction Search. */
+/** Payments with a PayPal transaction id created in [from, to] — candidates for Transaction Search. */
 export async function listPaymentsForReconcile(db: ReinsDb, from: number, to: number): Promise<Payment[]> {
   return db
     .select()
     .from(payments)
-    .where(and(eq(payments.status, "completed"), gte(payments.createdAt, from), sql`${payments.createdAt} < ${to}`))
+    .where(and(eq(payments.status, "completed"), gte(payments.createdAt, from), lte(payments.createdAt, to)))
     .orderBy(payments.createdAt);
 }
 
