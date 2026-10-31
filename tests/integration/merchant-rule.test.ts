@@ -101,7 +101,7 @@ describe("S5 approve + always allow this merchant", () => {
     const r = await scout.call("request_purchase", report(1));
 
     const card = api.sent[0]!;
-    expect(card.buttons.map((row) => row.map((b) => b.text))).toEqual([["Approve $59.00", "Deny"], ["Approve + always allow statista.com"], ["Ask agent"]]);
+    expect(card.buttons.map((row) => row.map((b) => b.text))).toEqual([["Approve $59.00", "Deny"], ["Approve + always allow statista.com"], ["Ask agent"], ["Pause this agent"]]);
     const data = card.buttons[1]![0]!.callback_data!;
     expect(parseCallback(data)).toEqual({ action: "approve_allow", requestId: r.data.request_id });
 

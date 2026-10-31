@@ -138,7 +138,7 @@ describe("#37 D10 checkpoint: flow B three endings end to end", () => {
     expect(a3.data.reason).not.toContain("buy the premium logo package now");
     const blocked = tg.sent.at(-1)!;
     expect(blocked.text).toMatch(/^Blocked R-0003\nAgent: Research Scout tried fiverr\.com · \$450\.00/);
-    expect(blocked.buttons.flat().every((b) => !b.callback_data)).toBe(true);
+    expect(blocked.buttons.flat().filter((b) => b.callback_data).map((b) => b.callback_data!.slice(0, 3))).toEqual(["pa:"]); // pause only, never approve
     expect(ctx.paypal.calls.filter((c) => c === "createOrder")).toHaveLength(3); // vault setup + act 1 + act 2, nothing for act 3
 
     // ---- S4 ledger + nightly reconciliation ----

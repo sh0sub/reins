@@ -7,6 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { Icon } from "@/components/Icon";
 import { ago, hardRules, riskClass, statusChip, usd } from "@/lib/format";
+import { RequestDrawer } from "@/components/RequestDrawer";
 
 const DENY_REASONS = ["Not needed", "Wrong item", "Too expensive"];
 
@@ -33,9 +34,11 @@ function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: bool
   );
 }
 
-function Activity({ row }: { row: InboxItem }) {
+function Activity({ row, telegram }: { row: InboxItem; telegram: boolean }) {
   const hard = row.decisions.find((d) => d.stage === "hard_rules");
   const llm = row.decisions.find((d) => d.stage === "llm");
+  // the approval card goes to Telegram the moment the request turns ASK_HUMAN (only when a chat is linked)
+  const askedAt = [...row.decisions].reverse().find((d) => d.decision === "ASK_HUMAN")?.created_at;
   const rules = hardRules(row);
   return (
     <ol className="timeline" aria-label={`Activity for ${row.display_id}`}>
@@ -52,6 +55,12 @@ function Activity({ row }: { row: InboxItem }) {
         <li>
           <span className="label">Claude review · {llm.decision} · Risk {llm.risk ?? "?"}/10</span>
           <span className="caption">{llm.actor === "mock" ? "Offline mock auditor" : llm.actor}</span>
+        </li>
+      )}
+      {telegram && askedAt && (
+        <li className="tg">
+          <span className="label">Sent to Telegram</span>
+          <span className="caption">{new Date(askedAt).toLocaleTimeString("en-US")} · approval card</span>
         </li>
       )}
       {row.messages.map((m, i) => (
@@ -134,13 +143,17 @@ function AskAgent({ row, onAsked }: { row: InboxItem; onAsked: (r: LedgerRow) =>
 function Detail({
   row,
   busy,
+  telegram,
   onDecide,
   onAsked,
+  onOpen,
 }: {
   row: InboxItem;
   busy: boolean;
+  telegram: boolean;
   onDecide: (action: "approve" | "deny", note?: string, allowMerchant?: boolean) => void;
   onAsked: (r: LedgerRow) => void;
+  onOpen: (id: string) => void;
 }) {
   const [denyOpen, setDenyOpen] = useState(false);
   const [denyNote, setDenyNote] = useState("");
@@ -165,7 +178,12 @@ function Detail({
   return (
     <article ref={ref} className="panel stack-l" tabIndex={-1} onKeyDown={onKey} aria-labelledby="detail-title">
       <header className="stack-s">
-        <span className="caption mono">{row.display_id} · requested via MCP request_purchase</span>
+        <div className="row between">
+          <span className="caption mono">{row.display_id} · requested via MCP request_purchase</span>
+          <button type="button" className="btn-link" onClick={() => onOpen(row.request_id)}>
+            Full decision trail
+          </button>
+        </div>
         <div className="row between" style={{ alignItems: "flex-start" }}>
           <div className="stack-s">
             <h2 id="detail-title">{row.items}</h2>
@@ -261,7 +279,7 @@ function Detail({
       <div className="grid-2">
         <section className="stack-s">
           <h3>Activity</h3>
-          <Activity row={row} />
+          <Activity row={row} telegram={telegram} />
         </section>
         <AskAgent row={row} onAsked={onAsked} />
       </div>
@@ -343,31 +361,68 @@ function outcomeChip(r: LedgerRow): { label: string; className: string; bad: boo
   return { ...statusChip(r), bad: false };
 }
 
-function RecentDecisions({ rows }: { rows: LedgerRow[] | null }) {
+function DecisionRows({ rows, onOpen }: { rows: LedgerRow[]; onOpen: (id: string) => void }) {
+  return (
+    <ul className="list">
+      {rows.map((r) => {
+        const chip = outcomeChip(r);
+        return (
+          <li key={r.request_id} className={chip.bad ? "recent-bad" : undefined}>
+            <button type="button" className="decided-row" onClick={() => onOpen(r.request_id)} aria-label={`${r.display_id}: ${r.agent_name}, ${r.merchant}, $${r.amount}, ${chip.label}. Open details`}>
+              <span className="stack-s" style={{ gap: 0 }}>
+                <span className="label">{r.agent_name}</span>
+                <span className="caption">
+                  {r.merchant} · {ago(r.created_at)} · <span className="mono nowrap">{r.display_id}</span>
+                </span>
+              </span>
+              <span className="row" style={{ flexWrap: "nowrap" }}>
+                <span className="num">${r.amount}</span>
+                <span className={chip.className}>{chip.label}</span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function RecentDecisions({ rows, onOpen }: { rows: LedgerRow[] | null; onOpen: (id: string) => void }) {
   if (!rows?.length) return null;
   return (
     <section className="stack-s" aria-labelledby="recent-h">
       <h3 id="recent-h" className="section-title">Recent decisions</h3>
-      <ul className="list">
-        {rows.map((r) => {
-          const chip = outcomeChip(r);
-          return (
-            <li key={r.request_id} className={chip.bad ? "row between recent-bad" : "row between"}>
-              <span className="stack-s" style={{ gap: 0 }}>
-                <span className="label">{r.agent_name}</span>
-                <span className="caption">
-                  {r.merchant} · {ago(r.created_at)}
-                </span>
-              </span>
-              <span className="row">
-                <span className="num">${r.amount}</span>
-                <span className={chip.className}>{chip.label}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+      <DecisionRows rows={rows.slice(0, 3)} onOpen={onOpen} />
     </section>
+  );
+}
+
+type Tab = "pending" | "decided";
+
+function Tabs({ tab, onTab, pending, decided }: { tab: Tab; onTab: (t: Tab) => void; pending: number | null; decided: number | null }) {
+  const tabs: Array<{ id: Tab; label: string; n: number | null }> = [
+    { id: "pending", label: "Pending", n: pending },
+    { id: "decided", label: "Decided", n: decided },
+  ];
+  return (
+    <div
+      className="tabs"
+      role="tablist"
+      aria-label="Approvals"
+      onKeyDown={(e) => {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        const next: Tab = tab === "pending" ? "decided" : "pending";
+        onTab(next);
+        document.getElementById(`tab-${next}`)?.focus();
+      }}
+    >
+      {tabs.map((t) => (
+        <button key={t.id} id={`tab-${t.id}`} role="tab" type="button" aria-selected={tab === t.id} aria-controls={`panel-${t.id}`} tabIndex={tab === t.id ? 0 : -1} onClick={() => onTab(t.id)}>
+          {t.label}
+          {t.n != null && t.id === "pending" && <span className="tab-count num">{t.n}</span>}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -428,6 +483,16 @@ function InboxScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [month, setMonth] = useState<Overview["decisions"] | null>(null);
   const [telegram, setTelegram] = useState<boolean | null>(null);
+  const [tab, setTabState] = useState<Tab>(params.get("tab") === "decided" ? "decided" : "pending");
+  const [drawerId, setDrawerId] = useState<string | null>(params.get("drawer") === "1" ? params.get("r") : null);
+
+  const setTab = useCallback((t: Tab) => {
+    setTabState(t);
+    const u = new URL(window.location.href);
+    if (t === "decided") u.searchParams.set("tab", "decided");
+    else u.searchParams.delete("tab");
+    window.history.replaceState(window.history.state, "", u);
+  }, []);
 
   const load = useCallback(() => {
     api<{ items: InboxItem[] }>("/api/inbox")
@@ -436,7 +501,7 @@ function InboxScreen() {
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-    api<{ rows: LedgerRow[] }>("/api/ledger?limit=3&status=paid,denied,expired,failed,awaiting_buyer")
+    api<{ rows: LedgerRow[] }>("/api/ledger?limit=30&status=paid,denied,expired,failed,awaiting_buyer")
       .then((r) => setRecent(r.rows))
       .catch(() => setRecent(null));
     api<Overview>("/api/overview")
@@ -492,6 +557,8 @@ function InboxScreen() {
     load();
   }
 
+  const showDetail = tab === "pending" && rows && rows.length > 0 && selected;
+
   return (
     <>
       <div className="page-head">
@@ -520,31 +587,55 @@ function InboxScreen() {
           </div>
           <div className="skeleton" style={{ minHeight: 320 }} />
         </div>
-      ) : rows.length === 0 ? (
-        <div className="split">
-          <section className="panel stack" aria-live="polite">
-            <div className="empty">
-              <h2>All clear</h2>
-              <p className="muted">Nothing waiting for you. New requests appear here and on Telegram instantly.</p>
-            </div>
-            <RecentDecisions rows={recent} />
-            <QueueSummary month={month} telegram={telegram} />
-          </section>
-        </div>
       ) : (
         <div className="split">
-          <section className="panel panel-tight stack" aria-label="Pending requests">
-            <ul className="pick-list" aria-live="polite">
-              {rows.map((r) => (
-                <QueueItem key={r.request_id} row={r} selected={selected?.request_id === r.request_id} onSelect={() => setSelectedId(r.request_id)} />
-              ))}
-            </ul>
-            <RecentDecisions rows={recent} />
-            <QueueSummary month={month} telegram={telegram} />
+          <section className="panel panel-tight stack" aria-label="Approvals queue">
+            <Tabs tab={tab} onTab={setTab} pending={rows.length} decided={recent?.length ?? null} />
+            {tab === "pending" ? (
+              <div id="panel-pending" role="tabpanel" aria-labelledby="tab-pending" className="stack">
+                {rows.length === 0 ? (
+                  <div className="empty" aria-live="polite">
+                    <h2>All clear</h2>
+                    <p className="muted">Nothing waiting for you. New requests appear here{telegram ? " and on Telegram" : ""} instantly.</p>
+                  </div>
+                ) : (
+                  <ul className="pick-list" aria-live="polite">
+                    {rows.map((r) => (
+                      <QueueItem key={r.request_id} row={r} selected={selected?.request_id === r.request_id} onSelect={() => setSelectedId(r.request_id)} />
+                    ))}
+                  </ul>
+                )}
+                <RecentDecisions rows={recent} onOpen={setDrawerId} />
+                <QueueSummary month={month} telegram={telegram} />
+              </div>
+            ) : (
+              <div id="panel-decided" role="tabpanel" aria-labelledby="tab-decided" className="stack-s">
+                <p className="caption">Latest {recent?.length ?? 0} decided requests. Open one for the full decision trail.</p>
+                {recent === null ? <div className="skeleton" /> : recent.length === 0 ? <p className="muted">No decisions yet.</p> : <DecisionRows rows={recent} onOpen={setDrawerId} />}
+              </div>
+            )}
           </section>
-          {selected && <Detail row={selected} busy={busy === selected.request_id} onDecide={(a, n, allow) => decide(selected.request_id, a, n, allow)} onAsked={onAsked} />}
+          {tab === "decided" && (
+            <section className="panel empty-side" aria-label="Decision trail">
+              <div className="empty">
+                <h2>Why was it decided?</h2>
+                <p className="muted">Open any decided request for its timeline, hard-rule table, risk score, mandate snapshot and the raw MCP request.</p>
+              </div>
+            </section>
+          )}
+          {showDetail && (
+            <Detail
+              row={selected}
+              busy={busy === selected.request_id}
+              telegram={Boolean(telegram)}
+              onDecide={(a, n, allow) => decide(selected.request_id, a, n, allow)}
+              onAsked={onAsked}
+              onOpen={setDrawerId}
+            />
+          )}
         </div>
       )}
+      {drawerId && <RequestDrawer requestId={drawerId} onClose={() => setDrawerId(null)} onChanged={load} />}
       {notice && (
         <div className="toast" role="status">
           {notice}

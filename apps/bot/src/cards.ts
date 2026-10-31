@@ -15,9 +15,11 @@ export const CB_DENY = "dn";
 export const CB_ASK = "ak";
 /** S5: approve + always allow this merchant up to this amount. */
 export const CB_APPROVE_ALLOW = "aa";
-type CbKind = typeof CB_APPROVE | typeof CB_DENY | typeof CB_ASK | typeof CB_APPROVE_ALLOW;
-export type CallbackAction = "approve" | "deny" | "ask" | "approve_allow";
-const ACTIONS: Record<CbKind, CallbackAction> = { ap: "approve", dn: "deny", ak: "ask", aa: "approve_allow" };
+/** S3/S6: pause the agent that made this request (its next requests are denied by a hard rule). */
+export const CB_PAUSE = "pa";
+type CbKind = typeof CB_APPROVE | typeof CB_DENY | typeof CB_ASK | typeof CB_APPROVE_ALLOW | typeof CB_PAUSE;
+export type CallbackAction = "approve" | "deny" | "ask" | "approve_allow" | "pause";
+const ACTIONS: Record<CbKind, CallbackAction> = { ap: "approve", dn: "deny", ak: "ask", aa: "approve_allow", pa: "pause" };
 
 export function callbackData(kind: CbKind, requestId: string): string {
   const data = `${kind}:${requestId}`;
@@ -26,7 +28,7 @@ export function callbackData(kind: CbKind, requestId: string): string {
 }
 
 export function parseCallback(data: string): { action: CallbackAction; requestId: string } | null {
-  const m = /^(ap|dn|ak|aa):([A-Za-z0-9_]{1,60})$/.exec(data);
+  const m = /^(ap|dn|ak|aa|pa):([A-Za-z0-9_]{1,60})$/.exec(data);
   if (!m) return null;
   return { action: ACTIONS[m[1] as CbKind], requestId: m[2]! };
 }
@@ -111,6 +113,7 @@ export function approvalCard(view: RequestView, agentName: string, ttlOrOpts: nu
       ],
       [{ text: `Approve + always allow ${view.merchant}`, callback_data: callbackData(CB_APPROVE_ALLOW, view.request_id) }],
       second,
+      [{ text: "Pause this agent", callback_data: callbackData(CB_PAUSE, view.request_id) }],
     ],
   };
 }
@@ -127,7 +130,8 @@ export function blockedCard(view: RequestView, agentName: string, webBaseUrl?: s
       ...(patternLine(view) ? [patternLine(view)!] : []),
       view.risk != null ? `Risk ${view.risk}/10. Nothing was charged.` : "Nothing was charged.",
     ].join("\n"),
-    buttons: open ? [[{ text: "Review in Reins", url: open }]] : [],
+    // S3: a block never offers Approve; "Review in Reins" (https only) + "Pause this agent"
+    buttons: [[...(open ? [{ text: "Review in Reins", url: open }] : []), { text: "Pause this agent", callback_data: callbackData(CB_PAUSE, view.request_id) }]],
   };
 }
 

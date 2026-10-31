@@ -10,6 +10,8 @@ export interface BotDeps {
   ask?(requestId: string, question: string, actor: string): Promise<LedgerRow>;
   /** S5 "Approve + always allow this merchant". Optional so older wiring keeps working. */
   approveAllow?(requestId: string, actor: string): Promise<{ row: LedgerRow; rule: { sentence: string } }>;
+  /** S3 "Pause this agent": pauses the agent behind this request. Optional so older wiring keeps working. */
+  pauseAgent?(requestId: string, actor: string): Promise<{ agentName: string; changed: boolean }>;
   /** Agent display name for the "What should I ask …?" prompt. */
   describe?(requestId: string): Promise<{ agentName: string; displayId: string } | null>;
 }
@@ -40,6 +42,7 @@ function errorText(err: unknown): string {
   if (code === "question_open") return "Still waiting for the agent's answer";
   if (code === "merchant_blocked") return "This merchant is blocked in the mandate";
   if (code === "no_mandate") return "This agent has no mandate yet";
+  if (code === "revoked") return "This agent's key is revoked";
   return "Could not process, try the web inbox";
 }
 
@@ -59,6 +62,17 @@ export async function handleDecisionCallback(deps: BotDeps, chatId: string, data
     const messageId = await ui.prompt(`What should I ask ${info?.agentName ?? "the agent"}? (${info?.displayId ?? "request"})\nReply to this message.`);
     await ui.answer("Got it");
     return { askPrompt: { messageId, requestId: parsed.requestId } };
+  }
+
+  if (parsed.action === "pause") {
+    if (!deps.pauseAgent) return ui.answer("Pause the agent in the web dashboard");
+    try {
+      const r = await deps.pauseAgent(parsed.requestId, "telegram");
+      // answerCallbackQuery toast (max 200 chars); the card itself stays as it is
+      return ui.answer(r.changed ? `${r.agentName} paused. Its requests are denied until you resume it in Reins.` : `${r.agentName} is already paused.`);
+    } catch (err) {
+      return ui.answer(errorText(err));
+    }
   }
 
   if (parsed.action === "approve_allow") {

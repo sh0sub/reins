@@ -19,6 +19,7 @@ import {
   getLedgerRow,
   monthStartUtc,
   linkTelegramChat,
+  pauseAgentForRequest,
   type Notifier,
   type PayPalClient,
   type QuietHours,
@@ -157,6 +158,10 @@ async function wireTelegram(ctx: ReinsContext, env: Env, ttlMinutes: number) {
     ask: async (id, question, actor) => {
       await askAgent(ctx, id, question, actor);
       return getLedgerRow(ctx, id);
+    },
+    pauseAgent: async (id, actor) => {
+      const r = await pauseAgentForRequest(ctx, id, actor);
+      return { agentName: r.agent.name, changed: r.changed };
     },
     describe: async (id) => {
       const row = await getLedgerRow(ctx, id).catch(() => null);

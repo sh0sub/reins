@@ -33,7 +33,32 @@ export const agents = sqliteTable("agents", {
   keyPrefix: text("key_prefix").notNull(),
   createdAt: integer("created_at").notNull().default(now),
   revokedAt: integer("revoked_at"),
+  /** Owner paused the agent (S2/S3/S6): its new requests are denied by a hard rule until resumed. */
+  pausedAt: integer("paused_at"),
+  /** Last key regeneration (S2 MCP block). The old key's hash is replaced, so it stops working at once. */
+  keyRotatedAt: integer("key_rotated_at"),
 });
+
+export const AGENT_EVENT_TYPES = ["paused", "resumed", "key_rotated", "pattern_expected"] as const;
+export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];
+
+/** Audit log for agent-level actions (pause, resume, key rotation). Never stores keys or hashes. */
+export const agentEvents = sqliteTable(
+  "agent_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    type: text("type", { enum: AGENT_EVENT_TYPES }).notNull(),
+    /** "web", "telegram", ... */
+    actor: text("actor").notNull(),
+    /** Short note, e.g. the request a pause came from or the new key's display prefix. */
+    detail: text("detail"),
+    createdAt: integer("created_at").notNull().default(now),
+  },
+  (t) => [index("agent_events_agent").on(t.agentId, t.createdAt)],
+);
 
 /** Versioned mandates: every save inserts a new row with version+1; the highest version is active. */
 export const mandates = sqliteTable(
@@ -200,6 +225,7 @@ export const webhookEvents = sqliteTable("webhook_events", {
 
 export type Workspace = typeof workspace.$inferSelect;
 export type Agent = typeof agents.$inferSelect;
+export type AgentEvent = typeof agentEvents.$inferSelect;
 export type Mandate = typeof mandates.$inferSelect;
 export type NewMandate = typeof mandates.$inferInsert;
 export type PurchaseRequest = typeof requests.$inferSelect;

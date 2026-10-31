@@ -8,6 +8,7 @@ import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { decisionLabel } from "@/lib/format";
+import { RequestDrawer } from "@/components/RequestDrawer";
 
 // AG Grid / AG Charts touch window: client only.
 const LedgerGrid = dynamic(() => import("./LedgerGrid").then((m) => m.LedgerGrid), { ssr: false, loading: () => <div className="skeleton" style={{ minHeight: 420 }} /> });
@@ -52,6 +53,21 @@ function LedgerScreen() {
   const [sync, setSync] = useState<{ busy: boolean; msg: string | null; bad?: boolean }>({ busy: false, msg: null });
   const [flash, setFlash] = useState<string | null>(null);
   const gridApi = useRef<GridApi<LedgerRow> | null>(null);
+  // S6 drawer, deep link /ledger?r=<id>&drawer=1
+  const [drawerId, setDrawerId] = useState<string | null>(() => (params.get("drawer") === "1" ? params.get("r") : null));
+  const openDrawer = useCallback((id: string) => {
+    setDrawerId(id);
+    const u = new URL(window.location.href);
+    u.searchParams.set("r", id);
+    u.searchParams.set("drawer", "1");
+    window.history.replaceState(window.history.state, "", u);
+  }, []);
+  const closeDrawer = useCallback(() => {
+    setDrawerId(null);
+    const u = new URL(window.location.href);
+    u.searchParams.delete("drawer");
+    window.history.replaceState(window.history.state, "", u);
+  }, []);
 
   const load = useCallback(() => {
     api<{ rows: LedgerRow[] }>("/api/ledger?limit=500")
@@ -257,15 +273,16 @@ function LedgerScreen() {
                 </button>
               </div>
             ) : (
-              <LedgerGrid key={group ? "g" : "f"} rows={filtered} group={group} quickFilter={q} focusId={params.get("r")} onApi={(a) => (gridApi.current = a)} />
+              <LedgerGrid key={group ? "g" : "f"} rows={filtered} group={group} quickFilter={q} focusId={params.get("r")} onApi={(a) => (gridApi.current = a)} onOpen={openDrawer} />
             )}
             <p className="caption">
               {filtered.length} of {scoped.length} rows ({periodLabel}) · {money(shownTotals.paid)} paid · {money(shownTotals.blocked)} blocked · expand a row for the auditor reason, mandate
-              version, capture id and reconciliation.
+              version, capture id and reconciliation; open an ID for the full decision trail.
             </p>
           </section>
         </div>
       )}
+      {drawerId && <RequestDrawer requestId={drawerId} onClose={closeDrawer} onChanged={load} />}
       {flash && (
         <div className="toast" role="status">
           {flash}

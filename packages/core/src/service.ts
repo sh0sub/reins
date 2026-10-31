@@ -201,6 +201,10 @@ export async function listAgentSummaries(ctx: ReinsContext) {
         name: a.name,
         key_prefix: a.keyPrefix,
         revoked: a.revokedAt != null,
+        /** S2: active / paused / revoked. */
+        status: a.revokedAt != null ? ("revoked" as const) : a.pausedAt != null ? ("paused" as const) : ("active" as const),
+        paused_at: a.pausedAt == null ? null : new Date(a.pausedAt).toISOString(),
+        key_rotated_at: a.keyRotatedAt == null ? null : new Date(a.keyRotatedAt).toISOString(),
         created_at: new Date(a.createdAt).toISOString(),
         mandate_version: m?.version ?? null,
         month_spent_cents: await spendSinceCents(ctx.db, a.id, since),
@@ -290,6 +294,7 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
   const hard = evaluateHardRules({
     mandate: mandate ?? null,
     agentRevoked: agent.revokedAt != null,
+    agentPaused: agent.pausedAt != null,
     request: { merchant: request.merchant, amountCents: request.amountCents, currency: request.currency },
     now,
     monthSpentCents: monthSpent,
@@ -324,7 +329,9 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     let reasonEn = `Blocked by hard rules: ${failedText}.`;
     let reasonKo = `하드 룰에서 차단: ${hard.failed.map((f) => f.rule).join(", ")}.`;
     let risk: number | null = null;
-    if (ctx.config.explainDenials && mandate) {
+    // A paused agent is stopped by its owner: no auditor call (and no PayPal call) at all.
+    const paused = hard.failed.some((f) => f.rule === "agent_paused");
+    if (ctx.config.explainDenials && mandate && !paused) {
       // Advisory only: the decision is already DENY and cannot be changed by the auditor.
       const advice = await runAudit(ctx.auditor, auditInput(), request.amountCents, autoLimit, ctx.config.auditTimeoutMs);
       await insertDecision(ctx.db, {

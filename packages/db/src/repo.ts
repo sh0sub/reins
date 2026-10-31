@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, max, notInArray, sql, count } from "drizzl
 import { randomUUID } from "node:crypto";
 import type { ReinsDb } from "./client.ts";
 import {
+  agentEvents,
   agents,
   decisions,
   mandates,
@@ -11,12 +12,15 @@ import {
   webhookEvents,
   workspace,
   type Agent,
+  type AgentEvent,
+  type AgentEventType,
   type Decision,
   type Mandate,
   type Payment,
   type PurchaseRequest,
   type RequestMessage,
   type RequestStatus,
+  type WebhookEvent,
   type Workspace,
 } from "./schema.ts";
 
@@ -67,6 +71,37 @@ export async function findAgentByKeyHash(db: ReinsDb, keyHash: string): Promise<
 
 export async function revokeAgent(db: ReinsDb, id: string): Promise<void> {
   await db.update(agents).set({ revokedAt: Date.now() }).where(eq(agents.id, id));
+}
+
+/** Sets or clears the pause flag. Returns the updated agent (undefined when it does not exist). */
+export async function setAgentPaused(db: ReinsDb, id: string, pausedAt: number | null): Promise<Agent | undefined> {
+  const [row] = await db.update(agents).set({ pausedAt }).where(eq(agents.id, id)).returning();
+  return row;
+}
+
+/** Replaces the key hash (old key stops working immediately). Refuses revoked agents. */
+export async function replaceAgentKey(db: ReinsDb, id: string, input: { keyHash: string; keyPrefix: string; at: number }): Promise<Agent | undefined> {
+  const [row] = await db
+    .update(agents)
+    .set({ keyHash: input.keyHash, keyPrefix: input.keyPrefix, keyRotatedAt: input.at })
+    .where(and(eq(agents.id, id), sql`${agents.revokedAt} is null`))
+    .returning();
+  return row;
+}
+
+export async function insertAgentEvent(
+  db: ReinsDb,
+  input: { agentId: string; type: AgentEventType; actor: string; detail?: string | null; createdAt?: number },
+): Promise<AgentEvent> {
+  const [row] = await db
+    .insert(agentEvents)
+    .values({ id: newId("aev"), detail: null, createdAt: Date.now(), ...input })
+    .returning();
+  return row!;
+}
+
+export async function listAgentEvents(db: ReinsDb, agentId: string, limit = 50): Promise<AgentEvent[]> {
+  return db.select().from(agentEvents).where(eq(agentEvents.agentId, agentId)).orderBy(desc(agentEvents.createdAt), desc(agentEvents.id)).limit(limit);
 }
 
 // ---------- mandates ----------
@@ -204,6 +239,13 @@ export async function listRequests(
     .where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(requests.createdAt), desc(requests.seq))
     .limit(filter.limit ?? 100);
+}
+
+/** Clears S3 unusual-pattern flags without touching status or timestamps ("Mark as expected"). */
+export async function clearRequestAnomalies(db: ReinsDb, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const rows = await db.update(requests).set({ anomalies: [] }).where(inArray(requests.id, ids)).returning({ id: requests.id });
+  return rows.length;
 }
 
 /** Requests created at or after `since`, excluding `excludeId` (velocity rule). */
@@ -358,6 +400,13 @@ export async function markWebhookProcessed(db: ReinsDb, id: string, outcome: str
   await db.update(webhookEvents).set({ processedAt: Date.now(), outcome }).where(eq(webhookEvents.id, id));
 }
 
+/** Webhook deliveries about any of these PayPal resource ids (order, capture or payout batch), oldest first. */
+export async function listWebhookEventsFor(db: ReinsDb, resourceIds: string[]): Promise<WebhookEvent[]> {
+  const ids = resourceIds.filter(Boolean);
+  if (!ids.length) return [];
+  return db.select().from(webhookEvents).where(inArray(webhookEvents.resourceId, ids)).orderBy(webhookEvents.receivedAt);
+}
+
 export async function countWebhookEvents(db: ReinsDb): Promise<number> {
   const [row] = await db.select({ n: count() }).from(webhookEvents);
   return row?.n ?? 0;
@@ -374,6 +423,7 @@ export async function purgeAgents(db: ReinsDb, agentIds: string[]): Promise<void
   await db.delete(payments).where(inArray(payments.requestId, reqIds));
   await db.delete(requests).where(inArray(requests.agentId, agentIds));
   await db.delete(mandates).where(inArray(mandates.agentId, agentIds));
+  await db.delete(agentEvents).where(inArray(agentEvents.agentId, agentIds));
   await db.delete(agents).where(inArray(agents.id, agentIds));
 }
 

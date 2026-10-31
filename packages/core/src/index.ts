@@ -17,6 +17,8 @@ export * from "./pay/strategies.ts";
 export * from "./events.ts";
 export * from "./views.ts";
 export * from "./service.ts";
+export * from "./agentControl.ts";
+export * from "./requestDetail.ts";
 export * from "./webhooks.ts";
 export * from "./onboarding.ts";
 export * from "./reconcile.ts";

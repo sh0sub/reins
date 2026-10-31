@@ -9,6 +9,7 @@ export const VELOCITY_WINDOW_MS = 10 * 60 * 1000;
 export type HardRuleId =
   | "mandate_present"
   | "agent_active"
+  | "agent_paused"
   | "mandate_window"
   | "amount_valid"
   | "currency"
@@ -22,6 +23,9 @@ export interface HardRuleResult {
   rule: HardRuleId;
   ok: boolean;
   detail: string;
+  /** S6 hard-rule table: what the request had ("$450.00", "fiverr.com") and the mandate limit it was checked against. */
+  value?: string;
+  limit?: string;
 }
 
 export interface HardRuleInput {
@@ -36,6 +40,8 @@ export interface HardRuleInput {
     | "validUntil"
   > | null;
   agentRevoked: boolean;
+  /** Owner paused the agent: every request is denied before the auditor or PayPal is called. */
+  agentPaused?: boolean;
   request: { merchant: string; amountCents: number; currency: string };
   now: number;
   /** Committed spend in the current calendar month, excluding this request. */
@@ -57,15 +63,17 @@ export interface HardRuleOutcome {
 export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
   const { mandate, request, now } = input;
   const results: HardRuleResult[] = [];
-  const add = (rule: HardRuleId, ok: boolean, detail: string) => results.push({ rule, ok, detail });
+  const add = (rule: HardRuleId, ok: boolean, detail: string, value?: string, limit?: string) =>
+    results.push({ rule, ok, detail, ...(value !== undefined ? { value } : {}), ...(limit !== undefined ? { limit } : {}) });
 
-  add("agent_active", !input.agentRevoked, input.agentRevoked ? "Agent key is revoked" : "Agent key active");
+  add("agent_active", !input.agentRevoked, input.agentRevoked ? "Agent key is revoked" : "Agent key active", input.agentRevoked ? "revoked" : "active", "active");
+  if (input.agentPaused) add("agent_paused", false, "Agent paused", "paused", "active");
 
   if (!mandate) {
-    add("mandate_present", false, "No mandate configured for this agent");
+    add("mandate_present", false, "No mandate configured for this agent", "missing", "required");
     return finish(results);
   }
-  add("mandate_present", true, "Mandate found");
+  add("mandate_present", true, "Mandate found", "present", "required");
 
   const notYet = mandate.validFrom != null && now < mandate.validFrom;
   const expired = mandate.validUntil != null && now > mandate.validUntil;
@@ -73,13 +81,17 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
     "mandate_window",
     !notYet && !expired,
     expired ? "Mandate expired" : notYet ? "Mandate not yet valid" : "Mandate within validity window",
+    new Date(now).toISOString().slice(0, 10),
+    mandate.validFrom == null && mandate.validUntil == null
+      ? "no window"
+      : `${mandate.validFrom == null ? "…" : new Date(mandate.validFrom).toISOString().slice(0, 10)} – ${mandate.validUntil == null ? "…" : new Date(mandate.validUntil).toISOString().slice(0, 10)}`,
   );
 
   const amountOk = Number.isInteger(request.amountCents) && request.amountCents > 0;
-  add("amount_valid", amountOk, amountOk ? "Amount is positive" : "Amount must be greater than zero");
+  add("amount_valid", amountOk, amountOk ? "Amount is positive" : "Amount must be greater than zero", formatUsd(request.amountCents), "> $0.00");
 
   const curOk = request.currency.toUpperCase() === mandate.currency.toUpperCase();
-  add("currency", curOk, curOk ? `Currency ${mandate.currency}` : `Currency ${request.currency} not allowed (mandate is ${mandate.currency})`);
+  add("currency", curOk, curOk ? `Currency ${mandate.currency}` : `Currency ${request.currency} not allowed (mandate is ${mandate.currency})`, request.currency.toUpperCase(), mandate.currency.toUpperCase());
 
   if (mandate.perTxCapCents != null) {
     const ok = request.amountCents <= mandate.perTxCapCents;
@@ -89,6 +101,8 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
       ok
         ? `${formatUsd(request.amountCents)} within per-purchase cap ${formatUsd(mandate.perTxCapCents)}`
         : `${formatUsd(request.amountCents)} exceeds per-purchase cap ${formatUsd(mandate.perTxCapCents)}`,
+      formatUsd(request.amountCents),
+      `≤ ${formatUsd(mandate.perTxCapCents)}`,
     );
   }
 
@@ -100,14 +114,22 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
     monthlyOk
       ? `${formatUsd(Math.max(remaining, 0))} of ${formatUsd(mandate.monthlyLimitCents)} left this month`
       : `Only ${formatUsd(Math.max(remaining, 0))} of ${formatUsd(mandate.monthlyLimitCents)} left this month`,
+    `${formatUsd(input.monthSpentCents + request.amountCents)} incl. this`,
+    `≤ ${formatUsd(mandate.monthlyLimitCents)}`,
   );
 
   const blocked = merchantInList(request.merchant, mandate.blockedMerchants);
-  add("blocked_merchant", !blocked, blocked ? `${request.merchant} is blocked` : "Merchant not on block list");
+  add(
+    "blocked_merchant",
+    !blocked,
+    blocked ? `${request.merchant} is blocked` : "Merchant not on block list",
+    request.merchant,
+    mandate.blockedMerchants.length ? `not ${mandate.blockedMerchants.join(", ")}` : "no block list",
+  );
 
   if (mandate.allowedMerchants.length > 0) {
     const allowed = merchantInList(request.merchant, mandate.allowedMerchants);
-    add("allowlist", allowed, allowed ? `${request.merchant} is allowed` : `${request.merchant} is not on the allow list`);
+    add("allowlist", allowed, allowed ? `${request.merchant} is allowed` : `${request.merchant} is not on the allow list`, request.merchant, mandate.allowedMerchants.join(", "));
   }
 
   const velocityOk = input.recentRequestCount < VELOCITY_MAX;
@@ -117,6 +139,8 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
     velocityOk
       ? `${input.recentRequestCount} request(s) in the last 10 minutes`
       : `${input.recentRequestCount} requests in the last 10 minutes (max ${VELOCITY_MAX})`,
+    `${input.recentRequestCount} earlier`,
+    `< ${VELOCITY_MAX} per 10 min`,
   );
 
   return finish(results);

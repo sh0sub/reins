@@ -1,18 +1,22 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { statusChip, usd } from "@/lib/format";
 import { MandateEditor, type MandatePrefill, type MandateView } from "@/components/MandateEditor";
+import { Icon } from "@/components/Icon";
 
 interface AgentSummary {
   id: string;
   name: string;
   key_prefix: string;
   revoked: boolean;
+  status: "active" | "paused" | "revoked";
+  paused_at: string | null;
+  key_rotated_at: string | null;
   mandate_version: number | null;
   month_spent_cents: number;
   monthly_limit_cents: number | null;
@@ -91,12 +95,18 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function KeyOnce({ created, onDone }: { created: Created; onDone: () => void }) {
+function KeyOnce({ created, onDone, rotated = false }: { created: Created; onDone: () => void; rotated?: boolean }) {
   const snippet = JSON.stringify(created.mcp_snippet, null, 2);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
   return (
-    <section className="panel stack" aria-labelledby="key-once">
-      <h2 id="key-once">Key for {created.agent.name}</h2>
-      <p className="alert">Shown once. Reins stores only a hash, so copy it now.</p>
+    <section ref={ref} tabIndex={-1} className="panel stack" aria-labelledby="key-once">
+      <h2 id="key-once">{rotated ? `New key for ${created.agent.name}` : `Key for ${created.agent.name}`}</h2>
+      <p className="alert">
+        Shown once. Reins stores only a hash, so copy it now.{rotated ? " The previous key already stopped working: paste this one into the agent's MCP config." : ""}
+      </p>
       <div className="code" aria-label="API key">
         {created.api_key}
       </div>
@@ -110,12 +120,18 @@ function KeyOnce({ created, onDone }: { created: Created; onDone: () => void }) 
       </details>
       <div>
         <button className="btn btn-primary" onClick={onDone}>
-          Done, write the mandate
+          {rotated ? "Done, I saved the key" : "Done, write the mandate"}
         </button>
       </div>
     </section>
   );
 }
+
+const STATUS_CHIP: Record<AgentSummary["status"], { label: string; className: string }> = {
+  active: { label: "Active", className: "status status-ok" },
+  paused: { label: "Paused", className: "status status-paused" },
+  revoked: { label: "Revoked", className: "status" },
+};
 
 function AgentCard({ a, selected, onSelect }: { a: AgentSummary; selected: boolean; onSelect: () => void }) {
   const pct = a.monthly_limit_cents ? Math.round((a.month_spent_cents / a.monthly_limit_cents) * 100) : 0;
@@ -129,7 +145,7 @@ function AgentCard({ a, selected, onSelect }: { a: AgentSummary; selected: boole
             </span>
             <span className="label">{a.name}</span>
           </span>
-          <span className={a.revoked ? "status" : "status status-ok"}>{a.revoked ? "Revoked" : "Active"}</span>
+          <span className={STATUS_CHIP[a.status].className}>{STATUS_CHIP[a.status].label}</span>
         </span>
         {a.monthly_limit_cents != null ? (
           <>
@@ -197,7 +213,30 @@ function PaymentLine({ mode }: { mode: string | null }) {
   );
 }
 
-function McpConnection({ agent }: { agent: AgentSummary }) {
+function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (c: Created) => void }) {
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirm) confirmRef.current?.focus();
+  }, [confirm]);
+  useEffect(() => {
+    setConfirm(false);
+    setError(null);
+  }, [agent.id]);
+  async function rotate() {
+    setBusy(true);
+    setError(null);
+    try {
+      onRotated(await api<Created>(`/api/agents/${agent.id}/rotate-key`, { method: "POST" }));
+      setConfirm(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   const snippet = JSON.stringify(
     { mcpServers: { reins: { command: "npx", args: ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"], env: { REINS_API_URL: "${REINS_API_URL}", REINS_API_KEY: `${agent.key_prefix}…` } } } },
     null,
@@ -206,12 +245,45 @@ function McpConnection({ agent }: { agent: AgentSummary }) {
   return (
     <section className="stack-s" aria-labelledby="mcp-h">
       <div className="row between">
-        <h3 id="mcp-h">MCP connection</h3>
         <span className="row">
+          <h3 id="mcp-h">MCP connection</h3>
+          <span className="key-mask caption mono" aria-label={`Key ${agent.key_prefix}, rest hidden`}>
+            <Icon name="shield" className="ico-s" />
+            {agent.key_prefix}…redacted
+          </span>
+        </span>
+        <span className="row">
+          {agent.status !== "revoked" && (
+            <button type="button" className="btn" onClick={() => setConfirm(true)} aria-expanded={confirm} aria-controls="rotate-confirm">
+              <Icon name="refresh" className="ico" /> Regenerate
+            </button>
+          )}
           <CopyButton text={snippet} label="Copy snippet" />
         </span>
       </div>
-      <p className="caption mono">{agent.key_prefix}… (full key was shown once at creation; paste it in place of the masked value)</p>
+      {confirm && (
+        <div id="rotate-confirm" className="confirm-box" role="group" aria-labelledby="rotate-q">
+          <p id="rotate-q">
+            <b>Regenerate the key for {agent.name}?</b> The current key ({agent.key_prefix}…) stops working immediately, so the agent fails until you paste the new key into its MCP config. The new key is shown once.
+          </p>
+          <div className="row">
+            <button ref={confirmRef} type="button" className="btn btn-danger" disabled={busy} onClick={rotate}>
+              {busy ? "Regenerating…" : "Regenerate key"}
+            </button>
+            <button type="button" className="btn-link" onClick={() => setConfirm(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {error && (
+        <p className="alert alert-bad" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="caption mono">
+        {agent.key_prefix}… (full key was shown once{agent.key_rotated_at ? `; regenerated ${new Date(agent.key_rotated_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : " at creation"}; paste it in place of the masked value)
+      </p>
       <div className="code">{snippet}</div>
       <p className="caption">Agents only see get_mandate / request_purchase / get_request_status / list_transactions. They never see PayPal credentials.</p>
     </section>
@@ -224,6 +296,8 @@ function AgentsScreen() {
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
+  const [rotated, setRotated] = useState<Created | null>(null);
+  const [pauseBusy, setPauseBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(params.get("agent"));
   const [versions, setVersions] = useState<MandateView[] | null>(null);
   const [recent, setRecent] = useState<LedgerRow[] | null>(null);
@@ -271,6 +345,19 @@ function AgentsScreen() {
 
   const agent = agents?.find((a) => a.id === selected);
 
+  async function togglePause(a: AgentSummary) {
+    setPauseBusy(true);
+    try {
+      await api(`/api/agents/${a.id}/${a.status === "paused" ? "resume" : "pause"}`, { method: "POST" });
+      setToast(a.status === "paused" ? `${a.name} resumed. New requests are checked as usual.` : `${a.name} paused. Its new requests are denied until you resume it.`);
+      load();
+    } catch (e) {
+      setToast((e as Error).message);
+    } finally {
+      setPauseBusy(false);
+    }
+  }
+
   return (
     <>
       <div className="page-head">
@@ -280,6 +367,11 @@ function AgentsScreen() {
         </div>
       </div>
 
+      {rotated && (
+        <div style={{ marginBottom: 24 }}>
+          <KeyOnce rotated created={rotated} onDone={() => setRotated(null)} />
+        </div>
+      )}
       {created && (
         <div style={{ marginBottom: 24 }}>
           <KeyOnce
@@ -345,8 +437,22 @@ function AgentsScreen() {
                   <h2 id="mandate-h">{agent.name}</h2>
                   <span className="caption">Mandate · applies to new requests from this agent</span>
                 </div>
-                {agent.mandate_version && <span className="status status-info">v{agent.mandate_version} · current</span>}
+                <span className="row">
+                  {agent.mandate_version && <span className="status status-info">v{agent.mandate_version} · current</span>}
+                  {agent.status !== "revoked" && (
+                    <button type="button" className="btn" disabled={pauseBusy} onClick={() => togglePause(agent)}>
+                      <Icon name={agent.status === "paused" ? "arrow" : "pause"} className="ico" />
+                      {agent.status === "paused" ? (pauseBusy ? "Resuming…" : "Resume agent") : pauseBusy ? "Pausing…" : "Pause agent"}
+                    </button>
+                  )}
+                </span>
               </div>
+              {agent.status === "paused" && (
+                <p className="alert" role="status">
+                  Paused{agent.paused_at ? ` since ${new Date(agent.paused_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}. Every new request from {agent.name} is denied by the
+                  “agent paused” hard rule before the auditor or PayPal is called. Pending approvals stay in the inbox.
+                </p>
+              )}
               {versions === null ? (
                 <div className="skeleton" style={{ minHeight: 320 }} aria-label="Loading mandate" />
               ) : (
@@ -418,7 +524,14 @@ function AgentsScreen() {
                 </section>
               </div>
               <PaymentLine mode={paymentMode} />
-              <McpConnection agent={agent} />
+              <McpConnection
+                agent={agent}
+                onRotated={(c) => {
+                  setRotated(c);
+                  load();
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              />
             </section>
           ) : (
             agents && agents.length > 0 && <p className="muted">Select an agent.</p>

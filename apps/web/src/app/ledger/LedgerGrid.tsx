@@ -69,6 +69,28 @@ function PayPalIdCell(p: CustomCellRendererProps<LedgerRow>) {
     </button>
   );
 }
+/** R-0143: opens the S6 drawer (grid rows are 40px, so the hit area is the full row height; the expansion has a 48px button too). */
+function IdCell(p: CustomCellRendererProps<LedgerRow>) {
+  if (!p.data) return null;
+  const open = (p.context as GridContext | undefined)?.openDrawer;
+  const id = p.data.request_id;
+  return (
+    <button
+      type="button"
+      className="btn-link cell-link"
+      aria-label={`Open details for ${p.data.display_id}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        open?.(id);
+      }}
+    >
+      {p.data.display_id}
+    </button>
+  );
+}
+interface GridContext {
+  openDrawer?: (id: string) => void;
+}
 function ReconCell(p: CustomCellRendererProps<LedgerRow>) {
   const r = p.data?.payment?.status === "completed" ? p.data.payment.reconciled : null;
   if (!r) return <span className="caption">n/a</span>;
@@ -86,6 +108,7 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
   const tighten = row.status === "denied" && failed.length > 0;
   const capRule = failed.find((r) => r.rule === "per_tx_cap");
   const tightenHref = `/agents?agent=${row.agent_id}&block=${encodeURIComponent(row.merchant)}${capRule ? "&cap=60" : ""}`;
+  const openDrawer = (p.context as GridContext | undefined)?.openDrawer;
   return (
     <div className="ledger-detail" role="region" aria-label={`Details for ${row.display_id}`}>
       <dl>
@@ -118,6 +141,13 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
           </>
         )}
       </dl>
+      {openDrawer && (
+        <div>
+          <button type="button" className="btn" onClick={() => openDrawer(row.request_id)}>
+            Open details
+          </button>
+        </div>
+      )}
       {row.receipt?.receipt_url && (
         <div>
           <a className="btn" href={`/receipts/${row.request_id}`}>
@@ -152,13 +182,17 @@ export function LedgerGrid({
   quickFilter,
   focusId,
   onApi,
+  onOpen,
 }: {
   rows: LedgerRow[];
   group: boolean;
   quickFilter: string;
   focusId?: string | null;
   onApi?: (api: GridApi<LedgerRow>) => void;
+  /** S6: open the request-detail drawer. */
+  onOpen?: (id: string) => void;
 }) {
+  const context = useMemo<GridContext>(() => ({ openDrawer: onOpen }), [onOpen]);
   const apiRef = useRef<GridApi<LedgerRow> | null>(null);
   const cols = useMemo<ColDef<LedgerRow>[]>(
     () => [
@@ -172,6 +206,7 @@ export function LedgerGrid({
         filter: "agDateColumnFilter",
         filterValueGetter: (p) => (p.data ? new Date(p.data.created_at) : null),
       },
+      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 96, sortable: false, filter: false },
       { headerName: "Agent", field: "agent_name", rowGroup: group, hide: group, enableRowGroup: true, filter: "agSetColumnFilter" },
       { headerName: "Item", field: "items", flex: 2, minWidth: 180, tooltipField: "items" },
       { headerName: "Merchant", field: "merchant", width: 150, filter: "agSetColumnFilter" },
@@ -209,6 +244,7 @@ export function LedgerGrid({
         theme={theme}
         rowData={rows}
         columnDefs={cols}
+        context={context}
         getRowId={(p: GetRowIdParams<LedgerRow>) => p.data.request_id}
         defaultColDef={{ sortable: true, resizable: true, filter: true, minWidth: 70 }}
         suppressAggFuncInHeader

@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { statusChip, usd } from "@/lib/format";
 import { Icon } from "@/components/Icon";
+import { RequestDrawer } from "@/components/RequestDrawer";
 import { sliceHref, toSlices } from "./slices";
 
 // AG Charts touches window: client only.
@@ -225,7 +226,7 @@ function Categories({ o, onSelect }: { o: Overview; onSelect: (href: string) => 
   );
 }
 
-function Feed({ o }: { o: Overview }) {
+function Feed({ o, onOpen }: { o: Overview; onOpen: (id: string) => void }) {
   const w = periodWords(o.period.kind);
   return (
     <section className="panel panel-tight stack" aria-labelledby="feed-h">
@@ -246,7 +247,17 @@ function Feed({ o }: { o: Overview }) {
             const chip = feedChip(f);
             return (
               <li key={f.request_id}>
-                <Link className={f.outcome === "blocked" ? "feed-row bad" : "feed-row"} href={`/ledger?r=${f.request_id}`}>
+                <Link
+                  className={f.outcome === "blocked" ? "feed-row bad" : "feed-row"}
+                  href={`/ledger?r=${f.request_id}&drawer=1`}
+                  aria-label={`${f.display_id}: ${f.agent_name}, ${f.merchant}, ${usd(f.amount_cents)}, ${chip.label}. Open details`}
+                  onClick={(e) => {
+                    // plain click opens the S6 drawer in place; cmd/ctrl-click keeps the ledger deep link
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                    e.preventDefault();
+                    onOpen(f.request_id);
+                  }}
+                >
                   <span className={chip.className}>{chip.label}</span>
                   <span className="feed-main">
                     <span>
@@ -361,6 +372,7 @@ function OverviewScreen() {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [drawerId, setDrawerId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api<Overview>(`/api/overview?period=${period}`)
@@ -441,11 +453,12 @@ function OverviewScreen() {
             <Categories o={shown} onSelect={(href) => router.push(href)} />
           </div>
           <div className="ov-bot">
-            <Feed o={shown} />
+            <Feed o={shown} onOpen={setDrawerId} />
             <WeeklyCard summary={summary} error={summaryError} onRetry={loadSummary} />
           </div>
         </div>
       )}
+      {drawerId && <RequestDrawer requestId={drawerId} onClose={() => setDrawerId(null)} onChanged={load} />}
     </>
   );
 }

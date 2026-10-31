@@ -26,3 +26,14 @@
   merchant rules. S5: free-text deny reason, Auto/Approved/Rejected/Blocked labels in recent decisions (blocked rows red), "This month" and
   Telegram cards under the queue, active mandate strip. The mandate date row now wraps (fixes the 28px overflow at 360).
   Checked in headless Chrome at 360/390/720/1440 with seed data: no page-level horizontal overflow.
+- Gap pass vs the plan mockups (2026-10-31): S6 request-detail drawer (`components/RequestDrawer.tsx`, `role="dialog"`, right 520px,
+  full screen under 720px, Esc closes, focus trap, focus returns to the opener). Opened from a ledger ID cell / row expansion
+  (deep link `/ledger?r=<id>&drawer=1`), inbox recent/decided rows and "Full decision trail", and overview feed rows (in place; the
+  href keeps the deep link). Sections: timeline with ms timestamps, hard-rule table (rule / limit / actual / result; basic checks fold
+  away when they pass; stacked rows under 480px), semicircle risk meter (number + band word, colour only repeats it), mandate snapshot
+  and raw MCP request (both folded, agent key redacted). Actions: Tighten mandate (primary, only for hard-rule denials), Pause/Resume
+  agent, Mark as expected (only when the request has unusual-pattern flags). S2: Active/Paused/Revoked chip, Pause/Resume in the mandate
+  header with a paused notice, MCP block masked key chip + "Regenerate" with an inline confirm and the one-time key panel. S5: Pending /
+  Decided tabs (`role="tablist"`, 48px, arrow keys) and a "Sent to Telegram" activity step only when Telegram is linked. Checked in headless
+  Chrome at 360/390/720/1440 on a fresh seed: no page-level horizontal overflow (AG Grid scrolls inside its own viewport). The grid ID
+  cell is 40px tall (row height); the row expansion has a 48px "Open details" button.

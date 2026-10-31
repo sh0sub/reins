@@ -4,6 +4,14 @@ import { getActiveMandate, getWorkspace, listMandateVersions, REQUEST_STATUSES, 
 import {
   HttpPayPalClient,
   ReinsError,
+  agentStatus,
+  getAgentEvents,
+  getRequestDetail,
+  markPatternExpected,
+  pauseAgent,
+  pauseAgentForRequest,
+  resumeAgent,
+  rotateAgentKey,
   answerClarification,
   approveAndAllowMerchant,
   askAgent,
@@ -120,7 +128,8 @@ const routes: Route[] = [
     const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
     const m = await getActiveMandate(ctx.db, agent.id);
     if (!m) throw new ReinsError(404, "no_mandate", "No mandate configured for this agent yet");
-    return json({ agent: { id: agent.id, name: agent.name }, mandate: mandateView(m) });
+    // status: "paused" means every request_purchase is denied until the owner resumes the agent
+    return json({ agent: { id: agent.id, name: agent.name, status: agentStatus(agent) }, mandate: mandateView(m) });
   }),
   toRoute("POST", "/api/requests", "agent", async (req, ctx) => {
     const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
@@ -152,6 +161,11 @@ const routes: Route[] = [
     const mandate = body.mandate ? mandateView(await saveMandate(ctx, created.agent.id, body.mandate)) : null;
     return json({ ...created, mandate }, 201);
   }),
+  toRoute("POST", "/api/agents/:id/pause", "admin", async (_r, ctx, p) => json(await pauseAgent(ctx, p.id!, "web"))),
+  toRoute("POST", "/api/agents/:id/resume", "admin", async (_r, ctx, p) => json(await resumeAgent(ctx, p.id!, "web"))),
+  // new key shown once; the old key stops working immediately
+  toRoute("POST", "/api/agents/:id/rotate-key", "admin", async (_r, ctx, p) => json(await rotateAgentKey(ctx, p.id!, "web"), 201)),
+  toRoute("GET", "/api/agents/:id/events", "admin", async (_r, ctx, p) => json({ events: await getAgentEvents(ctx, p.id!) })),
   toRoute("GET", "/api/agents/:id/mandates", "admin", async (_r, ctx, p) =>
     json({ versions: (await listMandateVersions(ctx.db, p.id!)).map(mandateView) }),
   ),
@@ -192,6 +206,9 @@ const routes: Route[] = [
   toRoute("POST", "/api/reconcile", "admin", async (req, ctx) => reconcileResponse(req, ctx)),
   // M11 nightly reconciliation for the Render Cron job (counts only in the response, like `pnpm reconcile`)
   toRoute("POST", "/api/cron/reconcile", "cron", async (req, ctx) => reconcileResponse(req, ctx)),
+  toRoute("GET", "/api/ledger/:id/detail", "admin", async (_r, ctx, p) => json(await getRequestDetail(ctx, p.id!))),
+  toRoute("POST", "/api/requests/:id/pause-agent", "admin", async (_r, ctx, p) => json(await pauseAgentForRequest(ctx, p.id!, "web"))),
+  toRoute("POST", "/api/requests/:id/mark-expected", "admin", async (_r, ctx, p) => json(await markPatternExpected(ctx, p.id!, "web"))),
   toRoute("GET", "/api/ledger/:id", "admin", async (_r, ctx, p) => json(await getLedgerRow(ctx, p.id!))),
   toRoute("GET", "/api/receipts/:id", "admin", async (_r, ctx, p) => json(await getReceipt(ctx, p.id!))),
   toRoute("GET", "/api/workspace", "admin", async (_r, ctx) => {

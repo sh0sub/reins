@@ -55,14 +55,15 @@ export function createReinsMcpServer(api: ReinsApi): McpServer {
     {
       title: "Get my spending mandate",
       description:
-        "Returns this agent's spending mandate: monthly limit, auto-approve limit, per-purchase cap, allowed/blocked merchants, categories, purpose and validity. Check it before requesting a purchase.",
+        "Returns this agent's status (active or paused) and spending mandate: monthly limit, auto-approve limit, per-purchase cap, allowed/blocked merchants, categories, purpose and validity. Check it before requesting a purchase. While status is paused, every purchase is denied; tell the user instead of retrying.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
     async () => {
       try {
         const m = await api.getMandate();
-        return ok(m, "Current mandate:");
+        const paused = (m.agent as { status?: string } | undefined)?.status === "paused";
+        return ok(m, paused ? "This agent is paused by its owner: every purchase is denied until it is resumed. Current mandate:" : "Current mandate:");
       } catch (e) {
         return fail(e);
       }

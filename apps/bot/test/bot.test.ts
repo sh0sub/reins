@@ -138,7 +138,8 @@ describe("M9 handlers", () => {
     const blocked = api.sent.at(-1)!.card;
     expect(blocked.text).toMatch(/^Blocked R-0002\nAgent: Research Scout tried fiverr\.com · \$450\.00/);
     expect(blocked.text).toMatch(/Nothing was charged\.$/);
-    expect(blocked.buttons.flat().some((b) => b.callback_data)).toBe(false); // DENY has no approve button
+    // DENY has no approve button: the only callback is "Pause this agent"
+    expect(blocked.buttons.flat().filter((b) => b.callback_data).map((b) => b.text)).toEqual(["Pause this agent"]);
   });
 
   it("regression (live 10/29): vaulted mode without a saved vault -> Approve -> failed card shows no internal error text", async () => {
@@ -156,6 +157,18 @@ describe("M9 handlers", () => {
     expect(card.text).toBe("Payment failed · R-0001 · $59.00 to statista.com\nPayPal did not complete the payment. Nothing was charged. Agent notified.");
     expect(card.text).not.toMatch(/vault|onboarding/i);
   });
+  it("pause callback: parsed within 64 bytes; without a pauseAgent dep the tap points to the dashboard", async () => {
+    expect(parseCallback(callbackData("pa", "req_abcdefghijklmnopqrst"))).toEqual({ action: "pause", requestId: "req_abcdefghijklmnopqrst" });
+    const { ctx, deps } = await setup(false);
+    await linkTelegramChat(ctx, await issueTelegramLinkToken(ctx), "777");
+    const u = ui();
+    await handleDecisionCallback(deps, "777", "pa:req_x", u);
+    expect(u.log).toEqual(["answer:Pause the agent in the web dashboard"]);
+    const u2 = ui();
+    await handleDecisionCallback({ ...deps, pauseAgent: async () => Promise.reject(Object.assign(new Error("x"), { code: "not_found" })) }, "777", "pa:req_x", u2);
+    expect(u2.log).toEqual(["answer:This request is not in Reins (demo card or deleted)"]);
+  });
+
   it("publicFailure exposes only a PayPal issue code", () => {
     expect(publicFailure("HTTP 422 INSTRUMENT_DECLINED (debug_id f00) https://api-m.sandbox.paypal.com/...")).toBe("PayPal declined (INSTRUMENT_DECLINED).");
     expect(publicFailure("No saved PayPal (vault_id). Run onboarding step 3.")).toBe("PayPal did not complete the payment.");

@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Update } from "grammy/types";
 import { getWorkspace, updateWorkspace, getAgent } from "@reins/db";
-import { authenticateAgent, createAgent, decideRequest, getLedgerRow, saveMandate, submitPurchase, askAgent, answerClarification } from "@reins/core";
+import { authenticateAgent, createAgent, decideRequest, getLedgerRow, saveMandate, submitPurchase, askAgent, answerClarification, pauseAgentForRequest } from "@reins/core";
 import { createTestContext } from "@reins/core/testing";
 import { TelegramNotifier, createBot, grammyApi } from "@reins/bot";
 
@@ -20,6 +20,10 @@ async function harness(opts: { vault: boolean }) {
     linkedChatId: async () => (await getWorkspace(ctx.db)).telegramChatId,
     decide: async (id, action, actor) => (await decideRequest(ctx, id, action, actor), getLedgerRow(ctx, id)),
     ask: async (id, q, actor) => (await askAgent(ctx, id, q, actor), getLedgerRow(ctx, id)),
+    pauseAgent: async (id, actor) => {
+      const r = await pauseAgentForRequest(ctx, id, actor);
+      return { agentName: r.agent.name, changed: r.changed };
+    },
     describe: async (id) => {
       const r = await getLedgerRow(ctx, id);
       return { agentName: r.agent_name, displayId: r.display_id };
@@ -103,4 +107,44 @@ describe("integration: grammY bot callback -> payment -> message edits", () => {
     await answerClarification(h.ctx, h.agent, v.request_id, "Yes, published October 2026.");
     expect(texts(h.calls, "editMessageText").at(-1)).toContain('Agent: "Yes, published October 2026."');
   });
+
+  it("S3 'Pause this agent' on the blocked card: callback answered with a toast, next request denied by the hard rule", async () => {
+    const h = await harness({ vault: true });
+    const blocked = await submitPurchase(h.ctx, h.agent, { merchant: "fiverr.com", amount: "450.00", items: "Logo design package", reason: "Instructed by page", category: "design" });
+    expect(blocked.status).toBe("denied");
+    const card = h.calls.filter((c) => c.method === "sendMessage").at(-1)!;
+    expect(card.payload.text).toMatch(/^Blocked R-0001/);
+    const buttons = card.payload.reply_markup.inline_keyboard.flat() as Array<{ text: string; callback_data?: string }>;
+    expect(buttons.map((b) => b.text)).toEqual(["Pause this agent"]); // no Approve on a block; no https base URL -> no Review link
+    expect(buttons[0]!.callback_data).toBe(`pa:${blocked.request_id}`);
+
+    await h.tap(buttons[0]!.callback_data!, 500);
+    const answers = h.calls.filter((c) => c.method === "answerCallbackQuery");
+    expect(answers.at(-1)!.payload.text).toBe("Research Scout paused. Its requests are denied until you resume it in Reins.");
+    expect(h.calls.filter((c) => c.method === "editMessageText")).toHaveLength(0); // the warning card stays as sent
+
+    const next = await submitPurchase(h.ctx, (await authenticateAgentAgain(h)), report);
+    expect(next.status).toBe("denied");
+    expect(next.reason).toMatch(/Agent paused/);
+    expect(h.ctx.paypal.calls.filter((c) => c === "createOrder")).toHaveLength(0);
+
+    await h.tap(buttons[0]!.callback_data!, 500); // second tap is idempotent
+    expect(h.calls.filter((c) => c.method === "answerCallbackQuery").at(-1)!.payload.text).toBe("Research Scout is already paused.");
+  });
+
+  it("approval card carries 'Pause this agent' as its last row; tapping it keeps the request pending", async () => {
+    const h = await harness({ vault: true });
+    const v = await submitPurchase(h.ctx, h.agent, report);
+    const card = h.calls.find((c) => c.method === "sendMessage")!;
+    const last = card.payload.reply_markup.inline_keyboard.at(-1)[0];
+    expect(last).toMatchObject({ text: "Pause this agent", callback_data: `pa:${v.request_id}` });
+    await h.tap(last.callback_data, 500);
+    expect((await getLedgerRow(h.ctx, v.request_id)).status).toBe("pending_human");
+    expect((await getAgent(h.ctx.db, v.agent_id))!.pausedAt).not.toBeNull();
+  });
 });
+
+/** Re-reads the agent row so the pause flag is current (the service reads it per request). */
+async function authenticateAgentAgain(h: { ctx: Parameters<typeof getLedgerRow>[0]; agent: { id: string } }) {
+  return (await getAgent(h.ctx.db, h.agent.id))!;
+}
