@@ -106,3 +106,21 @@ Audit round 7, 2026-11-01 (R7-* rows). Fresh temp-DB seed (`pnpm seed --db`), `P
 | R7-ledger-decision-clip | S4 | Decision chip fully visible | match | r7 fix: Decision column 112px and chips keep line-height 1.5 inside AG cells; DENIED/PENDING/EXPIRED fully visible at 1440 (fix-r7/ledger-1440.png) |
 | R7-ledger-390-chart | S4 | Chart labels readable at 390 | match | r7 fix: bar labels placed outside-end in navy with right padding; $14.02 and $9.00 readable at 390 (SpendChart.tsx; fix-r7/ledger-390.png) |
 | R7-win-not-connected | S1/shell | Sidebar Connected on first look | match | r7 fix: every seed connects the demo merchant (REINS_FIRST_RUN=1 opts out); sidebar shows PayPal Sandbox Connected on first screen (scripts/seed.ts; fix-r7/ledger-1440.png) |
+
+Audit round 8, 2026-11-01 (R8-* rows). Fresh temp-DB seed, `PAYPAL_ENV=fake`, port 3102, Chrome at 1440 and 390 (scrollWidth equals viewport on all 7 routes, no 4xx except one unidentified dev-only 404 resource, no page errors). `pnpm test` 223/223 (32 files), typecheck clean, lint clean. Driven: Cmd+K "fiverr" opens R-0143, version select v3/v2/v1 with older-version banner, Approve R-0142 (pending 1 to 0, All clear), /ledger/R-0143 drawer (3 FAIL, timeline ms). Screenshots: scratchpad `converge/reins/r8/`.
+
+| id | artifact section | expected | status | evidence |
+|---|---|---|---|---|
+| R8-tests | Tests | test/typecheck/lint green | match | 223/223, tsc clean, eslint clean |
+| R8-candidates | Shell/S4/S2 | Cmd+K, sidebar agents, Agents KPI, version dropdown | match | r8 driven, all work (r8/cmdk.png, agents-v1.png, ledger-1440.png) |
+| R8-s1-s7-layout | S1-S7 | Screens match mockups at 1440 and 390 | match | r8/*-1440.png, *-390.png |
+| R8-win-aggrid-watermark | S4 Ledger | No AG Grid Enterprise trial watermark/console banner | blocked | "License Key Not Found" console banner; needs free trial key from ag-grid.com (user account), see R4-win-aggrid-watermark |
+| R8-submission | Submission | Video, live demo URL, Devpost form | blocked | needs user YouTube, Render and Devpost accounts |
+
+Audit round 8 confirmation pass (R8c-* rows). Second fresh temp-DB seed, `PAYPAL_ENV=fake`, port 3102, CDP Chrome at 1440 and 390 on /, /agents, /ledger, /inbox, /setup, /ledger/R-0143 (scrollWidth equals viewport everywhere). `pnpm test` 223/223, typecheck and lint clean. Driven: Cmd+K "fiverr" lists R-0143, Mandate version select to v1 shows the older-version banner, sidebar nav hrefs (Settings goes to /setup by design). Screenshots: scratchpad `converge/reins/r8b/`.
+
+| id | artifact section | expected | status | evidence |
+|---|---|---|---|---|
+| R8c-core | Shell/S1-S7 | All mockup screens, Cmd+K, sidebar agents, Agents KPI "2 active · 1 paused", version dropdown present at 1440 and 390 | match | r8b/*-1440.png, *-390.png, cmdk.png, agents-v1.png |
+| R8c-win-404 | Shell | Unknown route shows an on-brand not-found page | gap | /receipts and other unknown URLs render the stock black Next.js 404 inside the shell (r8b/receipts.png); low, a judge only sees it after a typo |
+| R8c-win-ledger-unknown-id | S6 | /ledger/R-9999 tells the user the request does not exist | gap | r8b/notfound.png shows the plain ledger with no message; low |
