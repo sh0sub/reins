@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -13,13 +13,15 @@ import {
   type ICellRendererParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
-import { MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
+import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { decisionLabel, hardRules, statusChip } from "@/lib/format";
 
 // Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
 ModuleRegistry.registerModules([AllCommunityModule, RowGroupingModule, MasterDetailModule, SetFilterModule]);
+// AG Grid license keys are meant to ship in the client bundle; without one, Enterprise shows a trial watermark off localhost
+if (process.env.NEXT_PUBLIC_AG_GRID_LICENSE_KEY) LicenseManager.setLicenseKey(process.env.NEXT_PUBLIC_AG_GRID_LICENSE_KEY);
 
 const theme = themeQuartz.withParams({
   accentColor: "var(--reins-navy)",
@@ -188,14 +190,18 @@ export function LedgerGrid({
     apiRef.current?.setGridOption("quickFilterText", quickFilter);
   }, [quickFilter]);
 
-  useEffect(() => {
-    if (!focusId || !apiRef.current) return;
-    const node = apiRef.current.getRowNode(focusId);
+  // the grid may become ready (or receive rows) after this effect runs, so the grid callbacks retry the focus too
+  const focusRow = useCallback(() => {
+    const api = apiRef.current;
+    if (!focusId || !api) return;
+    const node = api.getRowNode(focusId);
     if (node) {
       node.setExpanded(true);
-      apiRef.current.ensureNodeVisible(node, "middle");
+      api.ensureNodeVisible(node, "middle");
     }
-  }, [focusId, rows]);
+  }, [focusId]);
+
+  useEffect(focusRow, [focusRow, rows]);
 
   return (
     <div style={{ height: "min(70vh, 640px)", minHeight: 420 }}>
@@ -222,7 +228,9 @@ export function LedgerGrid({
         onGridReady={(e) => {
           apiRef.current = e.api;
           onApi?.(e.api);
+          focusRow();
         }}
+        onRowDataUpdated={focusRow}
       />
     </div>
   );

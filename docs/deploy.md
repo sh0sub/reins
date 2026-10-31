@@ -39,6 +39,7 @@
 | `PAYPAL_SANDBOX_MERCHANT_EMAIL` | 선택 | 샌드박스 비즈니스 계정 이메일(developer.paypal.com → Testing Tools → Sandbox Accounts). Setup의 "Use demo merchant"에 표시된다 |
 | `TREASURY_PAYEE_EMAIL` | 선택 | Treasury 모드를 쓸 때 받는 쪽 샌드박스 계정 이메일 |
 | `ANTHROPIC_API_KEY` | 권장 | console.anthropic.com → API Keys. 비우면 결정적 mock 심사기 |
+| `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` | 선택 | AG Grid Enterprise 키(체험판 키는 ag-grid.com 무료 신청). 비우면 공개 URL의 원장에 체험판 워터마크가 보인다. 빌드 때 읽으므로 넣은 뒤 재배포 |
 | `TELEGRAM_BOT_TOKEN` | 선택 | BotFather에서 받은 토큰. 비우면 텔레그램 없이 웹 승인함만 쓴다 |
 | `TELEGRAM_WEBHOOK_SECRET` | 텔레그램 쓸 때 | 직접 만든다: `openssl rand -hex 32`. 영문·숫자·`_`·`-`만 된다. 4단계 setWebhook에 같은 값을 넣는다 |
 

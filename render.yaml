@@ -72,6 +72,9 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Optional AG Grid Enterprise key (removes the trial watermark on the public URL); read at build time
+      - key: NEXT_PUBLIC_AG_GRID_LICENSE_KEY
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET # letters, digits, _ and - only (Telegram secret_token rule)

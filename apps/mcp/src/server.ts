@@ -37,7 +37,7 @@ export function summarize(v: Record<string, unknown>): string {
     case "paying":
       return `${id} is being paid. Check get_request_status shortly.`;
     case "denied":
-      return `${id} was denied: ${String(v.reason ?? "no reason")}. Do not retry with the same request.`;
+      return `${id} was denied: ${String(v.reason ?? "no reason").replace(/\.+$/, "")}. Do not retry with the same request.`;
     case "expired":
       return `${id} expired without a decision.`;
     case "failed":
