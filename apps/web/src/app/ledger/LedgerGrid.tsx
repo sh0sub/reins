@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -202,6 +202,15 @@ export function LedgerGrid({
 }) {
   const context = useMemo<GridContext>(() => ({ openDrawer: onOpen }), [onOpen]);
   const apiRef = useRef<GridApi<LedgerRow> | null>(null);
+  // phones: keep Agent/time, Item, Amount and Status visible; the rest is one tap away in the row detail and drawer
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 719px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const cols = useMemo<ColDef<LedgerRow>[]>(
     () => [
       {
@@ -209,24 +218,27 @@ export function LedgerGrid({
         field: "created_at",
         sort: "desc",
         width: 112,
+        minWidth: narrow ? 70 : undefined,
+        // on a phone the group column carries the agent name and the expander, so grouped rows drop this column
+        hide: narrow && group,
         cellRenderer: group ? undefined : "agGroupCellRenderer",
         valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : ""),
         filter: "agDateColumnFilter",
         filterValueGetter: (p) => (p.data ? new Date(p.data.created_at) : null),
       },
-      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 78, sortable: false, filter: false },
+      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, hide: narrow, width: 78, sortable: false, filter: false },
       { headerName: "Agent", field: "agent_name", rowGroup: group, hide: group, enableRowGroup: true, filter: "agSetColumnFilter" },
-      { headerName: "Item", field: "items", flex: 2, minWidth: 130, tooltipField: "items" },
-      { headerName: "Merchant", field: "merchant", width: 112, filter: "agSetColumnFilter" },
+      { headerName: "Item", field: "items", flex: 2, minWidth: narrow ? 70 : 130, tooltipField: "items" },
+      { headerName: "Merchant", field: "merchant", hide: narrow, width: 112, filter: "agSetColumnFilter" },
       // Group/grand totals sum only paid rows (blocked and failed requests were never charged).
-      { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: 84, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Decision", colId: "decision", valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 98, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 138, minWidth: 130, filter: "agSetColumnFilter", enableCellChangeFlash: true },
-      { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 100, suppressHeaderFilterButton: true },
-      { headerName: "Recon", colId: "recon", valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Risk", field: "risk", width: 64, minWidth: 60, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: 84, minWidth: narrow ? 66 : undefined, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Decision", colId: "decision", hide: narrow, valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 98, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 138, minWidth: narrow ? 84 : 130, filter: "agSetColumnFilter", enableCellChangeFlash: true },
+      { headerName: "PayPal ID", colId: "paypal", hide: narrow, valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 100, suppressHeaderFilterButton: true },
+      { headerName: "Recon", colId: "recon", hide: narrow, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Risk", field: "risk", hide: narrow, width: 64, minWidth: 60, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
     ],
-    [group],
+    [group, narrow],
   );
 
   useEffect(() => {
@@ -257,7 +269,7 @@ export function LedgerGrid({
         defaultColDef={{ sortable: true, resizable: true, filter: true, minWidth: 60 }}
         autoSizeStrategy={{ type: "fitGridWidth" }}
         suppressAggFuncInHeader
-        autoGroupColumnDef={{ headerName: "Agent / time", width: 150, minWidth: 130, cellRendererParams: { suppressCount: false } }}
+        autoGroupColumnDef={{ headerName: "Agent / time", width: narrow ? 128 : 250, minWidth: narrow ? 110 : 200, cellRendererParams: { suppressCount: false } }}
         groupDefaultExpanded={1}
         // rows never slide under a stuck group row, so every row of the last group is readable without extra scrolling
         suppressGroupRowsSticky

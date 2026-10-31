@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { webhookCallback, type Bot } from "grammy";
-import { getActiveMandate, getWorkspace, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
+import { getActiveMandate, getWorkspace, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
 import {
   HttpPayPalClient,
   ReinsError,
@@ -179,6 +179,21 @@ const routes: Route[] = [
     return json(await suggestCategories(ctx.categorySuggester, String(purpose ?? "")));
   }),
   toRoute("GET", "/api/inbox", "admin", async (_r, ctx) => json({ items: await getInbox(ctx) })),
+  // Public demo only: a judge who approved (or let expire) the seeded card can raise the same Research Scout request again
+  toRoute("POST", "/api/demo/request", "admin", async (_r, ctx) => {
+    if (process.env.REINS_PUBLIC_DEMO !== "1") throw new ReinsError(403, "demo_only", "Only the public demo can create sample requests");
+    const agents = await listAgents(ctx.db);
+    const agent = agents.find((a) => a.name === "Research Scout" && !a.revokedAt && !a.pausedAt);
+    if (!agent) throw new ReinsError(404, "not_found", "The demo agent Research Scout is missing or paused");
+    const view = await submitPurchase(ctx, agent, {
+      merchant: "statista.com",
+      amount: "59.00",
+      items: 'Report "Agentic Commerce 2026" (PDF)',
+      reason: "Market sizing for Q4 memo (task #31)",
+      category: "research",
+    });
+    return json({ request_id: view.request_id, status: view.status }, 201);
+  }),
   toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p) => {
     const { action, note, allow_merchant } = (await readJson(req)) as { action?: string; note?: unknown; allow_merchant?: unknown };
     if (action !== "approve" && action !== "deny") throw new ReinsError(400, "invalid_input", "action must be approve or deny");
@@ -224,6 +239,7 @@ const routes: Route[] = [
       payment_mode: ws.paymentMode,
       has_vault: Boolean(ws.vaultId),
       telegram_linked: Boolean(ws.telegramChatId),
+      public_demo: process.env.REINS_PUBLIC_DEMO === "1",
       telegram_bot: process.env.TELEGRAM_BOT_USERNAME ?? "ReinsApproveBot",
       connected_at: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : null,
     });

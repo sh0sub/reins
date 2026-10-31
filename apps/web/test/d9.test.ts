@@ -198,3 +198,27 @@ describe("POST /api/paypal/connect on the public demo", () => {
     }
   });
 });
+
+describe("POST /api/demo/request on the public demo", () => {
+  it("is refused outside the public demo", async () => {
+    const { call } = await setup();
+    const res = await call("POST", "/api/demo/request", {});
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("demo_only");
+  });
+
+  it("raises the Research Scout statista request into the inbox", async () => {
+    process.env.REINS_PUBLIC_DEMO = "1";
+    try {
+      const { call } = await setup();
+      const res = await call("POST", "/api/demo/request", {});
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe("pending_human");
+      const inbox = (await call("GET", "/api/inbox")).body.items;
+      expect(inbox).toHaveLength(1);
+      expect(inbox[0]).toMatchObject({ agent_name: "Research Scout", merchant: "statista.com", amount: "59.00" });
+    } finally {
+      delete process.env.REINS_PUBLIC_DEMO;
+    }
+  });
+});

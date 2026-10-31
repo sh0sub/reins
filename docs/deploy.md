@@ -43,7 +43,7 @@
 | `TELEGRAM_BOT_TOKEN` | 선택 | BotFather에서 받은 토큰. 비우면 텔레그램 없이 웹 승인함만 쓴다 |
 | `TELEGRAM_WEBHOOK_SECRET` | 텔레그램 쓸 때 | 직접 만든다: `openssl rand -hex 32`. 영문·숫자·`_`·`-`만 된다. 4단계 setWebhook에 같은 값을 넣는다 |
 
-`render.yaml`에 이미 들어 있어서 넣을 필요 없는 값: `DATABASE_URL=file:/tmp/reins.db`, `PAYPAL_ENV=sandbox`, `PAYPAL_PAYMENT_MODE=supervised`, `REINS_TIMEZONE=Asia/Seoul`, `REINS_QUIET_HOURS=off`(심사위원 시간대 때문에 공개 데모에서는 끔), `REINS_PUBLIC_DEMO=1`(방문자 PayPal 키 입력 차단, 데모 판매자만 연결), `REINS_APPROVAL_TTL_MINUTES=30`, `TELEGRAM_BOT_USERNAME=ReinsApproveBot`(봇 이름이 다르면 Environment 탭에서 고친다), `NODE_VERSION=22`, `REINS_CRON_SECRET`(Render가 자동 생성. 크론과 공유하지 않고, 수동 reconcile 호출에만 쓴다. 값은 `reins-web` Environment 탭에서 본다).
+`render.yaml`에 이미 들어 있어서 넣을 필요 없는 값: `DATABASE_URL=file:/tmp/reins.db`, `PAYPAL_ENV=sandbox`, `PAYPAL_PAYMENT_MODE=supervised`, `REINS_TIMEZONE=Asia/Seoul`, `REINS_QUIET_HOURS=off`(심사위원 시간대 때문에 공개 데모에서는 끔), `REINS_PUBLIC_DEMO=1`(방문자 PayPal 키 입력 차단, 데모 판매자만 연결), `REINS_APPROVAL_TTL_MINUTES=10080`(7일. 심사 기간 내내 시드된 승인 카드가 만료되지 않게), `TELEGRAM_BOT_USERNAME=ReinsApproveBot`(봇 이름이 다르면 Environment 탭에서 고친다), `NODE_VERSION=22`, `REINS_CRON_SECRET`(Render가 자동 생성. 크론과 공유하지 않고, 수동 reconcile 호출에만 쓴다. 값은 `reins-web` Environment 탭에서 본다).
 
 `NODE_ENV`는 일부러 넣지 않았다. Render가 실행할 때만 `production`으로 설정한다. 빌드 때도 `production`이면 pnpm이 devDependencies(typescript, tsx)를 건너뛰어서 빌드와 시드가 깨진다.
 

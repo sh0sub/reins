@@ -34,6 +34,28 @@ function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: bool
   );
 }
 
+type MandateCheck = { key: string; label: string; note: string | null; ok: boolean };
+
+/**
+ * S5 "Mandate check · 3 of 4 pass": the four checks a person reads (merchant, monthly cap, per-purchase cap, auto-approve
+ * limit). The other hard rules only appear when one of them fails.
+ */
+function mandateChecks(row: InboxItem, rules: ReturnType<typeof hardRules>, amountCents: number, after: number | null): MandateCheck[] {
+  const rule = (code: string) => rules.find((r) => r.rule === code);
+  const okOf = (code: string) => rule(code)?.ok ?? true;
+  const cap = row.mandate?.per_tx_cap_cents ?? null;
+  const auto = row.budget.auto_approve_limit_cents;
+  const out: MandateCheck[] = [
+    { key: "allowlist", label: "Merchant allowed", note: row.merchant, ok: okOf("allowlist") && okOf("blocked_merchant") },
+    { key: "monthly_limit", label: "Within monthly cap", note: after == null ? null : after >= 0 ? `${usd(after)} left after` : `${usd(-after)} over`, ok: okOf("monthly_limit") },
+    { key: "per_tx_cap", label: "Within per-purchase cap", note: cap == null ? null : `≤ ${usd(cap)}`, ok: okOf("per_tx_cap") },
+  ];
+  if (auto != null) out.push({ key: "auto", label: "Under auto-approve limit", note: `$${row.amount} ${amountCents > auto ? ">" : "≤"} ${usd(auto)}`, ok: amountCents <= auto });
+  const shown = new Set(["allowlist", "blocked_merchant", "monthly_limit", "per_tx_cap"]);
+  for (const r of rules) if (!r.ok && !shown.has(r.rule)) out.splice(out.length - (auto != null ? 1 : 0), 0, { key: r.rule, label: r.detail, note: null, ok: false });
+  return out;
+}
+
 function Activity({ row, telegram }: { row: InboxItem; telegram: boolean }) {
   const hard = row.decisions.find((d) => d.stage === "hard_rules");
   const llm = row.decisions.find((d) => d.stage === "llm");
@@ -162,6 +184,7 @@ function Detail({
   const amountCents = Math.round(Number(row.amount) * 100);
   const limit = row.budget.monthly_limit_cents;
   const after = limit == null ? null : limit - row.budget.month_spent_cents - amountCents;
+  const checks = mandateChecks(row, rules, amountCents, after);
   const ref = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -219,39 +242,19 @@ function Detail({
       <div className="grid-2">
         <section className="stack-s" aria-labelledby="checks-h">
           <h3 id="checks-h">
-            Mandate check · {rules.filter((r) => r.ok).length} of {rules.length} pass
+            Mandate check · {checks.filter((c) => c.ok).length} of {checks.length} pass
           </h3>
           <ul className="checks">
-            {rules.every((r) => r.ok) && rules.length > 0 && (
-              <li>
-                <Icon name="check" label="Pass" />
-                <details>
-                  <summary>All {rules.length} hard rules passed</summary>
-                  <ul className="caption" style={{ margin: 0, paddingLeft: 16 }}>
-                    {rules.map((r) => (
-                      <li key={r.rule}>{r.detail}</li>
-                    ))}
-                  </ul>
-                </details>
-                <span className="status status-ok">PASS</span>
-              </li>
-            )}
-            {rules.filter((r) => !r.ok).map((r) => (
-              <li key={r.rule} className={r.ok ? undefined : "fail"}>
-                <Icon name={r.ok ? "check" : "warn"} label={r.ok ? "Pass" : "Fail"} />
-                <span>{r.detail}</span>
-                <span className={r.ok ? "status status-ok" : "status status-warn"}>{r.ok ? "PASS" : "FAIL"}</span>
+            {checks.map((c) => (
+              <li key={c.key} className={c.ok ? undefined : "fail"}>
+                <Icon name={c.ok ? "check" : "warn"} label={c.ok ? "Pass" : "Fail"} />
+                <span>
+                  {c.label}
+                  {c.note && <span className="caption"> · {c.note}</span>}
+                </span>
+                <span className={c.ok ? "status status-ok" : "status status-warn"}>{c.ok ? "PASS" : c.key === "auto" ? "ASK" : "FAIL"}</span>
               </li>
             ))}
-            {limit != null && row.budget.auto_approve_limit_cents != null && (
-              <li className={amountCents > row.budget.auto_approve_limit_cents ? "fail" : undefined}>
-                <Icon name={amountCents > row.budget.auto_approve_limit_cents ? "warn" : "check"} label="Auto-approve limit" />
-                <span>
-                  Auto-approve limit: ${row.amount} {amountCents > row.budget.auto_approve_limit_cents ? ">" : "≤"} {usd(row.budget.auto_approve_limit_cents)}
-                </span>
-                <span className={amountCents > row.budget.auto_approve_limit_cents ? "status status-warn" : "status status-ok"}>{amountCents > row.budget.auto_approve_limit_cents ? "ASK" : "PASS"}</span>
-              </li>
-            )}
           </ul>
         </section>
         <section className="stack-s" aria-labelledby="audit-h">
@@ -483,6 +486,8 @@ function InboxScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [month, setMonth] = useState<Overview["decisions"] | null>(null);
   const [telegram, setTelegram] = useState<boolean | null>(null);
+  const [publicDemo, setPublicDemo] = useState(false);
+  const [raising, setRaising] = useState(false);
   const [tab, setTabState] = useState<Tab>(params.get("tab") === "decided" ? "decided" : "pending");
   const [drawerId, setDrawerId] = useState<string | null>(params.get("drawer") === "1" ? params.get("r") : null);
 
@@ -507,8 +512,11 @@ function InboxScreen() {
     api<Overview>("/api/overview")
       .then((o) => setMonth(o.decisions))
       .catch(() => setMonth(null));
-    api<{ telegram_linked: boolean }>("/api/workspace")
-      .then((w) => setTelegram(w.telegram_linked))
+    api<{ telegram_linked: boolean; public_demo?: boolean }>("/api/workspace")
+      .then((w) => {
+        setTelegram(w.telegram_linked);
+        setPublicDemo(Boolean(w.public_demo));
+      })
       .catch(() => setTelegram(null));
   }, []);
 
@@ -549,6 +557,19 @@ function InboxScreen() {
     } finally {
       setBusy(null);
       load();
+    }
+  }
+
+  /** Public demo only: raises the Research Scout statista request again so a visitor always has a card to approve. */
+  async function raiseSample() {
+    setRaising(true);
+    try {
+      await api("/api/demo/request", { method: "POST", body: {} });
+      load();
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setRaising(false);
     }
   }
 
@@ -597,6 +618,14 @@ function InboxScreen() {
                   <div className="empty" aria-live="polite">
                     <h2>All clear</h2>
                     <p className="muted">Nothing waiting for you. New requests appear here{telegram ? " and on Telegram" : ""} instantly.</p>
+                    {publicDemo && (
+                      <p>
+                        <button type="button" className="btn btn-primary" onClick={raiseSample} disabled={raising}>
+                          {raising ? "Sending…" : "Send a sample request"}
+                        </button>
+                        <span className="caption"> Research Scout asks to buy a $59 report, so you can try the approval.</span>
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <ul className="pick-list" aria-live="polite">

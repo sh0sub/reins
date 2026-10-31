@@ -194,7 +194,8 @@ export default function SetupPage() {
   const payReady = ws.payment_mode === "vaulted" ? ws.has_vault : true;
   const s1: StepState = connected ? "done" : "current";
   const s2: StepState = !connected ? "todo" : payReady && (ws.has_vault || ws.payment_mode !== "vaulted") ? "done" : "current";
-  const s3: StepState = ws.telegram_linked ? "done" : connected ? "current" : "todo";
+  // steps complete in order: Telegram stays "Waiting" until PayPal is connected, even if a chat is already linked
+  const s3: StepState = !connected ? "todo" : ws.telegram_linked ? "done" : "current";
   const note = (step: number) =>
     msg?.step === step ? (
       <p className={msg.bad ? "alert alert-bad" : "alert"} role={msg.bad ? "alert" : "status"}>
@@ -205,7 +206,7 @@ export default function SetupPage() {
   const steps: Array<{ n: number; title: string; sub: string; state: StepState }> = [
     { n: 1, title: "Connect PayPal", sub: s1 === "done" ? "Verified" : "In progress", state: s1 },
     { n: 2, title: "Payment method", sub: s2 === "done" ? "Saved" : s2 === "current" ? "In progress" : "Waiting", state: s2 },
-    { n: 3, title: "Telegram", sub: s3 === "done" ? "Linked" : "Approve on phone", state: s3 },
+    { n: 3, title: "Telegram", sub: s3 === "done" ? "Linked" : s3 === "todo" ? "Waiting" : "Approve on phone", state: s3 },
   ];
   const stepNo = steps.find((x) => x.state !== "done")?.n ?? 3;
 

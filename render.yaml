@@ -47,7 +47,7 @@ services:
       - key: REINS_PUBLIC_DEMO
         value: "1"
       - key: REINS_APPROVAL_TTL_MINUTES
-        value: "30"
+        value: "10080"
       - key: REINS_EXPLAIN_DENIALS
         value: "1"
       - key: TELEGRAM_BOT_USERNAME

@@ -82,9 +82,13 @@ describe("M13 seed", () => {
     const fiverrDetail = await getRequestDetail(await createTestContext({ db }), fiverr.id);
     expect(fiverrDetail.auditor).toMatchObject({ provider: expect.stringMatching(/^claude:/), tokens: 412, latency_ms: 1900 });
     expect(fiverrDetail.mandate!.version).toBe(2); // v2 was the snapshot when R-0143 was blocked
-    // video act 2: $59 statista approved by a human, $41 of Scout's $100 left
-    const statista = rows.find((x) => x.merchant === "statista.com" && x.amountCents === 5900)!;
-    expect(statista.status).toBe("paid");
+    // video flow B: the pending card R-0142 is Research Scout, statista.com, $59 "Agentic Commerce 2026"
+    const pending = rows.find((x) => x.status === "pending_human")!;
+    expect(pending).toMatchObject({ merchant: "statista.com", amountCents: 5900, items: 'Report "Agentic Commerce 2026" (PDF)' });
+    expect(rows.filter((x) => x.merchant === "statista.com" && x.amountCents === 5900)).toHaveLength(1);
+    // the human-approved $59 this week is DevOps' Vercel seat
+    const approved = rows.find((x) => x.merchant === "vercel.com" && x.amountCents === 5900)!;
+    expect(approved.status).toBe("paid");
   });
 
   it("is re-runnable, and refuses a DB with non-seed data unless --force", async () => {
