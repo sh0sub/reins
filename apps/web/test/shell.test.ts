@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentsKpi, capPct, searchPalette, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
+import { resolveRequestId } from "../src/lib/format.ts";
 
 const agents: ShellAgent[] = [
   { id: "a1", name: "Claude Code – DevOps", status: "active", month_spent_cents: 1998, monthly_limit_cents: 15000 },
@@ -30,5 +31,19 @@ describe("shell helpers", () => {
     expect(searchPalette("ledger", agents, reqs)[0]).toMatchObject({ kind: "page", href: "/ledger" });
     expect(searchPalette("", agents, reqs).some((i) => i.id === "a4")).toBe(false);
     expect(searchPalette("zzz", agents, reqs)).toEqual([]);
+  });
+});
+
+describe("resolveRequestId (S6 deep link /ledger/R-0143)", () => {
+  const rows = [{ display_id: "R-0143", request_id: "req_abc" }];
+  it("maps a display id to the internal id, case-insensitive", () => {
+    expect(resolveRequestId(rows, "R-0143")).toBe("req_abc");
+    expect(resolveRequestId(rows, "r-0143")).toBe("req_abc");
+  });
+  it("keeps internal ids and waits (null) for unknown display ids", () => {
+    expect(resolveRequestId(rows, "req_abc")).toBe("req_abc");
+    expect(resolveRequestId(null, "R-0143")).toBeNull();
+    expect(resolveRequestId(rows, "R-9999")).toBeNull();
+    expect(resolveRequestId(rows, null)).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 200 tests in 29 files (`pnpm test`), `pnpm lint` clean.
+Test count at time of writing: 218 tests in 32 files (`pnpm test`), `pnpm lint` clean.
 
 ---
 
@@ -52,7 +52,7 @@ Around that: an AG Grid ledger of every decision with grouping and drill-down, a
 
 **Render.** A Blueprint (`render.yaml`) deploys two free web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and demo data is re-seeded on every boot, so the demo always starts clean (free instances sleep after about 15 minutes and reset).
 
-**Testing.** 200 Vitest tests across 29 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
+**Testing.** 218 Vitest tests across 32 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
 
 ## Challenges we ran into
 

@@ -64,3 +64,11 @@ export function statusChip(row: Pick<LedgerRow, "status">): { label: string; cla
       return { label: row.status, className: "status" };
   }
 }
+
+/** Deep links may carry a display id (R-0143). Returns the internal id, the id itself when it is not a display id, or null while rows are unknown. */
+export function resolveRequestId(rows: Array<Pick<LedgerRow, "display_id" | "request_id">> | null, id: string | null): string | null {
+  if (!id) return null;
+  const hit = rows?.find((r) => r.display_id.toLowerCase() === id.toLowerCase());
+  if (hit) return hit.request_id;
+  return /^R-\d+$/i.test(id) ? null : id;
+}

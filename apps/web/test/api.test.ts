@@ -95,6 +95,12 @@ describe("D4 REST API", () => {
     expect((await call("POST", "/api/workspace/mode", { mode: "card" })).status).toBe(400);
   });
 
+  it("fake connect without an email still shows a demo sandbox merchant", async () => {
+    expect((await call("GET", "/api/workspace")).body.merchant_email).toBeNull();
+    expect((await call("POST", "/api/paypal/connect", { demo: true })).body.merchant_email).toBe("sb-merchant-demo@business.example.com");
+    expect((await call("GET", "/api/workspace")).body.merchant_email).toBe("sb-merchant-demo@business.example.com");
+  });
+
   it("demo connect + vault setup + telegram link", async () => {
     expect((await call("POST", "/api/paypal/connect", { demo: true, merchant_email: "sb-merchant@business.example.com" })).body).toMatchObject({ connected: true, paypal_env: "fake" });
     const start = await call("POST", "/api/paypal/vault/start");

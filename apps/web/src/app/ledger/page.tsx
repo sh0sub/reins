@@ -7,7 +7,7 @@ import type { GridApi } from "ag-grid-community";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
-import { outcomeBucket } from "@/lib/format";
+import { outcomeBucket, resolveRequestId } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
@@ -56,6 +56,7 @@ function LedgerScreen() {
   const [flash, setFlash] = useState<string | null>(null);
   const gridApi = useRef<GridApi<LedgerRow> | null>(null);
   // S6 drawer, deep link /ledger?r=<id>&drawer=1
+  // r may be a display id (R-0143); it resolves to the internal id once the rows are loaded
   const [drawerId, setDrawerId] = useState<string | null>(() => (params.get("drawer") === "1" ? params.get("r") : null));
   const openDrawer = useCallback((id: string) => {
     setDrawerId(id);
@@ -95,6 +96,9 @@ function LedgerScreen() {
     return () => clearTimeout(t);
   }, [flash]);
 
+  const resolveId = useCallback((id: string | null) => resolveRequestId(rows, id), [rows]);
+  const drawerReqId = resolveId(drawerId);
+  const focusReqId = resolveId(params.get("r"));
   const agents = useMemo(() => [...new Map((rows ?? []).map((r) => [r.agent_id, r.agent_name])).entries()], [rows]);
   // period + category scope the KPIs, the chart and the grid; agent/status/search narrow the grid only
   const scoped = useMemo(() => {
@@ -277,7 +281,7 @@ function LedgerScreen() {
                 </button>
               </div>
             ) : (
-              <LedgerGrid key={group ? "g" : "f"} rows={filtered} group={group} quickFilter={q} focusId={params.get("r")} onApi={(a) => (gridApi.current = a)} onOpen={openDrawer} />
+              <LedgerGrid key={group ? "g" : "f"} rows={filtered} group={group} quickFilter={q} focusId={focusReqId} onApi={(a) => (gridApi.current = a)} onOpen={openDrawer} />
             )}
             <p className="caption">
               {filtered.length} of {scoped.length} rows ({periodLabel}) · {money(shownTotals.paid)} paid · {money(shownTotals.blocked)} blocked · expand a row for the auditor reason, mandate
@@ -293,7 +297,7 @@ function LedgerScreen() {
           </section>
         </div>
       )}
-      {drawerId && <RequestDrawer requestId={drawerId} onClose={closeDrawer} onChanged={load} />}
+      {drawerReqId && <RequestDrawer requestId={drawerReqId} onClose={closeDrawer} onChanged={load} />}
       {flash && (
         <div className="toast" role="status">
           {flash}

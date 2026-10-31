@@ -31,7 +31,7 @@ function when(iso: string, now = Date.now()) {
   if (s < 45) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 const envLabel = (env: string) => (env === "sandbox" ? "PayPal Sandbox" : env === "fake" ? "Fake PayPal (offline)" : env);
 
@@ -51,7 +51,7 @@ function headRange(o: Overview) {
   const now = new Date(o.period.now);
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const title = o.period.kind === "30d" ? "Last 30 days at a glance" : `${start.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" })} at a glance`;
-  return { title, range: `${fmt(start)} – ${fmt(now)}` };
+  return { title, range: `${fmt(start)} – ${fmt(now)} UTC` };
 }
 
 function PeriodToggle({ value, onChange }: { value: OverviewPeriod; onChange: (p: OverviewPeriod) => void }) {
@@ -330,7 +330,7 @@ function WeeklyCard({ summary, error, onRetry }: { summary: WeeklySummary | null
           )}
           {summary.action && (
             <div className="row">
-              <Link className="btn" href={`/ledger?r=${summary.action.request_id}`}>
+              <Link className="btn" href={`/ledger?r=${summary.action.request_id}&drawer=1`}>
                 <Icon name="eye" className="ico" />
                 Review {summary.action.display_id}
               </Link>

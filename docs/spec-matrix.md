@@ -1,7 +1,7 @@
 # Spec matrix (artifact `paypal*` vs running product)
 
-Audit round 2, 2026-11-01 (round 1 rows re-verified against a fresh seed). Product run with `PAYPAL_ENV=fake`, temp DB, no Claude or Telegram. Screenshots at 1440 and 390 px.
-`pnpm test` 215/215 pass, `pnpm typecheck` clean, `pnpm lint` clean.
+Audit round 3, 2026-11-01 (rows re-verified against a fresh seed; round 2 fixes confirmed; new rows R3-*). Product run with `PAYPAL_ENV=fake`, temp DB, no Claude or Telegram. Screenshots at 1440 and 390 px.
+`pnpm test` 218/218 pass (32 files) after the r3 fixes (rows marked "r3 fix" re-verified in the browser at 1440 and 390, screenshots in `converge/reins/fix-r3/`), `pnpm typecheck` clean, `pnpm lint` clean. Round 3 screenshots: scratchpad `converge/reins/r3/` (1440 and 390; scrollWidth = viewport on all pages).
 Status: match / gap / blocked.
 
 | id | artifact section | expected | status | evidence |
@@ -15,7 +15,7 @@ Status: match / gap / blocked.
 | SHELL-cmdk | S2/S4/S5/S6/S7 top bar | "Search requests, agents… ⌘K" in top bar | match | Top-bar field + Cmd/Ctrl+K palette over pages, agents and requests (arrows, Enter, Esc); "fiverr" finds R-0022 and opens its drawer (fix-r1/cmdk-1440.png, cmdk-search-1440.png, CommandPalette.tsx) |
 | SHELL-pending | top bar | Pending N shortcut, Live chip | match | d-overview.png |
 | WIN-first-screen-value | S1/S7 first impression | First screen states the promise and the 3-act story and shows Sandbox state | match | "/" opens the S1 hero ("Hold the reins on AI spending.") until PayPal is connected, then Overview, which carries the same tagline under the title; Sandbox badge in the sidebar brand row (fix-r1/setup-1440.png, overview-1440.png, app/page.tsx) |
-| S2-agent-list | S2 Agents | List with name, status chip, $used/$cap bar, header "Agents N", New agent button | gap | list+bars match; New agent is an inline input with a stray placeholder (d-agents.png) |
+| S2-agent-list | S2 Agents | List with name, status chip, $used/$cap bar, header "Agents N", New agent button | match | r3 fix: header row 'Agents N' with a primary New agent button (aria-expanded) that opens the inline name form (autofocus, Create, Cancel, Esc); no stray placeholder (fix-r3/agents-newagent-1440.png, agents-newagent-390.png, agents/page.tsx) |
 | S2-mandate-form | S2 Agents | Purpose, categories + AI suggest, 3 amounts, scale line, allowed/blocked chips, expiry, auto-pay line | match | d-agents.png |
 | S2-version-select | S2 Agents | "v3 · current ▾" selector in editor header, versions list in the left column | match | r2 fix: `<select aria-label="Mandate version">` (v3 · current, v2, v1) in the editor header; picking an older version loads it in the editor ("Viewing v1 ... Saving creates v4", Back to current); Mandate versions and Recent requests moved under the agents list (fix-r2/agents-scout-1440.png, agents-v1-1440.png, agents/page.tsx) |
 | S2-versions-diff | S2 Agents | Version list, changed-field highlight, "changed in vN" | match | Tighten mandate saved v2, "changed in v2", versions list updated (f-tighten-saved.png) |
@@ -35,7 +35,7 @@ Status: match / gap / blocked.
 | S6-drawer | S6 Detail | Right drawer: timeline ms, hard-rule table with 3 FAIL, risk meter, EN/KO, snapshot, raw MCP, Tighten mandate, Pause, Esc | match | f-drawer-ok.png; Esc closes |
 | S6-model-line | S6 Detail | "Model: Claude · 412 tokens · 1.9 s" | match | r2 fix: drawer shows `Model: Claude · 412 tokens · 1.9 s` for R-0143. Real runs record tokens (Claude usage) and latency in the llm decision (audit.ts, claudeAuditor.ts), the seed records scripted values flagged `seeded: true`; timeline reads "LLM audit · Claude"; overview caption "Auto summary" instead of "Template · Claude is off" (fix-r2/drawer-1440.png, RequestDrawer.tsx modelLine, test/seed.test.ts) |
 | S6-tighten | S6 Detail / flow C | Tighten mandate prefills block fiverr.com + cap $60 | match | /agents?...&block=fiverr.com&cap=60, saved as v2 |
-| S6-deeplink | S6 Detail | /ledger/R-0143 style link | gap | `?r=R-0022` (display id) gives "Audit log unavailable"; only internal ids work |
+| S6-deeplink | S6 Detail | /ledger/R-0143 style link | match | r3 fix: `/ledger/R-0143` redirects to `/ledger?r=R-0143&drawer=1`, display ids resolve to the internal id once rows load (drawer opens, row focused); Overview 'Review R-0143' now opens the drawer directly (fix-r3/deeplink-1440.png, deeplink-390.png, ledger/[id]/page.tsx, lib/format.ts resolveRequestId + test in apps/web/test/shell.test.ts) |
 | S7-kpis | S7 Overview | Spent / Decisions bar / Saved you, status chip | match | d-overview.png |
 | S7-bars-donut | S7 Overview | Cap bars to ledger filter, AG Charts donut with total, category filter, period toggle | match | donut palette deviation is justified in docs/design.md |
 | S7-feed-summary | S7 Overview | Recent decisions feed + AI weekly summary with warning box and Review/Edit | match | d-overview.png |
@@ -43,18 +43,21 @@ Status: match / gap / blocked.
 | DATA-seed | Flow C numbers | 24 requests: Auto 19 · Human 4 · Blocked 1, blocked $450, 2 active + 1 paused, R-0143, versions v3/v2/v1 | match | r2 fix: 24 requests all this month, Auto 19 · Human 4 · Blocked 1 on both Overview and Ledger tiles (ledger tiles now use the same outcome split), blocked $450.00, $117.97 of $410, 1 pending (R-0142), fiverr = R-0143, Research Scout v3 current / v2 snapshot for R-0143 / v1; scripts/demo/prep-db.mjs resets mandates to v1 for the video takes. Per-agent amounts differ from the mockup (which does not add up to its own totals): 24% / 68% / 9% (fix-r2/ledger-1440.png, overview-1440.png, seed.ts, test/seed.test.ts) |
 | F-MVP-M1-M14 | Features MVP | M1-M14 | match | 210 tests incl. integration flow B; M7/M8 real PayPal not run (no network spend) |
 | F-Should-S1-S7 | Features Should | Overview, ask agent, anomalies, receipts, instant allow, DevOps agent | match | design.md, cf75afb; S7 APIMatic gap below |
-| F-S7-APIMatic | Features S7 | APIMatic Context Plugin use recorded in README + commits | gap | README claims APIMatic target; checklist says no usage evidence |
+| F-S7-APIMatic | Features S7 | APIMatic Context Plugin use recorded in README + commits | blocked | r3: `context-plugins` (APIMatic installer, npm) exists, but `npx context-plugins install paypal` writes into the user's Claude Code/Cursor/VS Code/Codex configuration, which an implementer run must not change, and no usage can be claimed without really using it. Not faked: README and devpost.md still say target only. For the user: run it once, use it for an Orders v2 or Payouts check, commit a 'Built with APIMatic' note (steps in docs/submission/checklist.md) |
 | FLOW-A | Flow A | Onboarding to first agent | match | setup, then agents |
 | FLOW-B | Flow B | AUTO / ASK / DENY endings | match | tests/integration + inbox/ledger UI |
 | FLOW-C | Flow C | Review, tighten mandate, v-next | match | f-tighten-saved.png |
 | LAYOUT-responsive | Mockup layouts | 390 px usable, no horizontal overflow | match | scrollWidth 390 on all 5 pages |
-| SUB-readme-api | Submission | README with API table, architecture, 5-minute install | gap | README has no API table (checklist #41) |
+| SUB-readme-api | Submission | README with API table, architecture, 5-minute install | match | r3 fix: README '## API' section with an MCP tool to REST table and an endpoint table by area with auth; architecture diagram and quickstart already present; test counts refreshed |
 | SUB-video | Submission | YouTube video under 3:00 | blocked | no video file in repo; upload needs user YouTube account |
 | SUB-live-demo | Submission | Render URL + Use demo merchant | blocked | needs user Render account |
 | SUB-devpost | Submission | Devpost form | blocked | needs user account; copy ready in docs/submission/devpost.md |
-| SUB-checklist-stale | Submission | Checklist matches repo | gap | (r2 unchanged) still says 200 tests, "no commit", prior-art line not in video; now 210 tests and committed |
+| SUB-checklist-stale | Submission | Checklist matches repo | match | r3 fix: README, devpost.md and checklist.md say 218 tests / 32 files |
 | TEST-suite | Tests | test/typecheck/lint green | match | 215/215, tsc clean, eslint clean |
 | R2-ledger-1440-clip | S4 Ledger | All grid rows and Risk column visible at 1440 | match | r2 fix: group rows no longer sticky (nothing slides under them), grid starts at the top on first render, vertical scrollbar lane reserved so the fitted columns keep Risk fully visible, also with a row expanded; the dev-only "14 Issues" badge is the AG Grid trial notice in `next dev` (fix-r2/ledger-grid-1440.png, ledger-expanded-1440.png, LedgerGrid.tsx) |
 | R2-s2-version-diff | S2 Agents | Version dropdown, versions in left column, "changed in vN" | match | r2 fix: see S2-version-select; "changed in v3" chip shows on Blocked merchants (fix-r2/agents-scout-1440.png) |
-| R2-month-boundary | S7 Overview | Heading and period match data | gap | r2: at Nov 1 03:00 KST shows "October at a glance" (UTC month) while listing Nov 1 pending rows; low |
+| R2-month-boundary | S7 Overview | Heading and period match data | match | r3 fix: the overview 'Recent decisions' dates now use UTC like the heading and period (range labelled 'Oct 1 – Oct 31 UTC'), so heading, period and feed agree at a month boundary (fix-r3/overview-1440.png, overview/page.tsx) |
 
+| R3-nav-drive | S5/S6 flow | Approve R-0142 from inbox, drawer from ledger ID, Cmd+K search | match | r3 driven in browser: Approve gives toast + "Checkout open", Pending 1 to 0, agent cap 24% to 52%; ID click opens drawer with 3 FAIL, Model line, Esc closes; Cmd+K "fiverr" lists R-0143 (r3/inbox-approved-1440.png, drawer-1440.png, cmdk-search-1440.png) |
+| R3-merchant-email | S1/shell | "Connected · sb-merchant-…@business.example.com" badge and merchant email in sidebar | match | r3 fix: fake mode connects with demo merchant `sb-merchant-demo@business.example.com` (router.ts DEMO_MERCHANT_EMAIL, only for the offline fake PayPal; a configured PAYPAL_SANDBOX_MERCHANT_EMAIL still wins). Setup shows 'Connected · sb-merchant-demo@… · offline fake PayPal'; sidebar shows the email truncated with a tooltip (fix-r3/setup-1440.png; test in apps/web/test/api.test.ts) |
+| R3-test-counts | Submission | Counts in README/Devpost match repo | match | r3 fix: see SUB-checklist-stale |

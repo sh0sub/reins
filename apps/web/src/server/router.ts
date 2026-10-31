@@ -52,6 +52,8 @@ interface Route {
   handler: Handler;
 }
 
+/** Shown for the offline fake PayPal (sandbox merchant lookalike, not a real account). */
+const DEMO_MERCHANT_EMAIL = "sb-merchant-demo@business.example.com";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
@@ -217,7 +219,8 @@ const routes: Route[] = [
     return json({
       name: ws.name,
       paypal_env: ws.paypalEnv,
-      merchant_email: ws.merchantEmail,
+      // offline fake PayPal has no real merchant; show the demo sandbox address so the badge reads like the live one
+      merchant_email: ws.merchantEmail ?? (ws.connectedAt && ws.paypalEnv === "fake" ? DEMO_MERCHANT_EMAIL : null),
       payment_mode: ws.paymentMode,
       has_vault: Boolean(ws.vaultId),
       telegram_linked: Boolean(ws.telegramChatId),
@@ -234,7 +237,7 @@ const routes: Route[] = [
   toRoute("POST", "/api/paypal/connect", "admin", async (req, ctx) => {
     const body = (await readJson(req)) as { demo?: boolean; client_id?: string; client_secret?: string; merchant_email?: string };
     if (body.demo) {
-      const ws = await connectPayPal(ctx, ctx.paypal, { env: ctx.paypal instanceof HttpPayPalClient ? "sandbox" : "fake", merchantEmail: body.merchant_email ?? process.env.PAYPAL_SANDBOX_MERCHANT_EMAIL ?? null });
+      const ws = await connectPayPal(ctx, ctx.paypal, { env: ctx.paypal instanceof HttpPayPalClient ? "sandbox" : "fake", merchantEmail: body.merchant_email ?? process.env.PAYPAL_SANDBOX_MERCHANT_EMAIL ?? (ctx.paypal instanceof HttpPayPalClient ? null : DEMO_MERCHANT_EMAIL) });
       return json({ connected: true, merchant_email: ws.merchantEmail, paypal_env: ws.paypalEnv });
     }
     // a public demo shares one server; visitors' credentials would replace the PayPal client for everyone

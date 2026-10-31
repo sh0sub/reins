@@ -35,7 +35,7 @@ const initials = (name: string) =>
     .map((w) => w[0]!.toUpperCase())
     .join("");
 
-function NewAgent({ onCreated }: { onCreated: (c: Created) => void }) {
+function NewAgent({ onCreated, onClose }: { onCreated: (c: Created) => void; onClose: () => void }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +46,7 @@ function NewAgent({ onCreated }: { onCreated: (c: Created) => void }) {
     try {
       onCreated(await api<Created>("/api/agents", { method: "POST", body: { name } }));
       setName("");
+      onClose();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -54,11 +55,14 @@ function NewAgent({ onCreated }: { onCreated: (c: Created) => void }) {
   }
   return (
     <form className="stack-s" onSubmit={submit}>
-      <label className="label" htmlFor="agent-name">New agent</label>
-      <div className="row" style={{ flexWrap: "nowrap" }}>
-        <input id="agent-name" className="input" placeholder="e.g. Research Scout" value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} />
-        <button className="btn" disabled={busy || !name.trim()}>
-          {busy ? "Adding…" : "Add"}
+      <label className="label" htmlFor="agent-name">Agent name</label>
+      <div className="row">
+        <input id="agent-name" style={{ flex: "1 1 100%" }} className="input" autoFocus placeholder="Name your agent" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Escape" && onClose()} required maxLength={80} />
+        <button className="btn btn-primary" disabled={busy || !name.trim()}>
+          {busy ? "Creating…" : "Create"}
+        </button>
+        <button type="button" className="btn" onClick={onClose}>
+          Cancel
         </button>
       </div>
       {error && (
@@ -296,6 +300,7 @@ function AgentsScreen() {
   const params = useSearchParams();
   const router = useRouter();
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
   const [rotated, setRotated] = useState<Created | null>(null);
@@ -405,7 +410,24 @@ function AgentsScreen() {
       ) : (
         <div className="split split-agents">
           <section className="panel panel-tight stack" aria-label="Agents" aria-busy={agents === null}>
-            <h2 className="section-title">Agents {agents ? agents.length : ""}</h2>
+            <div className="row between" style={{ flexWrap: "nowrap" }}>
+              <h2 className="section-title">Agents {agents ? agents.length : ""}</h2>
+              <button type="button" className="btn btn-primary" aria-expanded={newOpen} aria-controls="new-agent" onClick={() => setNewOpen((o) => !o)}>
+                <Icon name="plus" className="ico" />
+                New agent
+              </button>
+            </div>
+            {newOpen && (
+              <div id="new-agent">
+                <NewAgent
+                  onClose={() => setNewOpen(false)}
+                  onCreated={(c) => {
+                    setCreated(c);
+                    load();
+                  }}
+                />
+              </div>
+            )}
             {agents === null ? (
               <div className="stack-s">
                 <div className="skeleton" />
@@ -429,12 +451,6 @@ function AgentsScreen() {
                 ))}
               </ul>
             )}
-            <NewAgent
-              onCreated={(c) => {
-                setCreated(c);
-                load();
-              }}
-            />
             {agent && (
               <>
         <section className="stack-s side-block" aria-labelledby="ver-h">
