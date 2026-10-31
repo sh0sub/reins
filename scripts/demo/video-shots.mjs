@@ -237,6 +237,7 @@ export const SEGMENTS = [
     lines: [
       "PayPal already separates supervised from automatic agent payments.",
       "Reins is where you decide which is which: per agent, per dollar.",
+      "Unlike standalone agent wallets or card-network agent tokens, it runs on the PayPal account you already have, plugs into any MCP agent in minutes, and keeps a human one tap away.",
       ["Open source, MIT licensed.", "Open source, M I T licensed."],
     ],
     actions: [],
