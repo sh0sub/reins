@@ -7,7 +7,7 @@
  *   node scripts/demo/record-video.mjs --work /some/scratch/dir --out .local/video/reins-demo.mp4
  *
  * Options: --port 3927 (web)  --mcp-port 3933  --work <frames/audio/DB dir, default .local/video/work>
- *          --out <mp4>  --shots <gallery dir, default .local/screenshots>  --voice Samantha  --rate 172  --stills 8
+ *          --out <mp4>  --shots <gallery dir, default .local/screenshots>  --voice Samantha  --rate 182  --stills 8
  *
  * What it runs (all offline, nothing real is called):
  *  - a fresh scratch DB at <work>/reins-video.db: `pnpm seed -- --db`, then scripts/demo/prep-db.mjs (removes the three
@@ -40,7 +40,7 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".local/video/reins-demo.mp
 const SHOTS = path.resolve(args.shots ?? path.join(ROOT, ".local/screenshots"));
 const DB_FILE = path.join(WORK, "reins-video.db");
 const VOICE = args.voice ?? "Samantha";
-const RATE = Number(args.rate ?? 172);
+const RATE = Number(args.rate ?? 182);
 const STILLS = Number(args.stills ?? 8);
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const FFMPEG = existsSync("/opt/homebrew/bin/ffmpeg") ? "/opt/homebrew/bin/ffmpeg" : "ffmpeg";
