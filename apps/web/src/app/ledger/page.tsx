@@ -7,7 +7,7 @@ import type { GridApi } from "ag-grid-community";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
-import { bucketTotal, outcomeBucket, resolveRequestId } from "@/lib/format";
+import { bucketTotal, isUnknownRequest, outcomeBucket, resolveRequestId } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
@@ -99,6 +99,7 @@ function LedgerScreen() {
   const resolveId = useCallback((id: string | null) => resolveRequestId(rows, id), [rows]);
   const drawerReqId = resolveId(drawerId);
   const focusReqId = resolveId(params.get("r"));
+  const missingId = isUnknownRequest(rows, params.get("r")) ? params.get("r") : null;
   const agents = useMemo(() => [...new Map((rows ?? []).map((r) => [r.agent_id, r.agent_name])).entries()], [rows]);
   // period + category scope the KPIs, the chart and the grid; agent/status/search narrow the grid only
   const scoped = useMemo(() => {
@@ -165,6 +166,12 @@ function LedgerScreen() {
           </button>
         </div>
       </div>
+
+      {missingId && (
+        <p className="alert alert-bad" role="alert" style={{ marginBottom: 16 }}>
+          Request {missingId.toUpperCase()} not found. It may be mistyped or from another workspace; showing the full ledger instead.
+        </p>
+      )}
 
       {sync.msg && (
         <p className={sync.bad ? "alert alert-bad" : "alert alert-ok"} role="status" style={{ marginBottom: 16 }}>

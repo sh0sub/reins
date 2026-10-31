@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentsKpi, capPct, searchPalette, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
-import { resolveRequestId } from "../src/lib/format.ts";
+import { isUnknownRequest, resolveRequestId } from "../src/lib/format.ts";
 
 const agents: ShellAgent[] = [
   { id: "a1", name: "Claude Code – DevOps", status: "active", month_spent_cents: 1998, monthly_limit_cents: 15000 },
@@ -45,5 +45,16 @@ describe("resolveRequestId (S6 deep link /ledger/R-0143)", () => {
     expect(resolveRequestId(null, "R-0143")).toBeNull();
     expect(resolveRequestId(rows, "R-9999")).toBeNull();
     expect(resolveRequestId(rows, null)).toBeNull();
+  });
+});
+
+describe("isUnknownRequest (/ledger/R-9999 notice)", () => {
+  const rows = [{ display_id: "R-0143", request_id: "req_abc" }];
+  it("flags only loaded rows with an unmatched display id", () => {
+    expect(isUnknownRequest(rows, "R-9999")).toBe(true);
+    expect(isUnknownRequest(rows, "R-0143")).toBe(false);
+    expect(isUnknownRequest(null, "R-9999")).toBe(false);
+    expect(isUnknownRequest(rows, "req_zzz")).toBe(false);
+    expect(isUnknownRequest(rows, null)).toBe(false);
   });
 });

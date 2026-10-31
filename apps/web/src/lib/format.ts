@@ -77,3 +77,8 @@ export function resolveRequestId(rows: Array<Pick<LedgerRow, "display_id" | "req
   if (hit) return hit.request_id;
   return /^R-\d+$/i.test(id) ? null : id;
 }
+
+/** True once the rows are loaded and a display id (R-0143) matches no request, so the page can say so. */
+export function isUnknownRequest(rows: Array<Pick<LedgerRow, "display_id" | "request_id">> | null, id: string | null): boolean {
+  return rows !== null && !!id && /^R-\d+$/i.test(id) && resolveRequestId(rows, id) === null;
+}

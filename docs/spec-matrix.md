@@ -122,5 +122,6 @@ Audit round 8 confirmation pass (R8c-* rows). Second fresh temp-DB seed, `PAYPAL
 | id | artifact section | expected | status | evidence |
 |---|---|---|---|---|
 | R8c-core | Shell/S1-S7 | All mockup screens, Cmd+K, sidebar agents, Agents KPI "2 active · 1 paused", version dropdown present at 1440 and 390 | match | r8b/*-1440.png, *-390.png, cmdk.png, agents-v1.png |
-| R8c-win-404 | Shell | Unknown route shows an on-brand not-found page | gap | /receipts and other unknown URLs render the stock black Next.js 404 inside the shell (r8b/receipts.png); low, a judge only sees it after a typo |
-| R8c-win-ledger-unknown-id | S6 | /ledger/R-9999 tells the user the request does not exist | gap | r8b/notfound.png shows the plain ledger with no message; low |
+| R8c-win-404 | Shell | Unknown route shows an on-brand not-found page | match | polish fix: app/not-found.tsx renders inside the shell (sidebar readable) with "Page not found" and Overview/Ledger buttons; 1440 and 390 checked (scratchpad converge/reins/polish/notfound-1440.png) |
+| R8c-win-ledger-unknown-id | S6 | /ledger/R-9999 tells the user the request does not exist | match | polish fix: red alert "Request R-9999 not found..." above the ledger (ledger/page.tsx, isUnknownRequest in lib/format.ts, test in apps/web/test/shell.test.ts; polish/r9999-390.png) |
+| POLISH-dev-404 | Shell | No unidentified 404 on /ledger | match | the 404 was the browser /favicon.ico request (no icon defined); added app/icon.svg, now /ledger loads with zero 4xx (CDP network log) |
