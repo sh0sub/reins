@@ -5,6 +5,7 @@ import {
   HttpPayPalClient,
   ReinsError,
   answerClarification,
+  approveAndAllowMerchant,
   askAgent,
   authenticateAgent,
   completeVaultSetup,
@@ -15,6 +16,7 @@ import {
   getLedger,
   getLedgerRow,
   getOverview,
+  getReceipt,
   getWeeklySummary,
   getRequestForAgent,
   handlePayPalWebhook,
@@ -140,8 +142,14 @@ const routes: Route[] = [
   }),
   toRoute("GET", "/api/inbox", "admin", async (_r, ctx) => json({ items: await getInbox(ctx) })),
   toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p) => {
-    const { action, note } = (await readJson(req)) as { action?: string; note?: unknown };
+    const { action, note, allow_merchant } = (await readJson(req)) as { action?: string; note?: unknown; allow_merchant?: unknown };
     if (action !== "approve" && action !== "deny") throw new ReinsError(400, "invalid_input", "action must be approve or deny");
+    if (allow_merchant === true) {
+      // S5 one tap: approve + auto-approve this merchant up to this amount from now on
+      if (action !== "approve") throw new ReinsError(400, "invalid_input", "allow_merchant only works with approve");
+      const { rule } = await approveAndAllowMerchant(ctx, p.id!, "web");
+      return json({ ...(await getLedgerRow(ctx, p.id!)), rule });
+    }
     await decideRequest(ctx, p.id!, action, "web", typeof note === "string" ? note : undefined);
     return json(await getLedgerRow(ctx, p.id!));
   }),
@@ -170,6 +178,7 @@ const routes: Route[] = [
     }
   }),
   toRoute("GET", "/api/ledger/:id", "admin", async (_r, ctx, p) => json(await getLedgerRow(ctx, p.id!))),
+  toRoute("GET", "/api/receipts/:id", "admin", async (_r, ctx, p) => json(await getReceipt(ctx, p.id!))),
   toRoute("GET", "/api/workspace", "admin", async (_r, ctx) => {
     const ws = await getWorkspace(ctx.db);
     // vault id and link token never leave the server

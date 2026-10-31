@@ -30,9 +30,12 @@ import {
 } from "@reins/db";
 import { buildAuditInput, runAudit, RECENT_LIMIT, type AuditProvider } from "./policy/audit.ts";
 import { evaluateHardRules, monthStartUtc, VELOCITY_WINDOW_MS } from "./policy/hardRules.ts";
+import { anomalySummary, applyAnomalies, detectAnomalies, type QuietHours } from "./policy/anomalies.ts";
+import { writeRuleSentence, type RuleWriter } from "./policy/ruleWriter.ts";
+import { summarizeAnswer, type AnswerSummarizer } from "./policy/answerSummary.ts";
 import { generateApiKey, hashApiKey, parseBearer } from "./keys.ts";
-import { normalizeMerchant } from "./merchant.ts";
-import { toCents } from "./money.ts";
+import { merchantInList, normalizeMerchant } from "./merchant.ts";
+import { centsToValue, toCents } from "./money.ts";
 import { STRATEGIES, type PaymentMode, type StrategyResult } from "./pay/strategies.ts";
 import type { PayPalClient } from "./paypal/types.ts";
 import type { CategorySuggester } from "./policy/categories.ts";
@@ -51,6 +54,8 @@ export interface ReinsConfig {
   /** After a hard-rule DENY, still ask the auditor for a one-line explanation (decision stays DENY). */
   explainDenials: boolean;
   auditTimeoutMs?: number;
+  /** S3 late-night check. Unset = off (tests); the web context sets it from REINS_TIMEZONE / REINS_QUIET_HOURS. */
+  quietHours?: QuietHours | null;
 }
 
 export interface ReinsContext {
@@ -61,6 +66,10 @@ export interface ReinsContext {
   categorySuggester?: CategorySuggester;
   /** S1 AI weekly summary; template fallback when absent. */
   summarizer?: WeeklySummarizer;
+  /** S5 rule sentence ("Research Scout can now buy from statista.com up to $59.00…"); template when absent. */
+  ruleWriter?: RuleWriter;
+  /** S2 one-line summary of long agent answers; template when absent. */
+  answerSummarizer?: AnswerSummarizer;
   events: ReinsEvents;
   notifiers: Notifier[];
   config: ReinsConfig;
@@ -114,6 +123,11 @@ export const MandateInputSchema = z
     allowed_merchants: z.array(z.string().trim().min(1).max(253)).max(100).default([]),
     blocked_merchants: z.array(z.string().trim().min(1).max(253)).max(100).default([]),
     categories: z.array(z.string().trim().min(1).max(64)).max(30).default([]),
+    /** S5 merchant rules: { "statista.com": "59.00" } raises the auto-approve limit for that merchant only. */
+    merchant_auto_limits: z
+      .record(z.string().trim().min(1).max(253), money)
+      .default({})
+      .refine((r) => Object.keys(r).length <= 50, { message: "at most 50 merchant rules" }),
     purpose: z.string().trim().min(1).max(500),
     valid_from: isoOrNull,
     valid_until: isoOrNull,
@@ -125,6 +139,10 @@ export const MandateInputSchema = z
   .refine((m) => m.valid_from == null || m.valid_until == null || m.valid_from < m.valid_until, {
     message: "valid_until must be after valid_from",
     path: ["valid_until"],
+  })
+  .refine((m) => Object.values(m.merchant_auto_limits).every((c) => c > 0 && c <= m.monthly_limit), {
+    message: "each merchant auto-approve limit must be above 0 and not exceed monthly_limit",
+    path: ["merchant_auto_limits"],
   });
 export type MandateInput = z.input<typeof MandateInputSchema>;
 
@@ -204,6 +222,7 @@ export async function saveMandate(ctx: ReinsContext, agentId: string, raw: unkno
     allowedMerchants: m.allowed_merchants.map(normalizeMerchant),
     blockedMerchants: m.blocked_merchants.map(normalizeMerchant),
     categories: m.categories,
+    merchantAutoLimits: Object.fromEntries(Object.entries(m.merchant_auto_limits).map(([k, v]) => [normalizeMerchant(k), v])),
     purpose: m.purpose,
     validFrom: m.valid_from,
     validUntil: m.valid_until,
@@ -213,7 +232,19 @@ export async function saveMandate(ctx: ReinsContext, agentId: string, raw: unkno
 // ---------------- purchase flow (M5 -> M6 -> M7/M8) ----------------
 
 async function viewOf(ctx: ReinsContext, r: PurchaseRequest): Promise<RequestView> {
-  return toRequestView(r, await getPaymentByRequest(ctx.db, r.id), await listRequestMessages(ctx.db, r.id));
+  return toRequestView(r, await getPaymentByRequest(ctx.db, r.id), await listRequestMessages(ctx.db, r.id), ctx.config.publicBaseUrl);
+}
+
+/**
+ * Auto-approve limit for this merchant: the mandate's general limit, raised by an S5 merchant rule when one
+ * matches (exact domain or subdomain).
+ */
+export function effectiveAutoLimitCents(mandate: Pick<Mandate, "autoApproveLimitCents" | "merchantAutoLimits">, merchant: string): number {
+  let limit = mandate.autoApproveLimitCents;
+  for (const [m, cents] of Object.entries(mandate.merchantAutoLimits ?? {})) {
+    if (merchantInList(merchant, [m])) limit = Math.max(limit, cents);
+  }
+  return limit;
 }
 
 async function publish(ctx: ReinsContext, r: PurchaseRequest, type: "request.created" | "request.updated" = "request.updated") {
@@ -280,19 +311,22 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     .filter((r) => r.id !== request.id)
     .slice(0, RECENT_LIMIT);
 
+  // ---- S3 unusual patterns (recorded on every request; weighted only when the auditor runs) ----
+  const anomalies = detectAnomalies({ request, mandate: mandate ?? null, recent, quietHours: ctx.config.quietHours });
+  const autoLimit = mandate ? effectiveAutoLimitCents(mandate, request.merchant) : 0;
+  const auditInput = () => {
+    const input = buildAuditInput(mandate!, request, recent, monthSpent, anomalies);
+    input.mandate.auto_approve_limit = centsToValue(autoLimit);
+    return input;
+  };
+
   if (!hard.pass) {
     let reasonEn = `Blocked by hard rules: ${failedText}.`;
     let reasonKo = `하드 룰에서 차단: ${hard.failed.map((f) => f.rule).join(", ")}.`;
     let risk: number | null = null;
     if (ctx.config.explainDenials && mandate) {
       // Advisory only: the decision is already DENY and cannot be changed by the auditor.
-      const advice = await runAudit(
-        ctx.auditor,
-        buildAuditInput(mandate, request, recent, monthSpent),
-        request.amountCents,
-        mandate.autoApproveLimitCents,
-        ctx.config.auditTimeoutMs,
-      );
+      const advice = await runAudit(ctx.auditor, auditInput(), request.amountCents, autoLimit, ctx.config.auditTimeoutMs);
       await insertDecision(ctx.db, {
         requestId: request.id,
         stage: "llm",
@@ -309,21 +343,14 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
         risk = advice.risk;
       }
     }
-    const denied = await updateRequest(ctx.db, request.id, { status: "denied", finalDecision: "DENY", risk, reasonEn, reasonKo });
+    const denied = await updateRequest(ctx.db, request.id, { status: "denied", finalDecision: "DENY", risk, reasonEn, reasonKo, anomalies });
     const view = await publish(ctx, denied);
     await notify(ctx, "resolved", view);
     return view;
   }
 
   // ---- stage 2: LLM audit (only reached when every hard rule passed) ----
-  const m = mandate!;
-  const audit = await runAudit(
-    ctx.auditor,
-    buildAuditInput(m, request, recent, monthSpent),
-    request.amountCents,
-    m.autoApproveLimitCents,
-    ctx.config.auditTimeoutMs,
-  );
+  const audit = await runAudit(ctx.auditor, auditInput(), request.amountCents, autoLimit, ctx.config.auditTimeoutMs);
   await insertDecision(ctx.db, {
     requestId: request.id,
     stage: "llm",
@@ -331,23 +358,48 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     risk: audit.risk,
     reasonEn: audit.reasonEn,
     reasonKo: audit.reasonKo,
-    details: { provider: audit.provider, failed: audit.failed, ...(audit.error ? { error: audit.error.slice(0, 200) } : {}) },
+    details: {
+      provider: audit.provider,
+      failed: audit.failed,
+      ...(audit.error ? { error: audit.error.slice(0, 200) } : {}),
+      ...(autoLimit !== mandate!.autoApproveLimitCents ? { merchant_auto_limit: centsToValue(autoLimit) } : {}),
+    },
     actor: audit.provider,
   });
+
+  // S3: patterns weigh the risk and turn AUTO into ASK_HUMAN, recorded as their own step in the decision trail.
+  const weighed = applyAnomalies(audit.final, audit.risk, anomalies);
+  let reasonEn = audit.reasonEn;
+  let reasonKo = audit.reasonKo;
+  if (anomalies.length) {
+    await insertDecision(ctx.db, {
+      requestId: request.id,
+      stage: "system",
+      decision: weighed.final,
+      risk: weighed.risk,
+      reasonEn: anomalySummary(anomalies, "en"),
+      reasonKo: anomalySummary(anomalies, "ko"),
+      details: { anomalies, escalated: weighed.escalated, auditor_risk: audit.risk },
+      actor: "patterns",
+    });
+    reasonEn = `${reasonEn} ${anomalySummary(anomalies, "en")}`;
+    reasonKo = `${reasonKo} ${anomalySummary(anomalies, "ko")}`;
+  }
   const decided = await updateRequest(ctx.db, request.id, {
-    finalDecision: audit.final,
-    risk: audit.risk,
-    reasonEn: audit.reasonEn,
-    reasonKo: audit.reasonKo,
+    finalDecision: weighed.final,
+    risk: weighed.risk,
+    reasonEn,
+    reasonKo,
+    anomalies,
   });
 
-  if (audit.final === "DENY") {
+  if (weighed.final === "DENY") {
     const denied = await updateRequest(ctx.db, decided.id, { status: "denied" });
     const view = await publish(ctx, denied);
     await notify(ctx, "resolved", view);
     return view;
   }
-  if (audit.final === "ASK_HUMAN") {
+  if (weighed.final === "ASK_HUMAN") {
     const pending = (await transitionRequest(ctx.db, decided.id, ["reviewing"], { status: "pending_human" }))!;
     const view = await publish(ctx, pending);
     await notify(ctx, "pendingHuman", view);
@@ -429,6 +481,75 @@ export async function decideRequest(
   return pay(ctx, approved, ["approved"]);
 }
 
+export interface MerchantRule {
+  merchant: string;
+  limit: string;
+  mandate_version: number;
+  sentence: string;
+  /** "template" or the Claude model that wrote the sentence. */
+  source: string;
+}
+
+/**
+ * S5 "Approve + always allow this merchant" (one tap on the web inbox or Telegram): approves the request, then
+ * saves a new mandate version whose merchant rule auto-approves this merchant up to this amount. Hard rules
+ * (monthly cap, per-purchase cap, block list) and the auditor still run on every later request. The approval is
+ * claimed first, so a request someone else already decided never changes the mandate.
+ */
+export async function approveAndAllowMerchant(ctx: ReinsContext, requestId: string, actor: string): Promise<{ view: RequestView; rule: MerchantRule }> {
+  const r = await getRequest(ctx.db, requestId);
+  if (!r) throw new ReinsError(404, "not_found", "Request not found");
+  if (r.status === "pending_human" && ctx.now() - r.updatedAt > ctx.config.approvalTtlMs) {
+    await expireRequest(ctx, r);
+    throw new ReinsError(409, "expired", "This approval request has expired");
+  }
+  const current = await getActiveMandate(ctx.db, r.agentId);
+  if (!current) throw new ReinsError(409, "no_mandate", "This agent has no mandate to add the rule to");
+  if (merchantInList(r.merchant, current.blockedMerchants)) throw new ReinsError(409, "merchant_blocked", `${r.merchant} is blocked in the mandate`);
+
+  const approved = await transitionRequest(ctx.db, requestId, ["pending_human"], { status: "approved" });
+  if (!approved) throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
+
+  const merchant = normalizeMerchant(r.merchant);
+  const existing = current.merchantAutoLimits?.[merchant] ?? 0;
+  // never lower an existing rule, never exceed the monthly cap
+  const limitCents = Math.min(Math.max(existing, r.amountCents), current.monthlyLimitCents);
+  const allowlist = current.allowedMerchants.length && !merchantInList(merchant, current.allowedMerchants) ? [...current.allowedMerchants, merchant] : current.allowedMerchants;
+  const next = await createMandateVersion(ctx.db, r.agentId, {
+    monthlyLimitCents: current.monthlyLimitCents,
+    autoApproveLimitCents: current.autoApproveLimitCents,
+    perTxCapCents: current.perTxCapCents,
+    currency: current.currency,
+    allowedMerchants: allowlist,
+    blockedMerchants: current.blockedMerchants,
+    categories: current.categories,
+    merchantAutoLimits: { ...current.merchantAutoLimits, [merchant]: limitCents },
+    purpose: current.purpose,
+    validFrom: current.validFrom,
+    validUntil: current.validUntil,
+  });
+  const agent = await getAgent(ctx.db, r.agentId);
+  const written = await writeRuleSentence(ctx.ruleWriter, {
+    agent: agent?.name ?? "This agent",
+    merchant,
+    limitCents,
+    baseAutoLimitCents: current.autoApproveLimitCents,
+    mandateVersion: next.version,
+  });
+  const rule: MerchantRule = { merchant, limit: centsToValue(limitCents), mandate_version: next.version, sentence: written.sentence, source: written.source };
+  await insertDecision(ctx.db, {
+    requestId,
+    stage: "human",
+    decision: "APPROVE",
+    risk: null,
+    reasonEn: rule.sentence,
+    reasonKo: null,
+    details: { merchant_rule: rule },
+    actor,
+  });
+  return { view: await pay(ctx, approved, ["approved"]), rule };
+}
+
 async function expireRequest(ctx: ReinsContext, r: PurchaseRequest) {
   const expired = await transitionRequest(ctx.db, r.id, ["pending_human"], { status: "expired" });
   if (!expired) return;
@@ -486,7 +607,8 @@ export async function answerClarification(ctx: ReinsContext, agent: Agent, reque
   if (r.status !== "pending_human") throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
   const current = latestClarification(await listRequestMessages(ctx.db, requestId));
   if (!current || current.answer != null) throw new ReinsError(409, "no_question", "There is no open question for this request");
-  await insertRequestMessage(ctx.db, { requestId, role: "agent", body: answer, actor: agent.name, createdAt: await nextMessageTime(ctx, requestId) });
+  const summary = await summarizeAnswer(ctx.answerSummarizer, { question: current.question, answer });
+  await insertRequestMessage(ctx.db, { requestId, role: "agent", body: answer, summary: summary?.summary ?? null, actor: agent.name, createdAt: await nextMessageTime(ctx, requestId) });
   const touched = await updateRequest(ctx.db, requestId, {});
   const view = await publish(ctx, touched);
   await notify(ctx, "updated", view);
@@ -542,6 +664,7 @@ export async function getLedger(
         await listDecisions(ctx.db, r.id),
         await getPaymentByRequest(ctx.db, r.id),
         await listRequestMessages(ctx.db, r.id),
+        ctx.config.publicBaseUrl,
       ),
     ),
   );
@@ -558,6 +681,7 @@ export async function getLedgerRow(ctx: ReinsContext, requestId: string): Promis
     await listDecisions(ctx.db, r.id),
     await getPaymentByRequest(ctx.db, r.id),
     await listRequestMessages(ctx.db, r.id),
+    ctx.config.publicBaseUrl,
   );
 }
 

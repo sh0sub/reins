@@ -63,13 +63,14 @@ describe("M9 cards", () => {
     expect(card.text).toContain("Merchant: statista.com · $59.00");
     expect(card.text).toContain("Reins check: Above auto limit Risk 2/10.");
     expect(card.buttons[0]!.map((b) => b.text)).toEqual(["Approve $59.00", "Deny"]);
-    expect(card.buttons[1]!.map((b) => b.text)).toEqual(["Ask agent"]); // no "Open in Reins" without an https base URL
+    expect(card.buttons[1]!.map((b) => b.text)).toEqual(["Approve + always allow statista.com"]); // S5 one tap
+    expect(card.buttons[2]!.map((b) => b.text)).toEqual(["Ask agent"]); // no "Open in Reins" without an https base URL
     expect(parseCallback(card.buttons[0]![0]!.callback_data!)).toEqual({ action: "approve", requestId: "req_abcdefghijklmnopqrst" });
     expect(() => callbackData("ap", "x".repeat(70))).toThrow();
     expect(parseCallback("ap:../../etc")).toBeNull();
   });
   it("formats the paid edit like 'Paid $59.00 · Capture 3GH…'", () => {
-    const c = resultCard({ status: "paid", display_id: "R-0142", amount: "59.00", merchant: "statista.com", reason: null, receipt: { capture_id: "3GH21XYZ", payout_batch_id: null, amount: "59.00", merchant: "statista.com" } });
+    const c = resultCard({ status: "paid", display_id: "R-0142", amount: "59.00", merchant: "statista.com", reason: null, receipt: { capture_id: "3GH21XYZ", payout_batch_id: null, amount: "59.00", currency: "USD", merchant: "statista.com", paid_at: "2026-11-01T00:00:00.000Z", receipt_url: null } });
     expect(c.text.split("\n")[0]).toBe("Paid $59.00 · Capture 3GH21X…");
   });
 });

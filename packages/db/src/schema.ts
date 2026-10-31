@@ -51,6 +51,11 @@ export const mandates = sqliteTable(
     allowedMerchants: text("allowed_merchants", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     blockedMerchants: text("blocked_merchants", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     categories: text("categories", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
+    /**
+     * S5 "Approve + always allow this merchant": merchant domain -> auto-approve limit in cents. Raises the
+     * auto-approve limit for that merchant only; hard rules (caps, block list) and the auditor still apply.
+     */
+    merchantAutoLimits: text("merchant_auto_limits", { mode: "json" }).$type<Record<string, number>>().notNull().default(sql`'{}'`),
     purpose: text("purpose").notNull(),
     validFrom: integer("valid_from"),
     validUntil: integer("valid_until"),
@@ -71,6 +76,14 @@ export const REQUEST_STATUSES = [
   "expired",
 ] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+export interface RequestAnomaly {
+  code: "repeat_merchant" | "late_night" | "off_mandate_category";
+  /** Risk points added on top of the auditor's score. */
+  weight: number;
+  detail_en: string;
+  detail_ko: string;
+}
 
 export const requests = sqliteTable(
   "requests",
@@ -94,6 +107,8 @@ export const requests = sqliteTable(
     risk: integer("risk"),
     reasonEn: text("reason_en"),
     reasonKo: text("reason_ko"),
+    /** S3 unusual patterns detected in code (repeat merchant, late night, off-mandate category). */
+    anomalies: text("anomalies", { mode: "json" }).$type<RequestAnomaly[]>().notNull().default(sql`'[]'`),
     createdAt: integer("created_at").notNull().default(now),
     updatedAt: integer("updated_at").notNull().default(now),
   },
@@ -165,6 +180,8 @@ export const requestMessages = sqliteTable(
       .references(() => requests.id),
     role: text("role", { enum: ["human", "agent"] }).notNull(),
     body: text("body").notNull(),
+    /** S2: one-line AI summary of a long agent answer (template fallback), shown on the card. */
+    summary: text("summary"),
     actor: text("actor"),
     createdAt: integer("created_at").notNull().default(now),
   },

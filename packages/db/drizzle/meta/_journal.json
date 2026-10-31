@@ -15,6 +15,13 @@
       "when": 1793231461069,
       "tag": "0001_clarify_reconcile",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793441712538,
+      "tag": "0002_should_features",
+      "breakpoints": true
     }
   ]
 }

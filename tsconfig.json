@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["packages/*/src", "packages/*/test", "packages/db/drizzle.config.ts", "apps/mcp", "apps/bot", "tests", "scripts", "vitest.config.ts"],
+  "include": ["packages/*/src", "packages/*/test", "packages/db/drizzle.config.ts", "apps/mcp", "apps/bot", "tests", "scripts", "agents", "vitest.config.ts"],
   "exclude": ["node_modules", "apps/web"]
 }

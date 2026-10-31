@@ -1,4 +1,4 @@
-import type { Decision, Mandate, Payment, PurchaseRequest, RequestMessage } from "@reins/db";
+import type { Decision, Mandate, Payment, PurchaseRequest, RequestAnomaly, RequestMessage } from "@reins/db";
 import { centsToValue } from "./money.ts";
 import { displayId } from "./pay/strategies.ts";
 
@@ -20,11 +20,29 @@ export interface RequestView {
   agent_reason: string;
   created_at: string;
   updated_at: string;
-  receipt: { capture_id: string | null; payout_batch_id: string | null; amount: string; merchant: string } | null;
+  /** S4: returned to the agent once paid. receipt_url opens the Reins receipt page (dashboard login applies). */
+  receipt: {
+    capture_id: string | null;
+    payout_batch_id: string | null;
+    amount: string;
+    currency: string;
+    merchant: string;
+    paid_at: string;
+    receipt_url: string | null;
+  } | null;
+  /** S3 unusual patterns flagged in code (empty when none). */
+  anomalies: RequestAnomaly[];
   /** S2 Ask agent: true while the human's latest question has no agent answer yet. */
   needs_clarification: boolean;
   /** Latest question/answer pair, or null when nobody asked. */
-  clarification: { question: string; asked_at: string; answer: string | null; answered_at: string | null } | null;
+  clarification: {
+    question: string;
+    asked_at: string;
+    answer: string | null;
+    /** S2: one-line AI summary of a long answer (null for short answers). */
+    answer_summary: string | null;
+    answered_at: string | null;
+  } | null;
 }
 
 export function latestClarification(messages: RequestMessage[] = []): RequestView["clarification"] {
@@ -41,11 +59,17 @@ export function latestClarification(messages: RequestMessage[] = []): RequestVie
     question: q.body,
     asked_at: new Date(q.createdAt).toISOString(),
     answer: a?.body ?? null,
+    answer_summary: a?.summary ?? null,
     answered_at: a ? new Date(a.createdAt).toISOString() : null,
   };
 }
 
-export function toRequestView(r: PurchaseRequest, payment?: Payment | null, messages: RequestMessage[] = []): RequestView {
+/** Absolute receipt page URL for a request, e.g. https://reins.app/receipts/req_... */
+export function receiptUrl(baseUrl: string | undefined, requestId: string): string | null {
+  return baseUrl ? `${baseUrl.replace(/\/$/, "")}/receipts/${requestId}` : null;
+}
+
+export function toRequestView(r: PurchaseRequest, payment?: Payment | null, messages: RequestMessage[] = [], baseUrl?: string): RequestView {
   const clarification = latestClarification(messages);
   return {
     request_id: r.id,
@@ -65,8 +89,17 @@ export function toRequestView(r: PurchaseRequest, payment?: Payment | null, mess
     updated_at: new Date(r.updatedAt).toISOString(),
     receipt:
       r.status === "paid" && payment
-        ? { capture_id: payment.captureId, payout_batch_id: payment.payoutBatchId, amount: centsToValue(payment.amountCents), merchant: r.merchant }
+        ? {
+            capture_id: payment.captureId,
+            payout_batch_id: payment.payoutBatchId,
+            amount: centsToValue(payment.amountCents),
+            currency: payment.currency,
+            merchant: r.merchant,
+            paid_at: new Date(payment.updatedAt).toISOString(),
+            receipt_url: receiptUrl(baseUrl, r.id),
+          }
         : null,
+    anomalies: r.anomalies ?? [],
     needs_clarification: r.status === "pending_human" && clarification != null && clarification.answer == null,
     clarification,
   };
@@ -99,9 +132,10 @@ export function toLedgerRow(
   decisions: Decision[],
   payment: Payment | undefined,
   messages: RequestMessage[] = [],
+  baseUrl?: string,
 ): LedgerRow {
   return {
-    ...toRequestView(r, payment, messages),
+    ...toRequestView(r, payment, messages, baseUrl),
     agent_name: agentName,
     mandate_version: mandate?.version ?? null,
     decisions: decisions.map((d) => ({
@@ -143,6 +177,8 @@ export function mandateView(m: Mandate) {
     allowed_merchants: m.allowedMerchants,
     blocked_merchants: m.blockedMerchants,
     categories: m.categories,
+    /** S5 merchant rules: merchant -> auto-approve limit ("59.00"). */
+    merchant_auto_limits: Object.fromEntries(Object.entries(m.merchantAutoLimits ?? {}).map(([k, v]) => [k, centsToValue(v)])),
     purpose: m.purpose,
     valid_from: m.validFrom == null ? null : new Date(m.validFrom).toISOString(),
     valid_until: m.validUntil == null ? null : new Date(m.validUntil).toISOString(),

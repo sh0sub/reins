@@ -250,3 +250,10 @@ kbd { font-family: var(--reins-mono); font-size: 12px; border: 1px solid var(--s
 .wk-stats div { display: flex; flex-direction: column-reverse; gap: 2px; }
 .wk-warn { align-items: flex-start; flex-wrap: nowrap; }
 .wk-warn .ico { margin-top: 2px; }
+
+/* S4 receipt page */
+.receipt { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); gap: var(--sp-2) var(--sp-4); margin: 0; }
+.receipt dt { color: var(--muted); font-size: var(--semantic-typography-caption-size); font-weight: 700; padding-top: 2px; }
+.receipt dd { margin: 0; overflow-wrap: anywhere; }
+/* long labels with a domain (S5 "Approve + always allow …") wrap instead of overflowing at 360px */
+.btn-wrap { white-space: normal; overflow-wrap: anywhere; text-align: left; max-width: 100%; padding-block: var(--sp-2); }

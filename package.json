@@ -21,6 +21,7 @@
     "spike": "tsx --env-file=.env",
     "tokens": "tsx scripts/build-tokens.ts",
     "seed": "tsx scripts/seed.ts",
+    "agent:devops": "tsx agents/devops/devops-agent.ts",
     "reconcile": "tsx --env-file-if-exists=.env scripts/reconcile.ts",
     "telegram:check": "tsx --env-file=.env scripts/telegram-check.ts"
   },

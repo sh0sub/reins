@@ -71,8 +71,9 @@ export async function revokeAgent(db: ReinsDb, id: string): Promise<void> {
 
 // ---------- mandates ----------
 
-export type MandateInput = Omit<Mandate, "id" | "agentId" | "version" | "createdAt" | "currency"> & {
+export type MandateInput = Omit<Mandate, "id" | "agentId" | "version" | "createdAt" | "currency" | "merchantAutoLimits"> & {
   currency?: string;
+  merchantAutoLimits?: Record<string, number>;
 };
 
 /** Inserts a new mandate version (max+1). Old versions stay for audit snapshots. */
@@ -316,7 +317,7 @@ export async function listPaymentsForReconcile(db: ReinsDb, from: number, to: nu
 
 export async function insertRequestMessage(
   db: ReinsDb,
-  input: { requestId: string; role: RequestMessage["role"]; body: string; actor?: string | null; createdAt?: number },
+  input: { requestId: string; role: RequestMessage["role"]; body: string; summary?: string | null; actor?: string | null; createdAt?: number },
 ): Promise<RequestMessage> {
   const [row] = await db
     .insert(requestMessages)

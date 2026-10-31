@@ -69,6 +69,7 @@ async function main() {
     receipt: null,
     needs_clarification: false,
     clarification: null,
+    anomalies: [],
   } satisfies RequestView;
   const card = approvalCard(demo, "Research Scout", { ttlMinutes: 30, budget: { monthSpentCents: 1900, monthlyLimitCents: 6000 } });
   card.text = `[Reins connectivity check — buttons are inactive]\n${card.text}`;

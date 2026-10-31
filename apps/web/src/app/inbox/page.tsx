@@ -25,6 +25,7 @@ function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: bool
           <span className="status status-warn">ASK_HUMAN</span>
           <span className={riskClass(row.risk)}>Risk {row.risk ?? "?"}</span>
           {row.needs_clarification && <span className="status status-info">Waiting for agent</span>}
+          {row.anomalies?.length > 0 && <span className="status status-bad">Unusual pattern</span>}
           <span className="caption mono">{row.display_id}</span>
         </span>
       </button>
@@ -99,6 +100,12 @@ function AskAgent({ row, onAsked }: { row: InboxItem; onAsked: (r: LedgerRow) =>
             <p className="bubble agent">
               <span className="caption">{row.agent_name} answered</span>
               <br />
+              {c.answer_summary && (
+                <>
+                  <strong>{c.answer_summary}</strong> <span className="caption">(AI summary)</span>
+                  <br />
+                </>
+              )}
               {c.answer}
             </p>
           ) : (
@@ -124,7 +131,17 @@ function AskAgent({ row, onAsked }: { row: InboxItem; onAsked: (r: LedgerRow) =>
   );
 }
 
-function Detail({ row, busy, onDecide, onAsked }: { row: InboxItem; busy: boolean; onDecide: (action: "approve" | "deny", note?: string) => void; onAsked: (r: LedgerRow) => void }) {
+function Detail({
+  row,
+  busy,
+  onDecide,
+  onAsked,
+}: {
+  row: InboxItem;
+  busy: boolean;
+  onDecide: (action: "approve" | "deny", note?: string, allowMerchant?: boolean) => void;
+  onAsked: (r: LedgerRow) => void;
+}) {
   const [denyOpen, setDenyOpen] = useState(false);
   const [denyNote, setDenyNote] = useState("");
   const rules = hardRules(row);
@@ -169,6 +186,17 @@ function Detail({ row, busy, onDecide, onAsked }: { row: InboxItem; busy: boolea
         <h3>Why (agent)</h3>
         <p className="bubble">“{row.agent_reason}”</p>
       </section>
+
+      {row.anomalies?.length > 0 && (
+        <section className="alert alert-bad stack-s" aria-labelledby="pattern-h">
+          <h3 id="pattern-h">Unusual pattern · risk +{row.anomalies.reduce((s, a) => s + a.weight, 0)}</h3>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {row.anomalies.map((a) => (
+              <li key={a.code}>{a.detail_en}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid-2">
         <section className="stack-s" aria-labelledby="checks-h">
@@ -271,6 +299,16 @@ function Detail({ row, busy, onDecide, onAsked }: { row: InboxItem; busy: boolea
             </span>
           </div>
         )}
+        {!denyOpen && (
+          <div className="row">
+            <button className="btn btn-wrap" disabled={busy} onClick={() => onDecide("approve", undefined, true)} aria-describedby={`allow-${row.request_id}`}>
+              Approve + always allow {row.merchant}
+            </button>
+            <span id={`allow-${row.request_id}`} className="caption">
+              Saves mandate v{(row.mandate_version ?? 0) + 1}: {row.merchant} up to ${row.amount} skips approval. Caps and block list still apply.
+            </span>
+          </div>
+        )}
       </footer>
     </article>
   );
@@ -336,12 +374,16 @@ function InboxScreen() {
 
   const selected = useMemo(() => rows?.find((r) => r.request_id === selectedId) ?? rows?.[0] ?? null, [rows, selectedId]);
 
-  async function decide(id: string, action: "approve" | "deny", note?: string) {
+  async function decide(id: string, action: "approve" | "deny", note?: string, allowMerchant = false) {
     setBusy(id);
     try {
-      const row = await api<LedgerRow>(`/api/requests/${id}/decision`, { method: "POST", body: { action, note } });
+      const row = await api<LedgerRow & { rule?: { sentence: string } }>(`/api/requests/${id}/decision`, {
+        method: "POST",
+        body: allowMerchant ? { action, allow_merchant: true } : { action, note },
+      });
+      const rule = row.rule ? ` Rule saved: ${row.rule.sentence}` : "";
       setNotice(
-        row.status === "paid"
+        (row.status === "paid"
           ? `Paid $${row.amount} · capture ${row.receipt?.capture_id?.slice(0, 6) ?? ""}…`
           : row.status === "awaiting_buyer"
             ? "Approved. Finish checkout on PayPal (opened in a new tab)."
@@ -349,7 +391,7 @@ function InboxScreen() {
               ? `${row.display_id} denied. The agent was told.`
               : row.status === "failed"
                 ? `PayPal did not complete ${row.display_id}. Nothing was charged.`
-                : `${row.display_id} ${row.status}`,
+                : `${row.display_id} ${row.status}`) + rule,
       );
       if (row.status === "awaiting_buyer" && row.payment?.approve_url) window.open(row.payment.approve_url, "_blank", "noopener");
       setSelectedId(null);
@@ -414,7 +456,7 @@ function InboxScreen() {
             </ul>
             <RecentDecisions rows={recent} />
           </section>
-          {selected && <Detail row={selected} busy={busy === selected.request_id} onDecide={(a, n) => decide(selected.request_id, a, n)} onAsked={onAsked} />}
+          {selected && <Detail row={selected} busy={busy === selected.request_id} onDecide={(a, n, allow) => decide(selected.request_id, a, n, allow)} onAsked={onAsked} />}
         </div>
       )}
       {notice && (

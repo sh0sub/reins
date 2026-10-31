@@ -13,7 +13,11 @@ export interface Card {
 export const CB_APPROVE = "ap";
 export const CB_DENY = "dn";
 export const CB_ASK = "ak";
-type CbKind = typeof CB_APPROVE | typeof CB_DENY | typeof CB_ASK;
+/** S5: approve + always allow this merchant up to this amount. */
+export const CB_APPROVE_ALLOW = "aa";
+type CbKind = typeof CB_APPROVE | typeof CB_DENY | typeof CB_ASK | typeof CB_APPROVE_ALLOW;
+export type CallbackAction = "approve" | "deny" | "ask" | "approve_allow";
+const ACTIONS: Record<CbKind, CallbackAction> = { ap: "approve", dn: "deny", ak: "ask", aa: "approve_allow" };
 
 export function callbackData(kind: CbKind, requestId: string): string {
   const data = `${kind}:${requestId}`;
@@ -21,10 +25,10 @@ export function callbackData(kind: CbKind, requestId: string): string {
   return data;
 }
 
-export function parseCallback(data: string): { action: "approve" | "deny" | "ask"; requestId: string } | null {
-  const m = /^(ap|dn|ak):([A-Za-z0-9_]{1,60})$/.exec(data);
+export function parseCallback(data: string): { action: CallbackAction; requestId: string } | null {
+  const m = /^(ap|dn|ak|aa):([A-Za-z0-9_]{1,60})$/.exec(data);
   if (!m) return null;
-  return { action: m[1] === CB_APPROVE ? "approve" : m[1] === CB_DENY ? "deny" : "ask", requestId: m[2]! };
+  return { action: ACTIONS[m[1] as CbKind], requestId: m[2]! };
 }
 
 /**
@@ -73,11 +77,22 @@ function body(view: RequestView, agentName: string, opts: CardOptions): string[]
     lines.push(`Budget: ${usd(Math.max(left, 0))} left of ${usd(opts.budget.monthlyLimitCents)} this month after this`);
   }
   lines.push(`Reins check: ${oneLine(view.reason)} Risk ${view.risk ?? "?"}/10.`);
+  const pattern = patternLine(view);
+  if (pattern) lines.push(pattern);
   if (view.clarification) {
     lines.push(`You asked: "${view.clarification.question}"`);
-    lines.push(view.clarification.answer ? `Agent: "${view.clarification.answer}"` : "Waiting for the agent to answer…");
+    const c = view.clarification;
+    lines.push(c.answer ? (c.answer_summary ? `Agent (summary): "${c.answer_summary}"` : `Agent: "${c.answer}"`) : "Waiting for the agent to answer…");
   }
   return lines;
+}
+
+/** S3 warning line, e.g. "Pattern alert: 4th request to statista.com in 24 hours; requested at 02:14 (Asia/Seoul)…". */
+export function patternLine(view: Pick<RequestView, "anomalies">): string | null {
+  const list = view.anomalies ?? [];
+  if (!list.length) return null;
+  const text = list.map((a) => a.detail_en).join("; ");
+  return `Pattern alert: ${text.length > 200 ? `${text.slice(0, 199)}…` : text}`;
 }
 
 /** Approval card sent when a request needs a human (plan flow B-5, screen S3 state 1). */
@@ -94,6 +109,7 @@ export function approvalCard(view: RequestView, agentName: string, ttlOrOpts: nu
         { text: `Approve $${view.amount}`, callback_data: callbackData(CB_APPROVE, view.request_id) },
         { text: "Deny", callback_data: callbackData(CB_DENY, view.request_id) },
       ],
+      [{ text: `Approve + always allow ${view.merchant}`, callback_data: callbackData(CB_APPROVE_ALLOW, view.request_id) }],
       second,
     ],
   };
@@ -108,6 +124,7 @@ export function blockedCard(view: RequestView, agentName: string, webBaseUrl?: s
       `Agent: ${agentName} tried ${view.merchant} · $${view.amount}`,
       `Item: ${view.items}`,
       `Why blocked: ${oneLine(view.reason, 220)}`,
+      ...(patternLine(view) ? [patternLine(view)!] : []),
       view.risk != null ? `Risk ${view.risk}/10. Nothing was charged.` : "Nothing was charged.",
     ].join("\n"),
     buttons: open ? [[{ text: "Review in Reins", url: open }]] : [],
@@ -115,7 +132,16 @@ export function blockedCard(view: RequestView, agentName: string, webBaseUrl?: s
 }
 
 /** Text the card is edited to once the request leaves pending_human (flow B-6). */
-export function resultCard(row: Pick<LedgerRow, "status" | "display_id" | "amount" | "merchant" | "receipt" | "reason"> & { payment?: LedgerRow["payment"] }): Card {
+export function resultCard(
+  row: Pick<LedgerRow, "status" | "display_id" | "amount" | "merchant" | "receipt" | "reason"> & { payment?: LedgerRow["payment"] },
+  rule?: { sentence: string } | null,
+): Card {
+  const card = resultCardBase(row);
+  // S5: the merchant rule saved with this approval, shown under the result
+  return rule ? { ...card, text: `${card.text}\nRule added: ${oneLine(rule.sentence, 240)}` } : card;
+}
+
+function resultCardBase(row: Pick<LedgerRow, "status" | "display_id" | "amount" | "merchant" | "receipt" | "reason"> & { payment?: LedgerRow["payment"] }): Card {
   switch (row.status) {
     case "paid":
       return { text: `Paid $${row.amount} · Capture ${shortId(row.receipt?.capture_id ?? row.receipt?.payout_batch_id)}\n${row.display_id} · ${row.merchant}`, buttons: [] };

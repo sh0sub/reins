@@ -64,6 +64,16 @@ export class MockAuditor implements AuditProvider {
       notes_en.push(`${sameMerchant} recent purchases from the same merchant`);
       notes_ko.push(`같은 판매자 최근 구매 ${sameMerchant}건`);
     }
+    // S3 signals detected in code: explain the ones this rubric does not already cover (weights are applied in code).
+    for (const sig of input.signals ?? []) {
+      if (sig.code === "late_night") {
+        notes_en.push("it was sent during quiet hours, when the user is unlikely to be watching");
+        notes_ko.push("사용자가 지켜보기 어려운 심야 시간에 보낸 요청입니다");
+      } else if (sig.code === "repeat_merchant" && sameMerchant < 3) {
+        notes_en.push("the agent keeps returning to the same merchant, which can mean a loop or split purchases");
+        notes_ko.push("같은 판매자에 반복 요청해 반복 실행이나 분할 결제일 수 있습니다");
+      }
+    }
     const overAuto = amount > autoLimit;
     if (overAuto) {
       risk += 1;

@@ -1,0 +1,9 @@
+{
+  "_comment": "Demo cost sheet for the DevOps cron agent (S6). Monthly bills; due_day is the day of month. Replace with your own or point DEVOPS_COSTS_FILE elsewhere.",
+  "bills": [
+    { "merchant": "render.com", "item": "Render Starter web service (monthly)", "amount": "7.00", "due_day": 1, "category": "hosting" },
+    { "merchant": "vercel.com", "item": "Vercel Pro seat (monthly)", "amount": "20.00", "due_day": 2, "category": "hosting" },
+    { "merchant": "anthropic.com", "item": "Claude API credits top-up", "amount": "25.00", "due_day": 1, "category": "api-credits" },
+    { "merchant": "render.com", "item": "Render Postgres Pro (monthly)", "amount": "55.00", "due_day": 3, "category": "hosting" }
+  ]
+}

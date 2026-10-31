@@ -13,6 +13,8 @@ export interface MandateView {
   allowed_merchants: string[];
   blocked_merchants: string[];
   categories: string[];
+  /** S5 merchant rules from "Approve + always allow": merchant -> auto-approve limit. */
+  merchant_auto_limits?: Record<string, string>;
   purpose: string;
   valid_from: string | null;
   valid_until: string | null;
@@ -56,6 +58,7 @@ export function MandateEditor({
     allowed: (current?.allowed_merchants ?? []).join("\n"),
     blocked: [...new Set([...(current?.blocked_merchants ?? []), ...(prefill?.block ?? [])])].join("\n"),
     categories: current?.categories ?? [],
+    merchantRules: current?.merchant_auto_limits ?? {},
     purpose: current?.purpose ?? "",
     valid_from: day(current?.valid_from ?? null),
     valid_until: day(current?.valid_until ?? null),
@@ -119,6 +122,7 @@ export function MandateEditor({
           allowed_merchants: lines(form.allowed),
           blocked_merchants: lines(form.blocked),
           categories: form.categories,
+          merchant_auto_limits: form.merchantRules,
           purpose: form.purpose,
           valid_from: toIso(form.valid_from),
           valid_until: toIso(form.valid_until, true),
@@ -215,6 +219,29 @@ export function MandateEditor({
           <textarea id="m-block" className="input" value={form.blocked} onChange={set("blocked")} placeholder="fiverr.com" />
         </div>
       </div>
+
+      {Object.keys(form.merchantRules).length > 0 && (
+        <div className="field">
+          <span className="field-label" id="m-rules">
+            Always allowed (from approvals)
+          </span>
+          <div className="row" role="group" aria-labelledby="m-rules">
+            {Object.entries(form.merchantRules).map(([m, limit]) => (
+              <button
+                type="button"
+                key={m}
+                className="chip-btn"
+                aria-pressed="true"
+                aria-label={`Remove rule: ${m} up to $${limit}`}
+                onClick={() => setForm({ ...form, merchantRules: Object.fromEntries(Object.entries(form.merchantRules).filter(([k]) => k !== m)) })}
+              >
+                {m} up to ${limit} ×
+              </button>
+            ))}
+          </div>
+          <span className="hint">These merchants skip approval up to the amount shown. Caps, block list and the auditor still apply.</span>
+        </div>
+      )}
 
       <div className="field">
         <span className="field-label" id="m-valid">Valid from / until (optional)</span>

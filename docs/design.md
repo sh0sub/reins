@@ -13,3 +13,8 @@
 - Layout: sidebar 216px at >= 950px, compact top bar below; one primary action per screen (Approve in the inbox, Save in the mandate editor, Verify/Continue in setup); 48px touch targets; empty/loading/error states on every list.
 - Verified in Chrome at 1519px wide (inbox with a pending item, Ask agent round trip, approve -> All clear; agents; ledger + row expansion; setup). 360/720 viewports and real phones not verified (window resize did not apply).
 - S7 overview (2026-10-31): KPI row + cap bars (link to ledger `?agent=`) + AG Charts donut + feed + weekly summary card. Donut uses the dataviz reference categorical palette (`--reins-series-*` in theme.css, CVD-validated; contrast WARN mitigated by a labelled legend). Verified in headless Chrome at 360/390/720/1440 with seed data (no page-level horizontal overflow); mobile nav links are now 48px wide with the badge overlaid. Real phones not verified.
+- Should features (2026-10-31): inbox adds an "Unusual pattern" status chip + red alert block (S3) and a secondary
+  "Approve + always allow {merchant}" button under the primary Approve (S5; `.btn-wrap` so long domains wrap at 360px); mandate
+  editor shows saved merchant rules as removable chips (36px chip height, same as category chips, below the 48px target);
+  receipt page `/receipts/:id` (S4) uses the panel + `dl.receipt` grid. Checked in headless Chrome at 360 and 1440 with seed data:
+  no page-level horizontal overflow (the pre-existing nowrap date row in the mandate editor overflows its form column by ~28px at 360).

@@ -38,6 +38,8 @@ export interface AuditInput {
   };
   month_spent: string;
   recent: Array<{ merchant: string; amount: string; status: string; created_at: string }>;
+  /** S3 patterns Reins detected in code (only present when there are any). The auditor explains them. */
+  signals?: Array<{ code: string; detail: string }>;
 }
 
 export interface AuditProvider {
@@ -52,8 +54,9 @@ export function buildAuditInput(
   request: Pick<PurchaseRequest, "merchant" | "amountCents" | "currency" | "items" | "reason" | "category">,
   recent: Array<Pick<PurchaseRequest, "merchant" | "amountCents" | "status" | "createdAt">>,
   monthSpentCents: number,
+  signals: Array<{ code: string; detail_en: string }> = [],
 ): AuditInput {
-  return {
+  const input: AuditInput = {
     mandate: {
       purpose: mandate.purpose,
       categories: mandate.categories,
@@ -80,6 +83,8 @@ export function buildAuditInput(
       created_at: new Date(r.createdAt).toISOString(),
     })),
   };
+  if (signals.length) input.signals = signals.map((a) => ({ code: a.code, detail: a.detail_en }));
+  return input;
 }
 
 export const RISK_AUTO_MAX = 3;

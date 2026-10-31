@@ -8,6 +8,8 @@ export interface BotDeps {
   decide(requestId: string, action: "approve" | "deny", actor: string): Promise<LedgerRow>;
   /** S2 Ask agent from Telegram. Optional so older wiring keeps working. */
   ask?(requestId: string, question: string, actor: string): Promise<LedgerRow>;
+  /** S5 "Approve + always allow this merchant". Optional so older wiring keeps working. */
+  approveAllow?(requestId: string, actor: string): Promise<{ row: LedgerRow; rule: { sentence: string } }>;
   /** Agent display name for the "What should I ask …?" prompt. */
   describe?(requestId: string): Promise<{ agentName: string; displayId: string } | null>;
 }
@@ -36,6 +38,8 @@ function errorText(err: unknown): string {
   if (code === "already_decided") return "Already decided in the web inbox";
   if (code === "not_found") return "This request is not in Reins (demo card or deleted)";
   if (code === "question_open") return "Still waiting for the agent's answer";
+  if (code === "merchant_blocked") return "This merchant is blocked in the mandate";
+  if (code === "no_mandate") return "This agent has no mandate yet";
   return "Could not process, try the web inbox";
 }
 
@@ -57,11 +61,24 @@ export async function handleDecisionCallback(deps: BotDeps, chatId: string, data
     return { askPrompt: { messageId, requestId: parsed.requestId } };
   }
 
+  if (parsed.action === "approve_allow") {
+    if (!deps.approveAllow) return ui.answer("Approve + always allow is available in the web inbox");
+    await ui.answer("Got it");
+    await safeEdit(ui, { text: "Approved by you · Saving the merchant rule and paying via PayPal…", buttons: [] });
+    try {
+      const { row, rule } = await deps.approveAllow(parsed.requestId, "telegram");
+      await safeEdit(ui, resultCard(row, rule));
+    } catch (err) {
+      await safeEdit(ui, { text: errorText(err), buttons: [] });
+    }
+    return;
+  }
+
   await ui.answer("Got it"); // answerCallbackQuery right away (S3); duplicate taps are idempotent in core
   if (parsed.action === "approve") await safeEdit(ui, { text: "Approved by you · Paying via PayPal…", buttons: [] });
   let row: LedgerRow;
   try {
-    row = await deps.decide(parsed.requestId, parsed.action, "telegram");
+    row = await deps.decide(parsed.requestId, parsed.action as "approve" | "deny", "telegram");
   } catch (err) {
     await safeEdit(ui, { text: errorText(err), buttons: [] });
     return;

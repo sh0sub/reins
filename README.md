@@ -15,6 +15,12 @@ D10 checkpoint (2026-10-29): plan flow B runs end to end (AUTO paid, ASK_HUMAN a
 covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes ran on 2026-10-27/28 (vault auto-pay, payouts, webhook
 signatures OK; results in `docs/spikes/`).
 
+Should features (2026-10-31, `tests/integration/{merchant-rule,receipt,anomalies,devops-agent,ask-summary}.test.ts`):
+S5 "Approve + always allow this merchant" (web inbox + Telegram; saves a mandate version with a per-merchant auto-approve limit),
+S4 receipts (`receipt.receipt_url` returned over MCP, page at `/receipts/:id`), S3 unusual patterns (4th request to one merchant in
+24h, quiet hours via `REINS_QUIET_HOURS`/`REINS_TIMEZONE`, category outside the mandate: risk +, AUTO becomes ASK_HUMAN, never blocks
+alone), S6 DevOps cron agent (`pnpm agent:devops`), S2 AI summary of long agent answers on the Telegram card.
+
 ## Develop
 
 ```bash
@@ -64,6 +70,12 @@ expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before 
 ## Demo agent A (Claude Desktop / Claude Code)
 
 Config snippets that expose the 4 Reins MCP tools (plus Channel3 product search) to Claude Desktop (`agents/claude_desktop_config.json`) and Claude Code (`.mcp.json.example`). Setup steps and demo prompts: [agents/README.md](agents/README.md).
+
+## Demo agent B (DevOps cron)
+
+`pnpm agent:devops` checks `agents/devops/infra-costs.json`, pays bills due in the next 3 days that fit the auto-approve limit through
+the Reins MCP stdio server, and leaves bigger ones for you (`--ask` requests them for approval, `--dry-run` only reports). Idempotency
+keys are per bill and month, so a second run the same day pays nothing. Details: [agents/README.md](agents/README.md#demo-agent-b-devops-cron).
 
 ## License
 

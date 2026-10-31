@@ -15,7 +15,7 @@ const devops: Mandate = {
   id: "mdt_1", agentId: "agt_1", version: 1, createdAt: 0,
   monthlyLimitCents: 15000, autoApproveLimitCents: 3000, perTxCapCents: 10000, currency: "USD",
   allowedMerchants: ["namecheap.com", "vercel.com", "render.com", "anthropic.com"],
-  blockedMerchants: ["fiverr.com"], categories: ["domains", "hosting", "api-credits"],
+  blockedMerchants: ["fiverr.com"], categories: ["domains", "hosting", "api-credits"], merchantAutoLimits: {},
   purpose: "Keep developer infrastructure running: domain renewals, hosting and API credits",
   validFrom: null, validUntil: null,
 };

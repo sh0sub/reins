@@ -87,7 +87,7 @@ export function SideFoot() {
   );
 }
 
-const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Setup" };
+const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Setup", "/receipts": "Receipt" };
 
 /** 56px top bar: page name, live connection state, pending shortcut. */
 export function TopBar() {

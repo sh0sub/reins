@@ -109,7 +109,20 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         </dd>
         <dt>Agent said</dt>
         <dd>“{row.agent_reason}”</dd>
+        {row.anomalies?.length > 0 && (
+          <>
+            <dt>Patterns</dt>
+            <dd>{row.anomalies.map((a) => a.detail_en).join("; ")}</dd>
+          </>
+        )}
       </dl>
+      {row.receipt?.receipt_url && (
+        <div>
+          <a className="btn" href={`/receipts/${row.request_id}`}>
+            View receipt
+          </a>
+        </div>
+      )}
       {tighten && (
         <div>
           <a className="btn" href={tightenHref}>

@@ -93,7 +93,7 @@ describe("integration: grammY bot callback -> payment -> message edits", () => {
     const h = await harness({ vault: true });
     const v = await submitPurchase(h.ctx, h.agent, report);
     const card = h.calls.find((c) => c.method === "sendMessage")!;
-    await h.tap(card.payload.reply_markup.inline_keyboard[1][0].callback_data, 500);
+    await h.tap(card.payload.reply_markup.inline_keyboard[2][0].callback_data, 500);
     const prompt = h.calls.filter((c) => c.method === "sendMessage").at(-1)!;
     expect(prompt.payload.text).toMatch(/^What should I ask Research Scout\? \(R-0001\)/);
     expect(prompt.payload.reply_markup.force_reply).toBe(true);

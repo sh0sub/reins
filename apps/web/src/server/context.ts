@@ -4,12 +4,15 @@ import { resolve } from "node:path";
 import { createDb, getActiveMandate, getAgent, getWorkspace, migrateDb, spendSinceCents, updateWorkspace } from "@reins/db";
 import {
   ClaudeAuditor,
+  ClaudeAnswerSummarizer,
   ClaudeCategorySuggester,
+  ClaudeRuleWriter,
   ClaudeWeeklySummarizer,
   FakePayPalClient,
   HttpPayPalClient,
   MockAuditor,
   ReinsEvents,
+  approveAndAllowMerchant,
   askAgent,
   decideRequest,
   expireStale,
@@ -18,6 +21,7 @@ import {
   linkTelegramChat,
   type Notifier,
   type PayPalClient,
+  type QuietHours,
   type ReinsContext,
 } from "@reins/core";
 import { TelegramNotifier, createBot, grammyApi } from "@reins/bot";
@@ -36,6 +40,31 @@ export function paypalFromEnv(env: Env): { client: PayPalClient; env: "sandbox" 
 export function summarizerFromEnv(env: Env) {
   if (!env.ANTHROPIC_API_KEY || env.PAYPAL_ENV === "fake" || env.NODE_ENV === "test") return undefined;
   return new ClaudeWeeklySummarizer({ apiKey: env.ANTHROPIC_API_KEY });
+}
+
+/** S5 rule sentence: same gating as the weekly summary (Claude only with a key outside fake/test runs). */
+export function ruleWriterFromEnv(env: Env) {
+  if (!env.ANTHROPIC_API_KEY || env.PAYPAL_ENV === "fake" || env.NODE_ENV === "test") return undefined;
+  return new ClaudeRuleWriter({ apiKey: env.ANTHROPIC_API_KEY });
+}
+
+/**
+ * S3 late-night check: REINS_QUIET_HOURS="0-6" (local hours, end exclusive; "off" disables) in REINS_TIMEZONE
+ * (IANA, default: the server's zone). Invalid values disable the check instead of failing startup.
+ */
+export function quietHoursFromEnv(env: Env): QuietHours | null {
+  const raw = (env.REINS_QUIET_HOURS ?? "0-6").trim();
+  if (raw === "off") return null;
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(raw);
+  const timeZone = env.REINS_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 24 || m[1] === m[2]) return null;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone });
+  } catch {
+    console.warn("[reins] REINS_TIMEZONE is not a valid IANA zone: late-night check disabled");
+    return null;
+  }
+  return { timeZone, startHour: Number(m[1]), endHour: Number(m[2]) };
 }
 
 /** Builds the runtime context from environment variables (see .env.example). */
@@ -58,6 +87,8 @@ export async function createContextFromEnv(env: Env = process.env): Promise<Rein
     auditor: env.ANTHROPIC_API_KEY ? new ClaudeAuditor({ apiKey: env.ANTHROPIC_API_KEY }) : new MockAuditor(),
     categorySuggester: env.ANTHROPIC_API_KEY ? new ClaudeCategorySuggester({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
     summarizer: summarizerFromEnv(env),
+    ruleWriter: ruleWriterFromEnv(env),
+    answerSummarizer: env.ANTHROPIC_API_KEY && env.PAYPAL_ENV !== "fake" && env.NODE_ENV !== "test" ? new ClaudeAnswerSummarizer({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
     events: new ReinsEvents(),
     notifiers: [],
     now: Date.now,
@@ -69,6 +100,7 @@ export async function createContextFromEnv(env: Env = process.env): Promise<Rein
       vaultStoredCredential: env.PAYPAL_VAULT_STORED_CREDENTIAL === "1",
       approvalTtlMs: ttlMinutes * 60_000,
       explainDenials: env.REINS_EXPLAIN_DENIALS !== "0",
+      quietHours: quietHoursFromEnv(env),
     },
   };
 
@@ -107,6 +139,10 @@ async function wireTelegram(ctx: ReinsContext, env: Env, ttlMinutes: number) {
     decide: async (id, action, actor) => {
       await decideRequest(ctx, id, action, actor);
       return getLedgerRow(ctx, id);
+    },
+    approveAllow: async (id, actor) => {
+      const { rule } = await approveAndAllowMerchant(ctx, id, actor);
+      return { row: await getLedgerRow(ctx, id), rule };
     },
     ask: async (id, question, actor) => {
       await askAgent(ctx, id, question, actor);
