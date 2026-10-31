@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 /** First visit lands on the S1 onboarding hero (value prop + setup); once PayPal is connected, on the overview. */
 export default async function Home() {
+  // Public demo: the seed is already connected, but a judge's first view is still the S1 hero (Skip for now goes on)
+  if (process.env.REINS_PUBLIC_DEMO === "1") redirect("/setup");
   let connected = true;
   try {
     connected = Boolean((await getWorkspace((await getContext()).db)).connectedAt);

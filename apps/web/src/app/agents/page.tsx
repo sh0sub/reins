@@ -137,6 +137,8 @@ const STATUS_CHIP: Record<AgentSummary["status"], { label: string; className: st
   revoked: { label: "Revoked", className: "status" },
 };
 
+const slugify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
 function AgentCard({ a, selected, onSelect }: { a: AgentSummary; selected: boolean; onSelect: () => void }) {
   const pct = a.monthly_limit_cents ? Math.round((a.month_spent_cents / a.monthly_limit_cents) * 100) : 0;
   return (
@@ -305,6 +307,7 @@ function AgentsScreen() {
   const [created, setCreated] = useState<Created | null>(null);
   const [rotated, setRotated] = useState<Created | null>(null);
   const [pauseBusy, setPauseBusy] = useState(false);
+  // ?agent= is an agent id or a name slug (/agents/research-scout); slugs resolve to ids once the list loads
   const [selected, setSelected] = useState<string | null>(params.get("agent"));
   const [versions, setVersions] = useState<MandateView[] | null>(null);
   /** Older version open in the editor (restore); null = the current one. */
@@ -320,7 +323,11 @@ function AgentsScreen() {
       .then((r) => {
         setAgents(r.agents);
         setError(null);
-        setSelected((s) => s ?? r.agents[0]?.id ?? null);
+        // entering Agents opens the editor: keep a valid selection, else Research Scout (S2 mockup), else the first agent
+        setSelected((s) => {
+          const hit = s ? r.agents.find((a) => a.id === s || slugify(a.name) === s) : undefined;
+          return (hit ?? r.agents.find((a) => a.name === "Research Scout") ?? r.agents[0])?.id ?? null;
+        });
       })
       .catch((e: Error) => setError(e.message));
   }, []);

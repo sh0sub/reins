@@ -26,6 +26,7 @@ import {
   insertPayment,
   insertRequest,
   insertRequestMessage,
+  updateWorkspace,
   listAgents,
   migrateDb,
   purgeAgents,
@@ -56,6 +57,8 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_DB_URL = `file:${resolve(ROOT, "apps/web/.local/reins.db")}`;
 /** Seed agents are the rows whose key prefix starts with this; everything else is considered real data. */
+/** Same sandbox address the app shows for the offline fake PayPal (apps/web router). */
+export const DEMO_MERCHANT_EMAIL = "sb-merchant-demo@business.example.com";
 export const SEED_KEY_PREFIX = "rk_demo_";
 // Scripted verdicts are recorded as the Claude auditor's (shape, tokens and latency included) so the S6 drawer reads like a live run; `seeded: true` marks them in the data.
 const PROVIDER = `claude:${AUDITOR_MODEL}`;
@@ -235,6 +238,8 @@ export interface SeedOptions {
   /** Wipe seed rows even when the DB also contains non-seed data. */
   force?: boolean;
   now?: number;
+  /** Mark the workspace as connected to the offline demo merchant (public demo: every screen shows the sandbox badge). */
+  connectDemoMerchant?: boolean;
 }
 
 export interface SeedResult {
@@ -343,6 +348,10 @@ export async function seedDemo(db: ReinsDb, opts: SeedOptions = {}): Promise<See
 
   // v3 (Tighten mandate after reviewing R-0143): Research Scout blocks fiverr.com. Applies to new requests only.
   await createMandateVersion(db, agents.get("scout")!.id, mandateInput("scout", { allowed: SCOUT_V2_ALLOWED, blocked: ["fiverr.com"] }));
+
+  if (opts.connectDemoMerchant) {
+    await updateWorkspace(db, { paypalEnv: "fake", merchantEmail: DEMO_MERCHANT_EMAIL, connectedAt: now });
+  }
 
   const totals = await dashboardTotals(db, now);
   return {
@@ -497,7 +506,7 @@ async function replayItem(db: ReinsDb, agent: Agent, mandate: Mandate, item: Ite
  */
 export async function seedIfEmpty(db: ReinsDb, opts: Omit<SeedOptions, "force"> = {}): Promise<SeedResult | null> {
   if ((await listAgents(db)).length > 0) return null;
-  return seedDemo(db, { now: opts.now });
+  return seedDemo(db, { now: opts.now, connectDemoMerchant: opts.connectDemoMerchant });
 }
 
 // ---------------- CLI ----------------
@@ -522,9 +531,11 @@ function toUrl(db: string | undefined): string {
 async function main() {
   const { force, ifEmpty, db: dbArg } = parseArgs(process.argv.slice(2));
   const url = toUrl(dbArg);
+  // Public demo (render.yaml sets REINS_PUBLIC_DEMO=1): the demo merchant is already connected; local seeds keep the S1 first-run story
+  const publicDemo = process.env.REINS_PUBLIC_DEMO === "1";
   const db = createDb(url);
   await migrateDb(db, process.env.REINS_MIGRATIONS_DIR ?? resolve(ROOT, "packages/db/drizzle"));
-  const r = ifEmpty ? await seedIfEmpty(db) : await seedDemo(db, { force });
+  const r = ifEmpty ? await seedIfEmpty(db, { connectDemoMerchant: publicDemo }) : await seedDemo(db, { force, connectDemoMerchant: publicDemo });
   if (!r) {
     console.log(`seed: skipped (--if-empty: the database already has ${(await listAgents(db)).length} agent(s))`);
     process.exit(0);

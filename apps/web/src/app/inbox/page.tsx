@@ -529,7 +529,7 @@ function InboxScreen() {
     return () => clearTimeout(t);
   }, [notice]);
 
-  const selected = useMemo(() => rows?.find((r) => r.request_id === selectedId) ?? rows?.[0] ?? null, [rows, selectedId]);
+  const selected = useMemo(() => rows?.find((r) => r.request_id === selectedId || r.display_id === selectedId) ?? rows?.[0] ?? null, [rows, selectedId]);
 
   async function decide(id: string, action: "approve" | "deny", note?: string, allowMerchant = false) {
     setBusy(id);

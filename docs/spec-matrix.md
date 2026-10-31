@@ -1,11 +1,13 @@
 # Spec matrix (artifact `paypal*` vs running product)
 
+Audit round 5, 2026-11-01 (R5-* rows at the end). Fresh temp-DB seed, `PAYPAL_ENV=fake`, port 3102, CDP screenshots at 1440 and 390 (scrollWidth equals viewport on all 6 pages). `pnpm test` 220/220 (32 files), typecheck clean, lint clean. Driven: Cmd+K, sidebar agents, Agents KPI, version dropdown (Research Scout v3/v2/v1), Approve R-0142, ledger drawer deep link all work. Screenshots: scratchpad `converge/reins/r5/`.
+
 Audit round 4, 2026-11-01 (see R4-* rows at the end; r3 rows re-spot-checked: Cmd+K, drawer deep link, version dropdown, New agent, Approve flow all work). Previous header: round 3, 2026-11-01 (rows re-verified against a fresh seed; round 2 fixes confirmed; new rows R3-*). Product run with `PAYPAL_ENV=fake`, temp DB, no Claude or Telegram. Screenshots at 1440 and 390 px.
 `pnpm test` 218/218 pass (32 files) after the r3 fixes (rows marked "r3 fix" re-verified in the browser at 1440 and 390, screenshots in `converge/reins/fix-r3/`), `pnpm typecheck` clean, `pnpm lint` clean. Round 3 screenshots: scratchpad `converge/reins/r3/` (1440 and 390; scrollWidth = viewport on all pages).
 Status: match / gap / blocked.
 
 | id | artifact section | expected | status | evidence |
-|---|---|---|---|---|
+|---|---|---|---|--- |
 | S1-flow | S1 Onboarding | Connect PayPal sandbox: Use demo merchant, verified badge, Continue enabled after step 2 | match | /setup: demo merchant click gives Verified + "oauth2/token 200" |
 | S1-layout | S1 Onboarding | No sidebar, centered column, left value-prop panel (hero, 3 feature cards, mini approval card), "Setup · Step 2 of 3" header, Skip for now | match | /setup is bare (no sidebar): navy hero with "Hold the reins on AI spending.", 3 feature cards, mini approval cards, 3-step stepper, "Setup · Step N of 3" + Skip for now; stacks below 960 px (fix-r1/setup-1440.png, setup-390.png; AppShell.tsx, setup/page.tsx) |
 | S1-states | S1 Onboarding | Empty (Continue disabled), loading "Checking credentials…", error caption, success | match | setup/page.tsx:183, Continue present, error path in tests |
@@ -70,3 +72,11 @@ Status: match / gap / blocked.
 | R4-setup-telegram-order | S1 | Steps complete in order | match | r4 fix: step 3 stays "Waiting" until PayPal is connected, even when a Telegram chat is already linked (setup/page.tsx; fix-r4/setup-1440.png) |
 | R4-ledger-group-label | S4 | Group header shows agent name | match | r4 fix: group column wider ("Research Scout (7)", "Desk Restock Bot (8)" in full at 1440) (fix-r4/ledger-1440.png) |
 | R4-ledger-mobile-grid | S4 | Usable ledger on a 390px phone | match | r4 fix: below 720 px the grid keeps Agent, Item, Amount and Status (ID, Merchant, Decision, PayPal ID, Recon, Risk and, when grouped, Time move to the row detail), so no horizontal scroll is needed (LedgerGrid.tsx; fix-r4/ledger-390.png). Residual: the group name and Item are ellipsised at 390 px, full text is in the row detail |
+| R5-tests | Tests | test/typecheck/lint | match | r5: 220/220, tsc clean, eslint clean (run on a clean tree) |
+| R5-candidates | Shell/S4/S2 | Cmd+K, sidebar agents, Agents KPI, version dropdown | match | r5 driven: Cmd+K "fiverr" lists R-0143; sidebar agents with cap % and paused dot; Ledger Agents tile "3 / 2 active · 1 paused"; Scout version select v3 · current / v2 / v1 (r5/d-cmdk-1440.png, v-ledger-1440.png) |
+| R5-s5-approve | S5 | Approve R-0142 | match | r5 driven: toast "Approved. Finish checkout on PayPal", pending 1 to 0, Scout cap 9% to 68%, "All clear" state (r5/d-inbox-approved-1440.png) |
+| R5-url-paths | S5/S6 mockup URLs | reins.app/approvals/R-0142, /agents/research-scout | gap | low: /approvals/R-0142 and /agents/research-scout return 404 (product uses /inbox, /agents?agent=id; /ledger/R-0143 works) |
+| R5-win-not-connected | S2/S4 shell | Sidebar "PayPal Sandbox Connected" | gap | low: a freshly seeded DB shows "Not connected" in the sidebar and "/" goes to the S1 hero until "Use demo merchant" is clicked; mockups S2/S4 show Connected |
+| R5-s2-default-selection | S2 Agents | Editor open on Research Scout when entering Agents | match | r5 fix: /agents selects Research Scout (else first agent; unknown ?agent= falls back too), so mandate form, version dropdown and MCP snippet show at once (agents/page.tsx; scratchpad converge/reins/fix-r5/agents-1440.png, agents-390.png) |
+| R5-win-seed-connected | S2/S4 shell | Sidebar "PayPal Sandbox Connected" + merchant email | match | r5 fix: the public-demo seed (REINS_PUBLIC_DEMO=1, Render boot) connects the offline demo merchant, so every screen shows Connected; "/" still lands on the S1 hero in public demo (Skip for now continues). Local seeds stay unconnected to keep the S1 first-run story (seed.ts, app/page.tsx, tests/integration/seed.test.ts; scratchpad converge/reins/fix-r5/agents-1440.png, setup-public-1440.png) |
+| R5-s5-url-paths | S5/S6 mockup URLs | /approvals/R-0142 and /agents/research-scout | match | r5 fix: both redirect (307) to /inbox?r=R-0142 and /agents?agent=research-scout (name slug or id); inbox also matches display ids; /ledger/R-0143 unchanged (app/approvals/[id], app/agents/[agent]; scratchpad converge/reins/fix-r5/approvals-1440.png, agents-slug-1440.png) |

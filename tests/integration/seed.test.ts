@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { createDb, insertAgent, listAgents, listDecisions, listRequests, migrateDb, getPaymentByRequest, type ReinsDb } from "@reins/db";
+import { createDb, getWorkspace, insertAgent, listAgents, listDecisions, listRequests, migrateDb, getPaymentByRequest, type ReinsDb } from "@reins/db";
 import { displayId, formatUsd, getWeeklySummary, generateApiKey, getLedger, getRequestDetail, listAgentSummaries } from "@reins/core";
 import { createTestContext } from "@reins/core/testing";
 import { SEED_KEY_PREFIX, SeedRefusal, dashboardTotals, seedDemo, seedIfEmpty } from "../../scripts/seed.ts";
@@ -34,6 +34,18 @@ describe("M13 seed", () => {
     expect(`This month ${formatUsd(totals.spentCents)} of ${formatUsd(totals.limitCents)} across ${totals.agents} agents`).toBe("This month $117.97 of $410.00 across 3 agents");
     expect(summaries.reduce((s, a) => s + a.month_spent_cents, 0)).toBe(11797);
     expect(summaries.reduce((s, a) => s + (a.monthly_limit_cents ?? 0), 0)).toBe(41000);
+  });
+
+  it("connects the demo merchant only when asked (public demo), keeping local seeds unconnected", async () => {
+    const plain = await tempDb("ws-plain.db");
+    await seedDemo(plain);
+    expect((await getWorkspace(plain)).connectedAt).toBeNull();
+
+    const pub = await tempDb("ws-public.db");
+    await seedIfEmpty(pub, { connectDemoMerchant: true });
+    const ws = await getWorkspace(pub);
+    expect(ws.connectedAt).not.toBeNull();
+    expect(ws).toMatchObject({ paypalEnv: "fake", merchantEmail: "sb-merchant-demo@business.example.com" });
   });
 
   it("covers every decision outcome, last month and this month, with consistent trails", async () => {
