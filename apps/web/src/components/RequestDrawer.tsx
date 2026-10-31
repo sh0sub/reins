@@ -90,6 +90,13 @@ function focusables(root: HTMLElement): HTMLElement[] {
  * S6 request-detail drawer: right side 520px, full screen under 720px. Esc closes, focus stays inside (trap) and
  * returns to the opener on close. Data: GET /api/ledger/:id/detail.
  */
+/** S6 "Model: Claude · 412 tokens · 1.9 s": the model name, then tokens and latency when they were recorded. */
+export function modelLine(a: { provider: string | null; tokens: number | null; latency_ms: number | null }): string {
+  const p = a.provider ?? "";
+  const name = p.startsWith("claude") ? "Claude" : p === "mock" ? "mock auditor" : p;
+  return [`Model: ${name}`, a.tokens ? `${a.tokens} tokens` : null, a.latency_ms != null ? `${(a.latency_ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(" · ");
+}
+
 export function RequestDrawer({ requestId, onClose, onChanged }: { requestId: string; onClose: () => void; onChanged?: () => void }) {
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -278,10 +285,7 @@ export function RequestDrawer({ requestId, onClose, onChanged }: { requestId: st
                     {row.risk == null ? "Reins check" : row.risk >= 8 ? "High risk" : row.risk <= 3 ? "Low risk" : "Needs a look"}
                   </h3>
                   {detail.auditor?.provider && (
-                    <span className="caption mono">
-                      {detail.auditor.provider === "mock" ? "mock auditor" : detail.auditor.provider}
-                      {detail.auditor.advisory ? " · explains only" : ""}
-                    </span>
+                    <span className="caption mono">{modelLine(detail.auditor)}</span>
                   )}
                 </div>
                 <div className="risk-grid">

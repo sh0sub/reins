@@ -46,7 +46,7 @@ export interface RequestDetail {
   agent: { id: string; name: string; status: AgentStatus };
   timeline: TimelineStep[];
   hard_rules: HardRuleRow[];
-  auditor: { provider: string | null; advisory: boolean; risk: number | null; reason_en: string | null; reason_ko: string | null; skipped: string | null } | null;
+  auditor: { provider: string | null; advisory: boolean; tokens: number | null; latency_ms: number | null; risk: number | null; reason_en: string | null; reason_ko: string | null; skipped: string | null } | null;
   mandate: ReturnType<typeof mandateView> | null;
   /** The request_purchase call as the agent sent it. The agent key is never stored, so nothing to leak; marked redacted. */
   raw_request: Record<string, unknown>;
@@ -85,10 +85,10 @@ export async function getRequestDetail(ctx: ReinsContext, requestId: string): Pr
   let auditor: RequestDetail["auditor"] = null;
   for (const d of decisions) {
     if (d.stage === "llm") {
-      const det = (d.details ?? {}) as { provider?: string; advisory?: boolean; failed?: boolean };
-      const who = det.provider === "mock" ? "mock auditor" : det.provider ?? d.actor ?? "auditor";
+      const det = (d.details ?? {}) as { provider?: string; advisory?: boolean; failed?: boolean; tokens?: number; latency_ms?: number };
+      const who = det.provider === "mock" ? "mock auditor" : det.provider?.startsWith("claude") ? "Claude" : det.provider ?? d.actor ?? "auditor";
       add(`llm-${d.createdAt}`, `LLM audit · ${who}${det.advisory ? " (explains only)" : ""}`, d.createdAt, d.decision === "DENY" ? "bad" : d.decision === "ASK_HUMAN" ? "wait" : "ok", `${d.decision} · risk ${d.risk ?? "?"}/10`);
-      auditor = { provider: det.provider ?? d.actor, advisory: Boolean(det.advisory), risk: d.risk, reason_en: d.reasonEn, reason_ko: d.reasonKo, skipped: null };
+      auditor = { provider: det.provider ?? d.actor, advisory: Boolean(det.advisory), tokens: det.tokens ?? null, latency_ms: det.latency_ms ?? null, risk: d.risk, reason_en: d.reasonEn, reason_ko: d.reasonKo, skipped: null };
     } else if (d.stage === "system" && d.decision !== "EXPIRE") {
       add(`patterns-${d.createdAt}`, "Unusual pattern check", d.createdAt, "wait", d.reasonEn);
     } else if (d.stage === "system") {
@@ -97,7 +97,7 @@ export async function getRequestDetail(ctx: ReinsContext, requestId: string): Pr
       add(`human-${d.createdAt}`, d.decision === "APPROVE" ? `Approved by ${d.actor ?? "you"}` : `Denied by ${d.actor ?? "you"}`, d.createdAt, d.decision === "APPROVE" ? "ok" : "bad", d.reasonEn);
     }
   }
-  if (!auditor && hardDec && failed.length) auditor = { provider: null, advisory: false, risk: null, reason_en: null, reason_ko: null, skipped: paused ? "Agent paused: the auditor was not called." : "Hard rules blocked the request first." };
+  if (!auditor && hardDec && failed.length) auditor = { provider: null, advisory: false, tokens: null, latency_ms: null, risk: null, reason_en: null, reason_ko: null, skipped: paused ? "Agent paused: the auditor was not called." : "Hard rules blocked the request first." };
 
   // Telegram gets a card for every ASK_HUMAN and a warning for every block; only shown when a chat is linked.
   if (telegram) {

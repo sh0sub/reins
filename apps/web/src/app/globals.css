@@ -463,3 +463,8 @@ table.rules thead th { overflow-wrap: normal; }
 .side-pp .label { white-space: nowrap; }
 .ob-top a { display: inline-flex; align-items: center; min-height: var(--component-button-target-touch); }
 .ob-float { max-width: 380px; }
+
+/* S2: version dropdown in the editor header, versions + recent requests in the left column */
+select.select-version { width: auto; min-width: 150px; font-weight: 700; color: var(--component-navigation-selected-text); background: var(--component-navigation-selected-background); }
+.side-block { border-top: 1px solid var(--component-list-row-divider); padding-top: var(--sp-4); }
+.ver-item.is-viewed > .label { color: var(--component-navigation-selected-text); }

@@ -7,7 +7,7 @@ import type { GridApi } from "ag-grid-community";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
-import { decisionLabel } from "@/lib/format";
+import { outcomeBucket } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
@@ -116,9 +116,9 @@ function LedgerScreen() {
   const kpi = useMemo(() => {
     const all = scoped;
     const paid = all.filter((r) => r.status === "paid");
-    const denied = all.filter((r) => r.status === "denied");
+    const denied = all.filter((r) => outcomeBucket(r) === "blocked");
     const sum = (xs: LedgerRow[]) => xs.reduce((s, r) => s + Number(r.amount), 0);
-    const by = (d: string) => all.filter((r) => decisionLabel(r) === d).length;
+    const by = (d: string) => all.filter((r) => outcomeBucket(r) === d).length;
     return {
       paid: sum(paid),
       matched: paid.filter((r) => r.payment?.reconciled === "matched").length,
@@ -126,9 +126,9 @@ function LedgerScreen() {
       blocked: sum(denied),
       blockedCount: denied.length,
       total: all.length,
-      auto: by("AUTO"),
-      human: by("HUMAN"),
-      denied: by("DENIED"),
+      auto: by("auto"),
+      human: by("human"),
+      denied: by("blocked"),
     };
   }, [scoped]);
   const periodLabel = PERIODS.find((p) => p.id === period)!.label.toLowerCase();
@@ -199,7 +199,7 @@ function LedgerScreen() {
                 <span className="caption">Requests</span>
                 <span className="metric">{kpi.total}</span>
                 <span className="caption">
-                  Auto {kpi.auto} · Human {kpi.human} · Denied {kpi.denied}
+                  Auto {kpi.auto} · Human {kpi.human} · Blocked {kpi.denied}
                 </span>
               </div>
               <div className="panel panel-tight stack-s">

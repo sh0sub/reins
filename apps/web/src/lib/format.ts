@@ -31,6 +31,17 @@ export function decisionLabel(row: Pick<LedgerRow, "decisions" | "decision" | "s
   return "PENDING";
 }
 
+/**
+ * Overview-style split used by the ledger tiles ("Auto 19 · Human 4 · Blocked 1"): anything that needed a person
+ * (asked, approved, rejected, pending, expired) is Human, only rule/auditor denials are Blocked. Mirrors core outcomeOf.
+ */
+export function outcomeBucket(row: Pick<LedgerRow, "decisions" | "decision" | "status">): "auto" | "human" | "blocked" | "other" {
+  if (row.decisions.some((d) => d.stage === "human") || row.status === "pending_human" || row.status === "expired") return "human";
+  if (row.status === "denied") return "blocked";
+  if (row.status === "reviewing") return "other";
+  return row.decision === "AUTO_APPROVE" ? "auto" : "human";
+}
+
 /** Status chip: label text + colour (never colour alone). */
 export function statusChip(row: Pick<LedgerRow, "status">): { label: string; className: string } {
   switch (row.status) {

@@ -170,8 +170,8 @@ export function mcpSnippet(apiBaseUrl: string, apiKey: string) {
     mcpServers: {
       reins: {
         command: "npx",
-        args: ["-y", "tsx", "apps/mcp/src/stdio.ts"],
-        env: { REINS_API_URL: apiBaseUrl, REINS_API_KEY: apiKey },
+        args: ["-y", "@reins/mcp"],
+        env: { REINS_URL: apiBaseUrl, REINS_API_KEY: apiKey },
       },
     },
   };
@@ -341,7 +341,7 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
         risk: advice.risk,
         reasonEn: advice.reasonEn,
         reasonKo: advice.reasonKo,
-        details: { provider: advice.provider, advisory: true, failed: advice.failed },
+        details: { provider: advice.provider, advisory: true, failed: advice.failed, latency_ms: advice.latencyMs, ...(advice.tokens ? { tokens: advice.tokens } : {}) },
         actor: advice.provider,
       });
       if (!advice.failed) {
@@ -368,6 +368,8 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     details: {
       provider: audit.provider,
       failed: audit.failed,
+      latency_ms: audit.latencyMs,
+      ...(audit.tokens ? { tokens: audit.tokens } : {}),
       ...(audit.error ? { error: audit.error.slice(0, 200) } : {}),
       ...(autoLimit !== mandate!.autoApproveLimitCents ? { merchant_auto_limit: centsToValue(autoLimit) } : {}),
     },

@@ -79,6 +79,8 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
+The Agents screen shows the same config in its short form (`npx -y @reins/mcp` with `REINS_URL` and `REINS_API_KEY`; `REINS_API_URL` also works). `@reins/mcp` is not published to npm yet, so until then use the clone path above.
+
 Demo prompts and Channel3 product search setup: [agents/README.md](agents/README.md).
 
 ## Security notes
@@ -146,8 +148,9 @@ pnpm seed -- --if-empty          # every boot (Render start command, /tmp starts
 ```
 
 Matches the plan's flow C: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,
-human-rejected, hard-rule-blocked (the $450 fiverr.com injection), auditor-blocked, failed, expired and 2 pending items across this and last month.
-No PayPal or Claude calls (fake `FAKE-ORDER-*` / `FAKE-CAPTURE-*` ids). Seed agents use `rk_demo_` keys that are never stored or printed, so create
+human-rejected, hard-rule-blocked (the $450 fiverr.com injection, R-0143), a declined card, an expired approval and 1 pending approval (R-0142):
+24 requests this month, Auto 19 · Human 4 · Blocked 1, and a current ISO week of 6 purchases for $84.98. Research Scout has mandate versions v1, v2, v3.
+No PayPal or Claude calls (fake `FAKE-ORDER-*` / `FAKE-CAPTURE-*` ids; the auditor verdicts, tokens and latencies are scripted demo data). Seed agents use `rk_demo_` keys that are never stored or printed, so create
 a fresh agent for live MCP runs. Re-running replaces only seed rows and refuses a DB with other data unless `--force`. Pending approvals
 expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before a demo.
 

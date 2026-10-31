@@ -44,7 +44,8 @@ export interface AuditInput {
 
 export interface AuditProvider {
   readonly name: string;
-  audit(input: AuditInput, opts?: { signal?: AbortSignal }): Promise<AuditVerdict>;
+  /** `onUsage` lets a provider report the tokens it used (shown as "Model: Claude · 412 tokens · 1.9 s"). */
+  audit(input: AuditInput, opts?: { signal?: AbortSignal; onUsage?: (tokens: number) => void }): Promise<AuditVerdict>;
 }
 
 export const RECENT_LIMIT = 10;
@@ -136,6 +137,8 @@ export interface AuditOutcome {
   provider: string;
   failed: boolean;
   error?: string;
+  latencyMs: number;
+  tokens?: number;
 }
 
 export const AUDIT_FALLBACK = {
@@ -153,9 +156,11 @@ export async function runAudit(
 ): Promise<AuditOutcome> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const started = Date.now();
+  let tokens: number | undefined;
   try {
     const raw = await Promise.race([
-      provider.audit(input, { signal: ctrl.signal }),
+      provider.audit(input, { signal: ctrl.signal, onUsage: (n) => (tokens = n) }),
       new Promise<never>((_, rej) => ctrl.signal.addEventListener("abort", () => rej(new Error("Auditor timeout")))),
     ]);
     const verdict = AuditVerdictSchema.parse(raw);
@@ -166,6 +171,8 @@ export async function runAudit(
       reasonKo: sanitizeReason(verdict.reason_ko, input.request),
       provider: provider.name,
       failed: false,
+      latencyMs: Date.now() - started,
+      ...(tokens ? { tokens } : {}),
     };
   } catch (err) {
     return {
@@ -175,6 +182,7 @@ export async function runAudit(
       provider: provider.name,
       failed: true,
       error: err instanceof Error ? err.message : String(err),
+      latencyMs: Date.now() - started,
     };
   } finally {
     clearTimeout(timer);

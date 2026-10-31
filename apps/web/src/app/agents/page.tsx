@@ -56,7 +56,7 @@ function NewAgent({ onCreated }: { onCreated: (c: Created) => void }) {
     <form className="stack-s" onSubmit={submit}>
       <label className="label" htmlFor="agent-name">New agent</label>
       <div className="row" style={{ flexWrap: "nowrap" }}>
-        <input id="agent-name" className="input" placeholder="Claude Code – DevOps" value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} />
+        <input id="agent-name" className="input" placeholder="e.g. Research Scout" value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} />
         <button className="btn" disabled={busy || !name.trim()}>
           {busy ? "Adding…" : "Add"}
         </button>
@@ -218,6 +218,7 @@ function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const apiUrl = typeof window === "undefined" ? "" : window.location.origin;
   useEffect(() => {
     if (confirm) confirmRef.current?.focus();
   }, [confirm]);
@@ -237,8 +238,9 @@ function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (
       setBusy(false);
     }
   }
+  // Same shape the server returns on create/rotate (mcpSnippet in core), with the key masked: the full key is shown once.
   const snippet = JSON.stringify(
-    { mcpServers: { reins: { command: "npx", args: ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"], env: { REINS_API_URL: "${REINS_API_URL}", REINS_API_KEY: `${agent.key_prefix}…` } } } },
+    { mcpServers: { reins: { command: "npx", args: ["-y", "@reins/mcp"], env: { REINS_API_KEY: `${agent.key_prefix}…redacted`, REINS_URL: apiUrl } } } },
     null,
     2,
   );
@@ -285,7 +287,7 @@ function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (
         {agent.key_prefix}… (full key was shown once{agent.key_rotated_at ? `; regenerated ${new Date(agent.key_rotated_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : " at creation"}; paste it in place of the masked value)
       </p>
       <div className="code">{snippet}</div>
-      <p className="caption">Agents only see get_mandate / request_purchase / get_request_status / list_transactions. They never see PayPal credentials.</p>
+      <p className="caption">Agents only see get_mandate / request_purchase / get_request_status / list_transactions. They never see PayPal credentials. Running from a clone instead? <code>pnpm mcp:stdio</code> starts the same server with these two variables.</p>
     </section>
   );
 }
@@ -300,6 +302,8 @@ function AgentsScreen() {
   const [pauseBusy, setPauseBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(params.get("agent"));
   const [versions, setVersions] = useState<MandateView[] | null>(null);
+  /** Older version open in the editor (restore); null = the current one. */
+  const [viewId, setViewId] = useState<string | null>(null);
   const [recent, setRecent] = useState<LedgerRow[] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [paymentMode, setPaymentMode] = useState<string | null>(null);
@@ -328,6 +332,7 @@ function AgentsScreen() {
   useEffect(() => {
     if (!selected) return;
     setVersions(null);
+    setViewId(null);
     setRecent(null);
     api<{ versions: MandateView[] }>(`/api/agents/${selected}/mandates`)
       .then((r) => setVersions(r.versions))
@@ -344,6 +349,8 @@ function AgentsScreen() {
   }, [toast]);
 
   const agent = agents?.find((a) => a.id === selected);
+  const viewedIndex = Math.max(0, versions?.findIndex((v) => v.mandate_id === viewId) ?? 0);
+  const viewed = versions?.[viewedIndex];
 
   async function togglePause(a: AgentSummary) {
     setPauseBusy(true);
@@ -428,6 +435,59 @@ function AgentsScreen() {
                 load();
               }}
             />
+            {agent && (
+              <>
+        <section className="stack-s side-block" aria-labelledby="ver-h">
+          <h3 id="ver-h">Mandate versions</h3>
+          {versions?.length ? (
+            <ul className="list">
+              {versions.map((v, i) => {
+                const rules = Object.entries(v.merchant_auto_limits ?? {});
+                return (
+                  <li key={v.mandate_id} className={`stack-s ver-item${i === viewedIndex ? " is-viewed" : ""}`} style={{ gap: 2 }}>
+                    <span className="label">
+                      v{v.version}
+                      {i === 0 ? " · current" : ""}
+                    </span>
+                    <span>{versionChanges(v, versions[i + 1])}</span>
+                    <span className="caption">
+                      ${v.monthly_limit}/mo · auto ≤ ${v.auto_approve_limit}
+                      {v.per_purchase_cap ? ` · cap $${v.per_purchase_cap}` : ""} · blocked {v.blocked_merchants.join(", ") || "none"}
+                    </span>
+                    {rules.length > 0 && <span className="caption">Always allowed: {rules.map(([m, lim]) => `${m} ≤ $${lim}`).join(", ")}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="caption">No versions yet.</p>
+          )}
+        </section>
+        <section className="stack-s side-block" aria-labelledby="recent-h">
+          <h3 id="recent-h">Recent requests</h3>
+          {recent === null ? (
+            <div className="skeleton" />
+          ) : recent.length === 0 ? (
+            <p className="caption">No requests yet.</p>
+          ) : (
+            <ul className="list">
+              {recent.map((r) => {
+                const chip = statusChip(r);
+                return (
+                  <li key={r.request_id} className="row between">
+                    <span className="row">
+                      <span className={chip.className}>{chip.label}</span>
+                      <span>{r.merchant}</span>
+                    </span>
+                    <span className="num">${r.amount}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+              </>
+            )}
           </section>
 
           {agent ? (
@@ -438,7 +498,23 @@ function AgentsScreen() {
                   <span className="caption">Mandate · applies to new requests from this agent</span>
                 </div>
                 <span className="row">
-                  {agent.mandate_version && <span className="status status-info">v{agent.mandate_version} · current</span>}
+                  {versions && versions.length > 0 ? (
+                    <select
+                      className="input select-version"
+                      aria-label="Mandate version"
+                      value={viewed?.mandate_id ?? ""}
+                      onChange={(e) => setViewId(e.target.value === versions[0]!.mandate_id ? null : e.target.value)}
+                    >
+                      {versions.map((v, i) => (
+                        <option key={v.mandate_id} value={v.mandate_id}>
+                          v{v.version}
+                          {i === 0 ? " · current" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    agent.mandate_version && <span className="status status-info">v{agent.mandate_version} · current</span>
+                  )}
                   {agent.status !== "revoked" && (
                     <button type="button" className="btn" disabled={pauseBusy} onClick={() => togglePause(agent)}>
                       <Icon name={agent.status === "paused" ? "arrow" : "pause"} className="ico" />
@@ -453,17 +529,27 @@ function AgentsScreen() {
                   “agent paused” hard rule before the auditor or PayPal is called. Pending approvals stay in the inbox.
                 </p>
               )}
+              {viewedIndex > 0 && viewed && (
+                <p className="alert" role="status">
+                  Viewing v{viewed.version}, an older version. Saving creates v{(versions?.[0]?.version ?? 0) + 1} with these values; v{versions?.[0]?.version} stays in the history.{" "}
+                  <button type="button" className="btn-link" onClick={() => setViewId(null)}>
+                    Back to current
+                  </button>
+                </p>
+              )}
               {versions === null ? (
                 <div className="skeleton" style={{ minHeight: 320 }} aria-label="Loading mandate" />
               ) : (
                 <MandateEditor
-                  key={`${versions[0]?.mandate_id ?? "new"}-${prefill ? "p" : ""}`}
+                  key={`${viewed?.mandate_id ?? "new"}-${prefill ? "p" : ""}`}
                   agentId={agent.id}
-                  current={versions[0] ?? null}
-                  previous={versions[1] ?? null}
+                  current={viewed ?? null}
+                  previous={versions[viewedIndex + 1] ?? null}
+                  nextVersion={(versions[0]?.version ?? 0) + 1}
                   monthSpentCents={agent.month_spent_cents}
                   prefill={prefill}
                   onSaved={(m) => {
+                    setViewId(null);
                     setVersions([m, ...(versions ?? [])]);
                     setToast(`Mandate v${m.version} saved. Applies to new requests.`);
                     if (prefill) router.replace(`/agents?agent=${agent.id}`);
@@ -472,57 +558,6 @@ function AgentsScreen() {
                   onDiscard={() => prefill && router.replace(`/agents?agent=${agent.id}`)}
                 />
               )}
-              <div className="grid-2">
-                <section className="stack-s" aria-labelledby="ver-h">
-                  <h3 id="ver-h">Mandate versions</h3>
-                  {versions?.length ? (
-                    <ul className="list">
-                      {versions.map((v, i) => {
-                        const rules = Object.entries(v.merchant_auto_limits ?? {});
-                        return (
-                          <li key={v.mandate_id} className="stack-s" style={{ gap: 2 }}>
-                            <span className="label">
-                              v{v.version}
-                              {i === 0 ? " · current" : ""}
-                            </span>
-                            <span>{versionChanges(v, versions[i + 1])}</span>
-                            <span className="caption">
-                              ${v.monthly_limit}/mo · auto ≤ ${v.auto_approve_limit}
-                              {v.per_purchase_cap ? ` · cap $${v.per_purchase_cap}` : ""} · blocked {v.blocked_merchants.join(", ") || "none"}
-                            </span>
-                            {rules.length > 0 && <span className="caption">Always allowed: {rules.map(([m, lim]) => `${m} ≤ $${lim}`).join(", ")}</span>}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="caption">No versions yet.</p>
-                  )}
-                </section>
-                <section className="stack-s" aria-labelledby="recent-h">
-                  <h3 id="recent-h">Recent requests</h3>
-                  {recent === null ? (
-                    <div className="skeleton" />
-                  ) : recent.length === 0 ? (
-                    <p className="caption">No requests yet.</p>
-                  ) : (
-                    <ul className="list">
-                      {recent.map((r) => {
-                        const chip = statusChip(r);
-                        return (
-                          <li key={r.request_id} className="row between">
-                            <span className="row">
-                              <span className={chip.className}>{chip.label}</span>
-                              <span>{r.merchant}</span>
-                            </span>
-                            <span className="num">${r.amount}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </section>
-              </div>
               <PaymentLine mode={paymentMode} />
               <McpConnection
                 agent={agent}

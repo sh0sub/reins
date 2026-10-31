@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createDb, insertAgent, listAgents, listDecisions, listRequests, migrateDb, getPaymentByRequest, type ReinsDb } from "@reins/db";
-import { formatUsd, generateApiKey, listAgentSummaries, getLedger } from "@reins/core";
+import { displayId, formatUsd, getWeeklySummary, generateApiKey, getLedger, getRequestDetail, listAgentSummaries } from "@reins/core";
 import { createTestContext } from "@reins/core/testing";
 import { SEED_KEY_PREFIX, SeedRefusal, dashboardTotals, seedDemo, seedIfEmpty } from "../../scripts/seed.ts";
 
@@ -26,7 +26,8 @@ describe("M13 seed", () => {
     const ctx = await createTestContext({ db });
     const summaries = await listAgentSummaries(ctx);
     expect(summaries).toHaveLength(3);
-    expect(summaries.every((s) => s.mandate_version === 1)).toBe(true);
+    // Research Scout: v1 created with the agent, v2 (+huggingface.co, snapshot for R-0143), v3 blocks fiverr.com
+    expect(Object.fromEntries(summaries.map((s) => [s.name, s.mandate_version]))).toEqual({ "Claude Code – DevOps": 1, "Research Scout": 3, "Desk Restock Bot": 1 });
 
     // same query as the dashboard: per-agent month spend + active mandate limits
     const totals = await dashboardTotals(db);
@@ -42,11 +43,13 @@ describe("M13 seed", () => {
     expect(rows).toHaveLength(24);
     const by = (s: string) => rows.filter((x) => x.status === s).length;
     expect(by("paid")).toBeGreaterThanOrEqual(10);
-    expect(by("pending_human")).toBe(2);
+    expect(by("pending_human")).toBe(1);
     expect(by("expired")).toBe(1);
     expect(by("failed")).toBe(1);
-    expect(by("denied")).toBeGreaterThanOrEqual(6);
-    expect(new Set(rows.map((x) => new Date(x.createdAt).getUTCMonth())).size).toBe(2);
+    expect(by("denied")).toBe(2); // fiverr (hard rules) + the rejected lamp
+    expect(by("paid")).toBe(19); // 18 auto + the approved $59
+    // all 24 requests are this month (plan: "This month ... 24 requests")
+    expect(new Set(rows.map((x) => new Date(x.createdAt).getUTCMonth())).size).toBe(1);
     expect(rows.every((x) => x.createdAt <= Date.now())).toBe(true);
 
     const ledger = await getLedger(await createTestContext({ db }), { limit: 100 });
@@ -66,13 +69,19 @@ describe("M13 seed", () => {
       }
       expect((await listDecisions(db, r.id)).length).toBeGreaterThan(0);
     }
-    expect([...kinds].sort()).toEqual(["auditor", "auto", "hard", "human_approved", "human_rejected"]);
+    expect([...kinds].sort()).toEqual(["auto", "hard", "human_approved", "human_rejected"]);
 
     // video act 3: fiverr $450 blocked by 3 failing hard rules with an explanation
     const fiverr = rows.find((x) => x.merchant === "fiverr.com")!;
     expect(fiverr.amountCents).toBe(45000);
     expect(ledger.find((l) => l.request_id === fiverr.id)!.decisions[0]!.details).toMatchObject({ results: expect.any(Array) });
     expect(fiverr.reasonEn).toMatch(/prompt injection/);
+    expect(displayId(fiverr.seq)).toBe("R-0143"); // the plan's R-0143, and the pending approval is R-0142
+    expect(displayId(rows.find((x) => x.status === "pending_human")!.seq)).toBe("R-0142");
+    // S6 "Model: Claude · 412 tokens · 1.9 s"
+    const fiverrDetail = await getRequestDetail(await createTestContext({ db }), fiverr.id);
+    expect(fiverrDetail.auditor).toMatchObject({ provider: expect.stringMatching(/^claude:/), tokens: 412, latency_ms: 1900 });
+    expect(fiverrDetail.mandate!.version).toBe(2); // v2 was the snapshot when R-0143 was blocked
     // video act 2: $59 statista approved by a human, $41 of Scout's $100 left
     const statista = rows.find((x) => x.merchant === "statista.com" && x.amountCents === 5900)!;
     expect(statista.status).toBe("paid");
@@ -114,5 +123,18 @@ describe("M13 seed", () => {
     await insertAgent(real, { name: "Real agent", keyHash: k.hash, keyPrefix: k.displayPrefix });
     expect(await seedIfEmpty(real)).toBeNull();
     expect(await listRequests(real, { limit: 10 })).toHaveLength(0);
+  });
+
+  it("S7 first story holds on any day: $84.98 over 6 purchases this ISO week, 24 requests, no hard-rule mismatch", async () => {
+    // mid-week, Monday morning (little room), the 13th (judging time) and the first day of a month
+    for (const iso of ["2026-11-11T12:00:00Z", "2026-11-09T06:00:00Z", "2026-11-13T09:00:00Z", "2026-12-01T10:00:00Z"]) {
+      const now = Date.parse(iso);
+      const db = await tempDb(`now-${iso.slice(0, 10)}.db`);
+      const r = await seedDemo(db, { now });
+      expect(r).toMatchObject({ requests: 24, thisMonthSpentCents: 11797 });
+      const s = await getWeeklySummary(await createTestContext({ db, now: () => now }));
+      if (iso.startsWith("2026-12-01")) continue; // the week began in November: Dec 1 only has the month's first hours
+      expect(s.stats, iso).toMatchObject({ week_spent_cents: 8498, week_purchases: 6 });
+    }
   });
 });

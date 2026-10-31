@@ -224,7 +224,7 @@ export function LedgerGrid({
       { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 138, minWidth: 130, filter: "agSetColumnFilter", enableCellChangeFlash: true },
       { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 100, suppressHeaderFilterButton: true },
       { headerName: "Recon", colId: "recon", valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Risk", field: "risk", width: 56, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Risk", field: "risk", width: 64, minWidth: 60, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
     ],
     [group],
   );
@@ -259,6 +259,10 @@ export function LedgerGrid({
         suppressAggFuncInHeader
         autoGroupColumnDef={{ headerName: "Agent / time", width: 150, minWidth: 130, cellRendererParams: { suppressCount: false } }}
         groupDefaultExpanded={1}
+        // rows never slide under a stuck group row, so every row of the last group is readable without extra scrolling
+        suppressGroupRowsSticky
+        // reserve the scrollbar lane from the start, so columns fitted to the width still fit once rows overflow (Risk was cut)
+        alwaysShowVerticalScroll
         groupTotalRow={undefined}
         grandTotalRow="pinnedBottom"
         masterDetail
@@ -274,6 +278,10 @@ export function LedgerGrid({
           apiRef.current = e.api;
           onApi?.(e.api);
           focusRow();
+        }}
+        // first load always starts at the top (a kept scroll offset hid rows of the last group at 1440 px)
+        onFirstDataRendered={(e) => {
+          if (!focusId) e.api.ensureIndexVisible(0, "top");
         }}
         onRowDataUpdated={focusRow}
       />

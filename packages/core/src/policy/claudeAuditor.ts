@@ -32,7 +32,7 @@ export class ClaudeAuditor implements AuditProvider {
     this.client = opts.client ?? new Anthropic({ apiKey: opts.apiKey, maxRetries: 1, timeout: 20_000 });
   }
 
-  async audit(input: AuditInput, opts: { signal?: AbortSignal } = {}): Promise<AuditVerdict> {
+  async audit(input: AuditInput, opts: { signal?: AbortSignal; onUsage?: (tokens: number) => void } = {}): Promise<AuditVerdict> {
     const response = await this.client.messages.parse(
       {
         model: AUDITOR_MODEL,
@@ -48,6 +48,7 @@ export class ClaudeAuditor implements AuditProvider {
       },
       { signal: opts.signal },
     );
+    if (response.usage) opts.onUsage?.(response.usage.input_tokens + response.usage.output_tokens);
     if (response.stop_reason === "refusal") throw new Error("Auditor refused");
     if (!response.parsed_output) throw new Error(`Auditor returned no parsable verdict (stop_reason=${response.stop_reason})`);
     return response.parsed_output;

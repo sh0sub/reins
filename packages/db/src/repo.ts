@@ -152,7 +152,7 @@ export async function listMandateVersions(db: ReinsDb, agentId: string): Promise
 export type NewRequestInput = Pick<
   PurchaseRequest,
   "agentId" | "mandateId" | "clientRequestId" | "merchant" | "amountCents" | "currency" | "items" | "reason" | "category"
-> & { createdAt?: number };
+> & { createdAt?: number; /** Fixed display number (the demo seed starts at R-0120); default is max + 1. */ seq?: number };
 
 export async function findRequestByClientId(
   db: ReinsDb,
@@ -171,7 +171,7 @@ export async function insertRequest(
 ): Promise<{ created: boolean; request: PurchaseRequest }> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const [cur] = await db.select({ s: max(requests.seq) }).from(requests);
-    const seq = (cur?.s ?? 0) + 1;
+    const seq = input.seq ?? (cur?.s ?? 0) + 1;
     const ts = input.createdAt ?? Date.now();
     try {
       const [row] = await db

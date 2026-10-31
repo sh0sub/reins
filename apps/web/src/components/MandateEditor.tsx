@@ -120,6 +120,7 @@ export function MandateEditor({
   previous,
   monthSpentCents,
   prefill,
+  nextVersion,
   onSaved,
   onDiscard,
 }: {
@@ -128,6 +129,8 @@ export function MandateEditor({
   previous?: MandateView | null;
   monthSpentCents: number;
   prefill?: MandatePrefill | null;
+  /** Version a save creates. Differs from current.version + 1 when an older version is open for restoring. */
+  nextVersion?: number;
   onSaved: (m: MandateView) => void;
   /** Called after "Discard changes" (the agents page drops a Tighten-mandate prefill from the URL). */
   onDiscard?: () => void;
@@ -363,7 +366,7 @@ export function MandateEditor({
       )}
       <div className="row">
         <button className="btn btn-primary" type="submit" disabled={saving}>
-          {saving ? "Saving…" : current ? `Save mandate as v${v + 1}` : "Save mandate"}
+          {saving ? "Saving…" : current ? `Save mandate as v${nextVersion ?? v + 1}` : "Save mandate"}
         </button>
         {current && dirty && (
           <button

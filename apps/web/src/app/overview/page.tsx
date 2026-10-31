@@ -287,7 +287,7 @@ function WeeklyCard({ summary, error, onRetry }: { summary: WeeklySummary | null
           <Icon name="sparkle" className="ico" />
           AI weekly summary
         </h2>
-        {summary && <span className="caption">{summary.source === "claude" ? "by Claude" : `Template · ${summary.fallback_reason ?? "Claude unavailable"}`}</span>}
+        {summary && <span className="caption" title={summary.source === "claude" ? undefined : `Written by Reins from your numbers. ${summary.fallback_reason ?? ""}`.trim()}>{summary.source === "claude" ? "by Claude" : "Auto summary"}</span>}
       </div>
       {error ? (
         <div className="stack-s">
