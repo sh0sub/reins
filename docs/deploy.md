@@ -1,29 +1,29 @@
 # Render 배포 (#38 D11)
 
-저장소 루트의 `render.yaml`(Render Blueprint) 하나로 서비스 4개를 만든다. 할 일은 Render 계정 만들기, Blueprint 연결, 비밀값 붙여넣기, 배포 뒤 웹훅 2개 등록이다.
+저장소 루트의 `render.yaml`(Render Blueprint) 하나로 무료(Free) 웹 서비스 2개를 만든다. 할 일은 Render 계정 만들기, Blueprint 연결, 비밀값 붙여넣기, 배포 뒤 웹훅 2개 등록이다. 요금은 ₩0이다.
 
 | 서비스 | 종류 | 하는 일 |
 |---|---|---|
-| `reins-web` | Web (0.5c-512mb, 디스크 1GB `/var/data`) | 대시보드 + REST API + PayPal/Telegram 웹훅. SQLite 파일 `/var/data/reins.db` |
-| `reins-mcp` | Web (0.5c-512mb) | MCP Streamable HTTP (`POST /mcp`). Render 사설망으로 `reins-web` 호출 |
-| `reins-devops-cron` | Cron, 매일 00:00 UTC (09:00 KST) | 데모 에이전트 B. `reins-mcp`에 MCP로 접속해 소액 인프라 청구서 결제 요청 |
-| `reins-reconcile-cron` | Cron, 매일 18:30 UTC (03:30 KST) | PayPal Transaction Search 대사. `reins-web`의 `POST /api/cron/reconcile`을 curl로 호출 |
+| `reins-web` | Web (Free, 디스크 없음) | 대시보드 + REST API + PayPal/Telegram 웹훅. SQLite 파일 `/tmp/reins.db` |
+| `reins-mcp` | Web (Free) | MCP Streamable HTTP (`POST /mcp`). 공개 URL(`REINS_API_URL=https://reins-web.onrender.com`)로 `reins-web` 호출. 무료 인스턴스는 사설망을 못 쓴다 |
 
-## DB: Postgres 대신 디스크의 SQLite
+크론 잡은 없다(Render에서 유료). DevOps 데모 에이전트와 reconcile은 [수동 실행](#수동-실행)으로 돌린다.
 
-계획서(D11)에는 Postgres라고 적혀 있지만 SQLite(libsql 파일)를 Render 영구 디스크에 두기로 했다.
+## DB: /tmp의 SQLite (무료 플랜)
 
-- 인스턴스가 하나뿐이라 동시 쓰기 문제가 없다. 디스크를 붙인 서비스는 확장(scale)이 안 되는데, 데모에는 확장이 필요 없다.
-- Render 무료 Postgres처럼 만료되지 않고, 따로 띄울 서비스도 없다. 코드도 로컬과 같은 경로를 탄다(`DATABASE_URL=file:/var/data/reins.db`).
-- 대신 생기는 제약: 디스크는 `reins-web`만 쓸 수 있다. 그래서 Cron은 DB를 직접 열지 않고 웹 엔드포인트를 호출한다. 디스크가 있으면 무중단 배포가 안 돼서 재배포 때 몇 초간 응답이 끊긴다. 빌드·pre-deploy 단계에서는 디스크가 마운트되지 않아서 시드는 start command에서 돌린다.
+계획서(D11)에는 Postgres라고 적혀 있지만 SQLite(libsql 파일)를 `/tmp`에 두기로 했다.
+
+- 무료이고 만료되지 않는다. 따로 띄울 서비스도 없고, 코드도 로컬과 같은 경로를 탄다(`DATABASE_URL=file:/tmp/reins.db`).
+- 부팅할 때마다 `/tmp`가 비어 있어서 시드(`seed.ts --if-empty`)가 데모 상태(에이전트 3개, $117.97 / $410.00)를 새로 넣는다. 심사위원이 보는 데모는 항상 깨끗하게 시작한다.
+- 대신 생기는 제약: 무료 인스턴스는 15분쯤 요청이 없으면 잠들고, 깨어나는 데 약 1분 걸린다. 잠들거나 재배포하면 `/tmp`가 지워져서 그동안 만든 에이전트·키·승인 기록이 사라진다. 녹화 데모나 라이브 심사 직전에는 요청을 한 번 보내 먼저 깨워 둔다(예: `curl -sS $WEB/api/health`). 에이전트와 키는 깨운 뒤에 만든다.
 
 ## 1. Render 계정과 Blueprint
 
 1. https://dashboard.render.com 에서 GitHub로 가입하고 이 저장소 접근 권한을 준다.
-2. **New → Blueprint** → 저장소 선택 → 브랜치 `main`. Render가 `render.yaml`을 읽어서 서비스 4개와 디스크를 보여준다.
+2. **New → Blueprint** → 저장소 선택 → 브랜치 `main`. Render가 `render.yaml`을 읽어서 무료 서비스 2개를 보여준다.
 3. `sync: false`인 변수들의 값을 묻는 화면이 나온다. 아래 표대로 넣는다. 지금 모르는 값(`PAYPAL_WEBHOOK_ID`, `REINS_API_KEY`)은 비워 두고 배포 뒤에 채운다. 이 화면은 처음 만들 때 한 번만 나온다. 나중에 바꿀 때는 각 서비스의 **Environment** 탭을 쓴다.
-4. **Apply**를 누른다. 디스크와 상시 실행 때문에 웹 서비스 2개는 유료 인스턴스(`0.5c-512mb`)다. 크론은 실행한 시간만큼 과금된다. 요금은 Render 가격표에서 확인한다.
-5. 첫 배포가 끝나면 `reins-web`이 빈 DB에 데모 데이터를 한 번 넣는다(에이전트 3개, "This month $117.97 of $410.00"). 재시작하거나 재배포해도 에이전트가 하나라도 있으면 다시 넣지 않는다(`seed.ts --if-empty`, `--force`는 절대 쓰지 않음).
+4. **Apply**를 누른다. 유료 인스턴스는 없다(전부 Free 플랜, ₩0).
+5. 첫 배포가 끝나면 `reins-web`이 빈 DB에 데모 데이터를 한 번 넣는다(에이전트 3개, "This month $117.97 of $410.00"). 같은 부팅 안에서는 에이전트가 하나라도 있으면 다시 넣지 않는다(`seed.ts --if-empty`, `--force`는 절대 쓰지 않음).
 
 서비스 주소는 보통 `https://reins-web.onrender.com`, `https://reins-mcp.onrender.com`이다. 이름이 이미 쓰이고 있으면 Render가 `reins-web-xxxx`처럼 접미사를 붙이므로 대시보드에 나온 실제 주소를 쓴다. 앱은 `PUBLIC_BASE_URL`이 없으면 Render가 넣어 주는 `RENDER_EXTERNAL_URL`을 쓰기 때문에 주소를 직접 적을 필요는 없다.
 
@@ -43,19 +43,13 @@
 | `TELEGRAM_BOT_TOKEN` | 선택 | BotFather에서 받은 토큰. 비우면 텔레그램 없이 웹 승인함만 쓴다 |
 | `TELEGRAM_WEBHOOK_SECRET` | 텔레그램 쓸 때 | 직접 만든다: `openssl rand -hex 32`. 영문·숫자·`_`·`-`만 된다. 4단계 setWebhook에 같은 값을 넣는다 |
 
-`render.yaml`에 이미 들어 있어서 넣을 필요 없는 값: `DATABASE_URL=file:/var/data/reins.db`, `PAYPAL_ENV=sandbox`, `PAYPAL_PAYMENT_MODE=supervised`, `REINS_TIMEZONE=Asia/Seoul`, `REINS_QUIET_HOURS=off`(심사위원 시간대 때문에 공개 데모에서는 끔), `REINS_PUBLIC_DEMO=1`(방문자 PayPal 키 입력 차단, 데모 판매자만 연결), `REINS_APPROVAL_TTL_MINUTES=30`, `TELEGRAM_BOT_USERNAME=ReinsApproveBot`(봇 이름이 다르면 Environment 탭에서 고친다), `NODE_VERSION=22`, `REINS_CRON_SECRET`(Render가 자동 생성해서 reconcile 크론과 공유).
+`render.yaml`에 이미 들어 있어서 넣을 필요 없는 값: `DATABASE_URL=file:/tmp/reins.db`, `PAYPAL_ENV=sandbox`, `PAYPAL_PAYMENT_MODE=supervised`, `REINS_TIMEZONE=Asia/Seoul`, `REINS_QUIET_HOURS=off`(심사위원 시간대 때문에 공개 데모에서는 끔), `REINS_PUBLIC_DEMO=1`(방문자 PayPal 키 입력 차단, 데모 판매자만 연결), `REINS_APPROVAL_TTL_MINUTES=30`, `TELEGRAM_BOT_USERNAME=ReinsApproveBot`(봇 이름이 다르면 Environment 탭에서 고친다), `NODE_VERSION=22`, `REINS_CRON_SECRET`(Render가 자동 생성. 크론과 공유하지 않고, 수동 reconcile 호출에만 쓴다. 값은 `reins-web` Environment 탭에서 본다).
 
 `NODE_ENV`는 일부러 넣지 않았다. Render가 실행할 때만 `production`으로 설정한다. 빌드 때도 `production`이면 pnpm이 devDependencies(typescript, tsx)를 건너뛰어서 빌드와 시드가 깨진다.
 
 `REINS_ADMIN_TOKEN`도 넣지 않는다. 넣으면 대시보드 API가 토큰을 요구해서 심사위원이 데모를 볼 수 없다. 공개 데모는 누구나 승인·거절할 수 있는 열린 모드다.
 
-### reins-devops-cron
-
-| 변수 | 어디서 가져오나 |
-|---|---|
-| `REINS_API_KEY` | 배포 뒤 `https://<web>/agents`에서 에이전트 "Claude Code - DevOps"를 만들고(카테고리 hosting, api-credits / 허용 render.com, vercel.com, anthropic.com, namecheap.com / 자동 승인 $30) 한 번만 보이는 `rk_live_...` 키를 복사한다. 시드 에이전트 키는 버려지기 때문에 쓸 수 없다. 이 값이 비어 있으면 크론이 "REINS_API_KEY is required"로 실패한다 |
-
-`REINS_MCP_HOSTPORT`(→ `http://reins-mcp:10000/mcp`), `reins-mcp`의 `REINS_API_HOSTPORT`, reconcile 크론의 `REINS_WEB_HOSTPORT`와 `REINS_CRON_SECRET`은 Blueprint의 `fromService`가 채운다.
+`reins-mcp`의 `REINS_API_URL`(`https://reins-web.onrender.com`)은 `render.yaml`에 들어 있다. Render가 다른 서브도메인을 줬으면(`reins-web-xxxx`) `reins-mcp` → Environment에서 실제 주소로 고친다.
 
 ## 3. PayPal 웹훅 등록
 
@@ -88,29 +82,43 @@ PUBLIC URL이 https라서 앱은 자동으로 웹훅 모드가 된다(롱 폴링
 WEB=https://reins-web.onrender.com     # 실제 주소로 바꾼다
 MCP=https://reins-mcp.onrender.com
 
-curl -sS $WEB/api/health                 # {"ok":true}  (DB 열기와 마이그레이션까지 확인됨)
+curl -sS $WEB/api/health                 # {"ok":true}  (DB 열기와 마이그레이션까지 확인됨. 잠든 뒤 첫 요청은 ~1분 걸린다)
 curl -sS $WEB/api/overview | head -c 300 # "totals":{"spent_cents":11797,"limit_cents":41000,"agents":3,...}
 curl -sS $MCP/health                     # ok
 
-# MCP tools/list: 2단계에서 만든 에이전트 키 (rk_live_...)
+# MCP tools/list: 배포 뒤 /agents에서 만든 에이전트 키 (rk_live_...)
  curl -sS -X POST $MCP/mcp \
   -H "Authorization: Bearer rk_live_..." \
   -H "content-type: application/json" -H "accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 # -> get_mandate, request_purchase, get_request_status, list_transactions
 
-curl -sS -o /dev/null -w "%{http_code}\n" -X POST $WEB/api/cron/reconcile   # 401 (크론 비밀값 없이는 막힘)
+curl -sS -o /dev/null -w "%{http_code}\n" -X POST $WEB/api/cron/reconcile   # 401 (비밀값 없이는 막힘)
 ```
 
 그 밖에:
 
 - 브라우저로 `$WEB/overview`, `$WEB/setup`을 연다. Setup 1단계 **Use demo merchant (sandbox)** 를 누르면 서버의 샌드박스 자격증명으로 연결된다. 심사위원은 자기 PayPal 키 없이 전체 흐름을 볼 수 있다.
-- Render 대시보드 → `reins-devops-cron`, `reins-reconcile-cron` → **Trigger Run**으로 한 번씩 돌려 로그를 본다. devops는 "Infra cost check: ..."를, reconcile은 `{"window":...,"checked":...}`(건수만)를 찍는다.
+- 아래 [수동 실행](#수동-실행)의 두 명령을 한 번씩 돌려 본다. devops는 "Infra cost check: ..."를, reconcile은 `{"window":...,"checked":...}`(건수만)를 찍는다.
 - Claude Code에서 HTTP MCP로 붙이기: `claude mcp add --transport http reins $MCP/mcp --header "Authorization: Bearer rk_live_..."`.
 
 ## 운영 메모
 
 - **데모 데이터 다시 넣기**: 시드는 실행한 달 기준으로 "이번 달" 숫자를 만든다. 달이 바뀌거나 대기 승인 항목이 만료되면(30분) 데모 녹화 직전에 다시 넣는다. `reins-web` → **Shell**에서 실행: `cd apps/web && node --import tsx ../../scripts/seed.ts --db "$DATABASE_URL"`. 직접 만든 에이전트 같은 다른 데이터가 있으면 거부하는데, 그때는 끝에 `--force`를 붙인다(시드 행만 바뀐다).
-- **처음부터 다시**: Shell에서 `rm /var/data/reins.db` 후 Manual Deploy → 빈 DB에 다시 시드된다.
+- **처음부터 다시**: `reins-web`에서 Manual Deploy를 하거나 15분 뒤 잠들 때까지 기다린다. 어느 쪽이든 `/tmp`가 비워지고 다음 부팅 때 데모 상태로 다시 시드된다.
 - **로그**: 비밀값·이메일은 찍지 않는다. reconcile은 건수만, Telegram 로그는 `REINS_TELEGRAM_LOG=1`일 때 카드 첫 줄만 남긴다.
-- 서비스 4개는 사설망을 쓰기 때문에 같은 region(`oregon`)에 있어야 한다. region을 바꾸려면 4개 모두 바꾼다.
+- 서비스 2개는 공개 URL로 통신하므로 region이 같을 필요는 없지만, 지연을 줄이려고 둘 다 `oregon`에 둔다.
+
+## 수동 실행
+
+크론 잡이 없으므로 아래 두 가지는 필요할 때 내 터미널에서 직접 실행한다. 먼저 `$WEB`에 요청을 보내 인스턴스를 깨운다.
+
+```bash
+# DevOps 데모 에이전트 B (키는 배포된 /agents에서 "Claude Code - DevOps"를 만들어 받은 rk_live_...; 시드 키는 쓸 수 없다)
+REINS_MCP_URL=https://reins-mcp.onrender.com/mcp REINS_API_KEY=rk_live_... pnpm agent:devops
+
+# PayPal Transaction Search 대사 (REINS_CRON_SECRET은 reins-web Environment 탭에서 복사)
+curl -X POST -H "Authorization: Bearer $REINS_CRON_SECRET" https://reins-web.onrender.com/api/cron/reconcile
+```
+
+잠들면 에이전트와 키가 사라지므로(위 DB 절 참고) 에이전트를 만든 직후에 실행한다.

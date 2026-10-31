@@ -30,9 +30,9 @@ Run `claude` from the repo root so the relative path resolves.
 **Research Scout**:
 > Use Channel3 to find a market research report on the e-commerce industry, preferably on statista.com around $59. Pick the best match, then call Reins `request_purchase` with that merchant, price, item, and a one-line reason. Poll `get_request_status` and tell me the outcome.
 
-## Demo agent B: DevOps cron
+## Demo agent B: DevOps agent
 
-A non-chat agent that runs once a day. It reads its mandate (`get_mandate`), finds infra bills due within 3 days in
+A non-chat agent meant to run once a day (locally or by hand; no scheduler on Render's free plan). It reads its mandate (`get_mandate`), finds infra bills due within 3 days in
 `agents/devops/infra-costs.json` (or `DEVOPS_COSTS_FILE`), and calls `request_purchase` for each bill at or under its auto-approve
 limit (merchant rules from "Approve + always allow" count). Bigger bills are reported and left for you unless `--ask` is passed.
 Client request ids are `devops-<merchant>-<item>-<YYYY-MM>`, so reruns never pay twice.
@@ -43,7 +43,8 @@ REINS_API_URL=http://localhost:3000 REINS_API_KEY=rk_live_... pnpm agent:devops 
 REINS_API_URL=http://localhost:3000 REINS_API_KEY=rk_live_... pnpm agent:devops --dry-run  # report only
 ```
 
-Render Cron Job `reins-devops-cron` in `render.yaml`: schedule `0 0 * * *` (daily 09:00 KST), connects to the `reins-mcp`
-Streamable HTTP server (`REINS_MCP_HOSTPORT`, or `REINS_MCP_URL=https://.../mcp` anywhere else) with `REINS_API_KEY`. Without
-either variable it spawns the stdio server as before. Setup: [docs/deploy.md](../docs/deploy.md). The cost sheet is demo data;
+Against the deployed server (Render free plan, no cron job, so run it by hand): create the agent on the deployed `/agents` page, then
+`REINS_MCP_URL=https://reins-mcp.onrender.com/mcp REINS_API_KEY=rk_live_... pnpm agent:devops`. Without `REINS_MCP_URL` (or
+`REINS_MCP_HOSTPORT`) it spawns the stdio server as before. Free instances sleep and reset their state, so create the agent and key
+right before running. Setup: [docs/deploy.md](../docs/deploy.md). The cost sheet is demo data;
 real Render/Vercel billing APIs are not called.

@@ -34,7 +34,7 @@ pnpm dev:web                # http://localhost:3000 (API under /api)
 pnpm mcp:stdio              # MCP over stdio (REINS_API_KEY=rk_live_...)
 pnpm mcp:http               # MCP over Streamable HTTP on :3333/mcp
 pnpm tokens                 # regenerate design tokens CSS
-pnpm reconcile              # M11 Transaction Search reconciliation on the local DB, counts only (Render: POST /api/cron/reconcile)
+pnpm reconcile              # M11 Transaction Search reconciliation on the local DB, counts only (deployed: `POST /api/cron/reconcile` with the cron secret, run by hand)
 pnpm telegram:check         # #9 real bot check: getMe, finds your /start, sends one demo card
 ```
 
@@ -55,7 +55,7 @@ Layout: `apps/web` (Next.js 15 UI + REST + webhooks), `apps/mcp` (MCP server), `
 
 ## Deploy
 
-Render Blueprint (`render.yaml`): web + MCP HTTP + two cron jobs, SQLite on a persistent disk, demo data seeded on first boot.
+Render Blueprint (`render.yaml`) on the free plan: two web services (dashboard/API and MCP HTTP), SQLite in `/tmp` (no disk), demo data re-seeded on every boot. Free instances sleep after ~15 min idle (wake in ~1 min) and sleeping resets the demo state. There are no cron jobs on Render; run the DevOps agent and reconcile by hand (commands in the `render.yaml` header).
 Step-by-step (Korean), env vars, PayPal/Telegram webhook URLs and smoke checks: [docs/deploy.md](docs/deploy.md).
 
 ## Demo data
@@ -64,7 +64,7 @@ Step-by-step (Korean), env vars, PayPal/Telegram webhook URLs and smoke checks: 
 pnpm seed                        # 3 agents, 3 mandates, 24 requests in apps/web/.local/reins.db (what `pnpm dev:web` uses)
 pnpm seed -- --db ./scratch.db   # another file; point the app at it with DATABASE_URL=file:./scratch.db
 pnpm seed -- --force             # also run against a DB that has real data (only the seed rows are replaced)
-pnpm seed -- --if-empty          # first boot (Render start command): seed only if the DB has no agents, never forces
+pnpm seed -- --if-empty          # every boot (Render start command, /tmp starts empty): seed only if the DB has no agents, never forces
 ```
 
 Matches the plan's flow C: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,
@@ -77,11 +77,11 @@ expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before 
 
 Config snippets that expose the 4 Reins MCP tools (plus Channel3 product search) to Claude Desktop (`agents/claude_desktop_config.json`) and Claude Code (`.mcp.json.example`). Setup steps and demo prompts: [agents/README.md](agents/README.md).
 
-## Demo agent B (DevOps cron)
+## Demo agent B (DevOps agent)
 
 `pnpm agent:devops` checks `agents/devops/infra-costs.json`, pays bills due in the next 3 days that fit the auto-approve limit through
 the Reins MCP stdio server, and leaves bigger ones for you (`--ask` requests them for approval, `--dry-run` only reports). Idempotency
-keys are per bill and month, so a second run the same day pays nothing. Details: [agents/README.md](agents/README.md#demo-agent-b-devops-cron).
+keys are per bill and month, so a second run the same day pays nothing. Details: [agents/README.md](agents/README.md#demo-agent-b-devops-agent).
 
 ## License
 
