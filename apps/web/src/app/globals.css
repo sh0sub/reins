@@ -469,3 +469,15 @@ table.rules thead th { overflow-wrap: normal; }
 select.select-version { width: auto; min-width: 150px; font-weight: 700; color: var(--component-navigation-selected-text); background: var(--component-navigation-selected-background); }
 .side-block { border-top: 1px solid var(--component-list-row-divider); padding-top: var(--sp-4); }
 .ver-item.is-viewed > .label { color: var(--component-navigation-selected-text); }
+
+/* S5: "Also allow merchant" checkbox and the all-clear card */
+.check-row { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; font-size: 14px; }
+.check-row input { width: 18px; height: 18px; accent-color: var(--primary); flex: none; }
+.all-clear { align-items: center; background: var(--reins-success-soft); border-color: transparent; }
+.all-clear .ico-s { color: var(--reins-success); flex: none; }
+
+/* Top bar: notification bell (links to Approvals) */
+.bell { position: relative; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--muted); }
+.bell:hover { background: var(--semantic-color-surface-selected); color: var(--primary); }
+.bell svg { width: 20px; height: 20px; }
+.bell-dot { position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--reins-danger); border: 2px solid var(--panel); box-sizing: content-box; }

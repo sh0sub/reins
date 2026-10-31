@@ -14,7 +14,7 @@ const ITEMS: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/inbox", label: "Approvals", icon: "inbox" },
   { href: "/agents", label: "Agents", icon: "bot" },
   { href: "/ledger", label: "Ledger", icon: "list" },
-  { href: "/setup", label: "Setup", icon: "gear" },
+  { href: "/setup", label: "Settings", icon: "gear" },
 ];
 
 function usePending() {
@@ -177,7 +177,7 @@ export function SideFoot() {
   );
 }
 
-const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Setup", "/receipts": "Receipt" };
+const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Settings", "/receipts": "Receipt" };
 
 /** 56px top bar: page name, live connection state, pending shortcut. */
 export function TopBar() {
@@ -200,6 +200,13 @@ export function TopBar() {
             Pending {pending}
           </Link>
         ) : null}
+        <Link className="bell" href="/inbox" aria-label={pending ? `Notifications: ${pending} pending approval${pending === 1 ? "" : "s"}` : "Notifications: nothing pending"}>
+          <Icon name="bell" />
+          {pending ? <i className="bell-dot" aria-hidden /> : null}
+        </Link>
+        <span className="avatar avatar-sm" role="img" aria-label={DEMO_USER.name} title={DEMO_USER.name}>
+          {agentInitials(DEMO_USER.name)}
+        </span>
       </div>
     </header>
   );

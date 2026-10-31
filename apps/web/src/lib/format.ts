@@ -42,6 +42,11 @@ export function outcomeBucket(row: Pick<LedgerRow, "decisions" | "decision" | "s
   return row.decision === "AUTO_APPROVE" ? "auto" : "human";
 }
 
+/** Sum of amounts in one outcome bucket (the Blocked tile and the grid footer share this so they never disagree). */
+export function bucketTotal(rows: Array<Pick<LedgerRow, "decisions" | "decision" | "status" | "amount">>, bucket: ReturnType<typeof outcomeBucket>): number {
+  return rows.filter((r) => outcomeBucket(r) === bucket).reduce((s, r) => s + Number(r.amount), 0);
+}
+
 /** Status chip: label text + colour (never colour alone). */
 export function statusChip(row: Pick<LedgerRow, "status">): { label: string; className: string } {
   switch (row.status) {

@@ -9,6 +9,8 @@ import { Icon } from "@/components/Icon";
 import { ago, hardRules, riskClass, statusChip, usd } from "@/lib/format";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
+/** A request waiting longer than this counts as overdue in the queue header. */
+const OVERDUE_MS = 24 * 3_600_000;
 const DENY_REASONS = ["Not needed", "Wrong item", "Too expensive"];
 
 function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: boolean; onSelect: () => void }) {
@@ -179,6 +181,7 @@ function Detail({
 }) {
   const [denyOpen, setDenyOpen] = useState(false);
   const [denyNote, setDenyNote] = useState("");
+  const [alsoAllow, setAlsoAllow] = useState(false);
   const rules = hardRules(row);
   const llm = row.decisions.find((d) => d.stage === "llm");
   const amountCents = Math.round(Number(row.amount) * 100);
@@ -190,11 +193,12 @@ function Detail({
   useEffect(() => {
     setDenyOpen(false);
     setDenyNote("");
+    setAlsoAllow(false);
   }, [row.request_id]);
 
   function onKey(e: KeyboardEvent) {
     if (busy || (e.target as HTMLElement).closest("input, textarea")) return;
-    if (e.key === "a" || e.key === "A") onDecide("approve");
+    if (e.key === "a" || e.key === "A") onDecide("approve", undefined, alsoAllow);
     if (e.key === "d" || e.key === "D") setDenyOpen(true);
   }
 
@@ -298,6 +302,19 @@ function Detail({
       )}
 
       <footer className="stack-s">
+        {!denyOpen && (
+          <div className="stack-s">
+            <label className="check-row">
+              <input type="checkbox" checked={alsoAllow} disabled={busy} onChange={(e) => setAlsoAllow(e.target.checked)} aria-describedby={`allow-${row.request_id}`} />
+              <span>
+                Also allow <b>{row.merchant}</b> automatically up to ${row.amount}
+              </span>
+            </label>
+            <span id={`allow-${row.request_id}`} className="caption">
+              Saves mandate v{(row.mandate_version ?? 0) + 1} when you approve. Caps and block list still apply.
+            </span>
+          </div>
+        )}
         {denyOpen ? (
           <div className="stack-s" role="group" aria-label="Deny reason">
             <span className="label">Why deny? (sent to the agent)</span>
@@ -330,7 +347,7 @@ function Detail({
           </div>
         ) : (
           <div className="row">
-            <button className="btn btn-primary btn-lg" disabled={busy} onClick={() => onDecide("approve")}>
+            <button className="btn btn-primary btn-lg" disabled={busy} onClick={() => onDecide("approve", undefined, alsoAllow)}>
               {busy ? "Paying…" : `Approve $${row.amount}`}
             </button>
             <button className="btn btn-lg" disabled={busy} onClick={() => setDenyOpen(true)}>
@@ -338,16 +355,6 @@ function Detail({
             </button>
             <span className="caption">
               <kbd>A</kbd> approve · <kbd>D</kbd> deny (when this panel has focus)
-            </span>
-          </div>
-        )}
-        {!denyOpen && (
-          <div className="row">
-            <button className="btn btn-wrap" disabled={busy} onClick={() => onDecide("approve", undefined, true)} aria-describedby={`allow-${row.request_id}`}>
-              Approve + always allow {row.merchant}
-            </button>
-            <span id={`allow-${row.request_id}`} className="caption">
-              Saves mandate v{(row.mandate_version ?? 0) + 1}: {row.merchant} up to ${row.amount} skips approval. Caps and block list still apply.
             </span>
           </div>
         )}
@@ -587,7 +594,11 @@ function InboxScreen() {
           <h1>Approvals</h1>
           <p className="muted">Purchases the rules and the auditor want you to look at. Same queue as Telegram.</p>
         </div>
-        {rows && <span className="caption">{rows.length} pending</span>}
+        {rows && (
+          <span className="caption num">
+            {rows.length} pending · {rows.filter((r) => Date.now() - Date.parse(r.created_at) > OVERDUE_MS).length} overdue
+          </span>
+        )}
       </div>
       {error ? (
         <div className="panel stack">
@@ -633,6 +644,15 @@ function InboxScreen() {
                       <QueueItem key={r.request_id} row={r} selected={selected?.request_id === r.request_id} onSelect={() => setSelectedId(r.request_id)} />
                     ))}
                   </ul>
+                )}
+                {rows.length === 1 && (
+                  <div className="mini-card row all-clear" role="status">
+                    <Icon name="check" className="ico-s" />
+                    <span className="stack-s" style={{ gap: 0 }}>
+                      <span className="label">All clear after this one</span>
+                      <span className="caption">New requests appear here{telegram ? " and on Telegram" : ""}.</span>
+                    </span>
+                  </div>
                 )}
                 <RecentDecisions rows={recent} onOpen={setDrawerId} />
                 <QueueSummary month={month} telegram={telegram} />

@@ -94,11 +94,17 @@ export default function SetupPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [creds, setCreds] = useState({ client_id: "", client_secret: "" });
   const [showSecret, setShowSecret] = useState(false);
+  const [clientIdHint, setClientIdHint] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ step: number; text: string; bad?: boolean } | null>(null);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => api<WorkspaceView>("/api/workspace").then((w) => (setWs(w), w)).catch((e: Error) => (setError(e.message), null)), []);
   useEffect(() => {
+    try {
+      setClientIdHint(sessionStorage.getItem("reins.clientIdHint"));
+    } catch {
+      /* storage can be blocked; the card falls back to a generic label */
+    }
     void load();
     return () => {
       if (poll.current) clearInterval(poll.current);
@@ -124,6 +130,17 @@ export default function SetupPage() {
     setMsg(null);
     try {
       await api("/api/paypal/connect", { method: "POST", body: demo ? { demo: true } : creds });
+      if (!demo) {
+        // only a masked hint (first 6 … last 4) is kept in this tab; the secret is never stored
+        const id = creds.client_id.trim();
+        const hint = id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : null;
+        setClientIdHint(hint);
+        try {
+          if (hint) sessionStorage.setItem("reins.clientIdHint", hint);
+        } catch {
+          /* ignore */
+        }
+      }
       setCreds({ client_id: "", client_secret: "" });
       await load();
     } catch (err) {
@@ -238,11 +255,23 @@ export default function SetupPage() {
 
       <ol className="stack-l" style={{ listStyle: "none", padding: 0, margin: 0 }}>
         <li className="panel stack">
-          <StepHead n={1} title="Connect PayPal sandbox" state={s1} note="Verified" />
+          <StepHead n={1} title="PayPal app credentials" state={s1} note="Verified" />
           {connected ? (
-            <p className="alert alert-ok">
-              Connected · {ws.merchant_email ?? "sandbox merchant"} · {ws.paypal_env === "fake" ? "offline fake PayPal" : "Sandbox"} · oauth2/token 200
-            </p>
+            <>
+              <div className="grid-2">
+                <div className="field">
+                  <span className="field-label">Client ID</span>
+                  <div className="input mono" aria-label="Client ID (masked)">{clientIdHint ?? (ws.paypal_env === "fake" ? "demo-app…sandbox" : "stored server-side")}</div>
+                </div>
+                <div className="field">
+                  <span className="field-label">Secret</span>
+                  <div className="input mono" aria-label="Secret (hidden)">••••••••••••••••</div>
+                </div>
+              </div>
+              <p className="alert alert-ok">
+                Connected · {ws.merchant_email ?? "sandbox merchant"} · {ws.paypal_env === "fake" ? "offline fake PayPal" : "Sandbox"} · oauth2/token 200
+              </p>
+            </>
           ) : (
             <form className="stack" onSubmit={(e) => connect(e, false)}>
               <div className="field">
@@ -291,11 +320,12 @@ export default function SetupPage() {
               <span className="caption">Prefund a Reins balance; approved purchases are paid out to the merchant.</span>
             </button>
           </div>
-          {connected && ws.payment_mode === "vaulted" && !ws.has_vault && (
-            <div>
-              <button className="btn btn-primary" onClick={startVault} disabled={busy === "vault"}>
-                {busy === "vault" ? "Opening PayPal…" : "Save with PayPal"}
+          {connected && (
+            <div className="row">
+              <button className="btn btn-primary" onClick={startVault} disabled={busy !== null || ws.has_vault}>
+                <Icon name="link" className="ico-s" /> {ws.has_vault ? "PayPal saved" : busy === "vault" ? "Opening PayPal…" : "Save with PayPal"}
               </button>
+              <span className="caption">{ws.has_vault ? "Vault token saved. Revoke it anytime in PayPal." : "Opens PayPal in a new window · we poll every 3 s"}</span>
             </div>
           )}
           {note(2)}

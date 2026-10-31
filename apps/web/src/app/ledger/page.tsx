@@ -7,7 +7,7 @@ import type { GridApi } from "ag-grid-community";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
-import { outcomeBucket, resolveRequestId } from "@/lib/format";
+import { bucketTotal, outcomeBucket, resolveRequestId } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
@@ -112,7 +112,8 @@ function LedgerScreen() {
   const shownTotals = useMemo(
     () => ({
       paid: filtered.filter((r) => r.status === "paid").reduce((s, r) => s + Number(r.amount), 0),
-      blocked: filtered.filter((r) => r.status === "denied").reduce((s, r) => s + Number(r.amount), 0),
+      // same definition as the Blocked tile: rule/auditor blocks only, a human "Deny" is not counted
+      blocked: bucketTotal(filtered, "blocked"),
     }),
     [filtered],
   );
@@ -127,7 +128,7 @@ function LedgerScreen() {
       paid: sum(paid),
       matched: paid.filter((r) => r.payment?.reconciled === "matched").length,
       paidCount: paid.length,
-      blocked: sum(denied),
+      blocked: bucketTotal(denied, "blocked"),
       blockedCount: denied.length,
       total: all.length,
       auto: by("auto"),

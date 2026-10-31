@@ -4,6 +4,7 @@ const PATHS: Record<string, string> = {
   bot: "M5 8h14v11H5zM12 4v4M9 13h.01M15 13h.01",
   list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
   gear: "M12 9a3 3 0 100 6 3 3 0 000-6zM12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1",
+  bell: "M6 16V11a6 6 0 0112 0v5l1.5 2h-15zM10 21h4",
   check: "M5 12.5l4.5 4.5L19 7.5",
   x: "M6 6l12 12M18 6L6 18",
   warn: "M12 3l10 18H2zM12 10v5M12 18v.5",

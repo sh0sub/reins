@@ -31,7 +31,7 @@
 | README: API 표(이슈 #41) | 남음-Claude | 현재는 엔드포인트 목록 문단. 표가 필요하면 추가 |
 | README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
 | `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
-| 테스트·린트 | 완료 | 218 tests / 32 files 통과, `pnpm lint` 통과 |
+| 테스트·린트 | 완료 | 222 tests / 32 files 통과, `pnpm lint` 통과 |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 남음-Claude | 이번 작업은 커밋하지 않음. 요청 시 진행 |
 

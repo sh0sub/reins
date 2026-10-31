@@ -25,7 +25,7 @@ export const PAGES: Array<{ href: string; label: string; hint: string }> = [
   { href: "/inbox", label: "Approvals", hint: "Requests waiting for you" },
   { href: "/agents", label: "Agents & mandates", hint: "Budgets, rules, MCP keys" },
   { href: "/ledger", label: "Ledger", hint: "Every request and PayPal payment" },
-  { href: "/setup", label: "Setup", hint: "PayPal, payment method, Telegram" },
+  { href: "/setup", label: "Settings", hint: "PayPal, payment method, Telegram" },
 ];
 
 /** Used share of the monthly cap, 0..100 (null when the agent has no cap). */
