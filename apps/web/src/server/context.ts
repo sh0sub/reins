@@ -5,6 +5,7 @@ import { createDb, getActiveMandate, getAgent, getWorkspace, migrateDb, spendSin
 import {
   ClaudeAuditor,
   ClaudeCategorySuggester,
+  ClaudeWeeklySummarizer,
   FakePayPalClient,
   HttpPayPalClient,
   MockAuditor,
@@ -31,6 +32,12 @@ export function paypalFromEnv(env: Env): { client: PayPalClient; env: "sandbox" 
   return { client: new FakePayPalClient(), env: "fake" };
 }
 
+/** S1 weekly summary: Claude only with a key outside fake/test runs; otherwise the labelled template is used. */
+export function summarizerFromEnv(env: Env) {
+  if (!env.ANTHROPIC_API_KEY || env.PAYPAL_ENV === "fake" || env.NODE_ENV === "test") return undefined;
+  return new ClaudeWeeklySummarizer({ apiKey: env.ANTHROPIC_API_KEY });
+}
+
 /** Builds the runtime context from environment variables (see .env.example). */
 export async function createContextFromEnv(env: Env = process.env): Promise<ReinsContext> {
   const db = createDb(env.DATABASE_URL ?? "file:./.local/reins.db");
@@ -50,6 +57,7 @@ export async function createContextFromEnv(env: Env = process.env): Promise<Rein
     paypal: paypal.client,
     auditor: env.ANTHROPIC_API_KEY ? new ClaudeAuditor({ apiKey: env.ANTHROPIC_API_KEY }) : new MockAuditor(),
     categorySuggester: env.ANTHROPIC_API_KEY ? new ClaudeCategorySuggester({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
+    summarizer: summarizerFromEnv(env),
     events: new ReinsEvents(),
     notifiers: [],
     now: Date.now,

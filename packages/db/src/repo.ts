@@ -232,7 +232,22 @@ export async function spendSinceCents(db: ReinsDb, agentId: string, since: numbe
   return Number(row?.total ?? 0);
 }
 
+/** Every request created at or after `since`, newest first (overview dashboard: month-to-date, no row limit). */
+export async function listRequestsSince(db: ReinsDb, since: number): Promise<PurchaseRequest[]> {
+  return db
+    .select()
+    .from(requests)
+    .where(gte(requests.createdAt, since))
+    .orderBy(desc(requests.createdAt), desc(requests.seq));
+}
+
 // ---------- decisions ----------
+
+/** Decisions for many requests in one query, oldest first. */
+export async function listDecisionsFor(db: ReinsDb, requestIds: string[]): Promise<Decision[]> {
+  if (!requestIds.length) return [];
+  return db.select().from(decisions).where(inArray(decisions.requestId, requestIds)).orderBy(decisions.createdAt);
+}
 
 export async function insertDecision(
   db: ReinsDb,

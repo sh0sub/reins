@@ -36,6 +36,7 @@ import { toCents } from "./money.ts";
 import { STRATEGIES, type PaymentMode, type StrategyResult } from "./pay/strategies.ts";
 import type { PayPalClient } from "./paypal/types.ts";
 import type { CategorySuggester } from "./policy/categories.ts";
+import type { WeeklySummarizer } from "./weeklySummary.ts";
 import { ReinsEvents, type Notifier } from "./events.ts";
 import { latestClarification, toLedgerRow, toRequestView, type LedgerRow, type RequestView } from "./views.ts";
 
@@ -58,6 +59,8 @@ export interface ReinsContext {
   auditor: AuditProvider;
   /** M3 category suggestions; keyword fallback when absent. */
   categorySuggester?: CategorySuggester;
+  /** S1 AI weekly summary; template fallback when absent. */
+  summarizer?: WeeklySummarizer;
   events: ReinsEvents;
   notifiers: Notifier[];
   config: ReinsConfig;

@@ -20,7 +20,6 @@ import {
   createDb,
   createMandateVersion,
   countRequestsSince,
-  getActiveMandate,
   insertAgent,
   insertDecision,
   insertPayment,
@@ -39,6 +38,7 @@ import {
   type ReinsDb,
 } from "@reins/db";
 import {
+  agentBudgets,
   combineVerdict,
   evaluateHardRules,
   generateApiKey,
@@ -212,17 +212,10 @@ async function seedAgentIds(db: ReinsDb): Promise<string[]> {
   return (await listAgents(db)).filter((a) => a.keyPrefix.startsWith(SEED_KEY_PREFIX)).map((a) => a.id);
 }
 
-/** Dashboard numbers exactly as the app computes them: per-agent month spend vs. the active mandate limit. */
+/** Dashboard numbers exactly as the app computes them (core agentBudgets: per-agent month spend vs. active mandate limit). */
 export async function dashboardTotals(db: ReinsDb, now = Date.now()) {
-  const since = monthStartUtc(now);
-  let spent = 0;
-  let limit = 0;
-  const all = await listAgents(db);
-  for (const a of all.filter((x) => !x.revokedAt)) {
-    spent += await spendSinceCents(db, a.id, since);
-    limit += (await getActiveMandate(db, a.id))?.monthlyLimitCents ?? 0;
-  }
-  return { spentCents: spent, limitCents: limit, agents: all.filter((x) => !x.revokedAt).length };
+  const budgets = await agentBudgets(db, now);
+  return { spentCents: budgets.reduce((s, a) => s + a.spent_cents, 0), limitCents: budgets.reduce((s, a) => s + (a.limit_cents ?? 0), 0), agents: budgets.length };
 }
 
 export async function seedDemo(db: ReinsDb, opts: SeedOptions = {}): Promise<SeedResult> {
@@ -414,7 +407,7 @@ async function replayItem(db: ReinsDb, agent: Agent, mandate: Mandate, item: Ite
   }
 
   // ---- payment: vaulted strategy with fake ids ----
-  await finish({ status: "paying" }, at);
+  await finish({ ...decided, status: "paying" }, at);
   const failed = o.kind === "pay_failed";
   const payment = await insertPayment(db, {
     requestId: request.id,

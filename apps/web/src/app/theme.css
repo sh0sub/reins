@@ -23,6 +23,14 @@
   --reins-danger: #c62f2f;
   --reins-danger-soft: #fdeceb;
   --reins-telegram: #517da2;
+  /* Categorical series (dataviz reference palette, CVD-validated on white; fixed order, never cycled).
+     AG Charts draws on canvas, so CategoryDonut.tsx mirrors these values. */
+  --reins-series-1: #2a78d6;
+  --reins-series-2: #eb6834;
+  --reins-series-3: #1baf7a;
+  --reins-series-4: #eda100;
+  --reins-series-5: #e87ba4;
+  --reins-series-other: #8a93a6;
   --reins-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --semantic-color-text-primary: var(--reins-ink);

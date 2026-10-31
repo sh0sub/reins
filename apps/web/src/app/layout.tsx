@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a className="skip" href="#main">Skip to content</a>
         <div className="shell">
           <aside className="sidebar">
-            <Link className="brand" href="/inbox">
+            <Link className="brand" href="/overview" aria-label="Reins overview">
               <span className="brand-mark" aria-hidden />
               <span>
                 Reins<small>Agent spending</small>

@@ -24,7 +24,7 @@ function LedgerScreen() {
   const params = useSearchParams();
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [agent, setAgent] = useState<string>("all");
+  const [agent, setAgent] = useState<string>(() => params.get("agent") ?? "all");
   const [status, setStatus] = useState("any");
   const [group, setGroup] = useState(true);
   const [q, setQ] = useState("");

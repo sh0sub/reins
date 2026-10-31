@@ -14,6 +14,8 @@ import {
   getInbox,
   getLedger,
   getLedgerRow,
+  getOverview,
+  getWeeklySummary,
   getRequestForAgent,
   handlePayPalWebhook,
   issueTelegramLinkToken,
@@ -117,6 +119,8 @@ const routes: Route[] = [
   }),
 
   // ---- dashboard / admin ----
+  toRoute("GET", "/api/overview", "admin", async (_r, ctx) => json(await getOverview(ctx))),
+  toRoute("GET", "/api/overview/summary", "admin", async (_r, ctx) => json(await getWeeklySummary(ctx))),
   toRoute("GET", "/api/agents", "admin", async (_r, ctx) => json({ agents: await listAgentSummaries(ctx) })),
   toRoute("POST", "/api/agents", "admin", async (req, ctx) => {
     const body = (await readJson(req)) as { name?: string; mandate?: unknown };

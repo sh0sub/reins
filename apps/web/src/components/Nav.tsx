@@ -8,6 +8,7 @@ import { useLive, useLiveStatus } from "@/lib/live";
 import { Icon, type IconName } from "./Icon";
 
 const ITEMS: Array<{ href: string; label: string; icon: IconName }> = [
+  { href: "/overview", label: "Overview", icon: "home" },
   { href: "/inbox", label: "Approvals", icon: "inbox" },
   { href: "/agents", label: "Agents", icon: "bot" },
   { href: "/ledger", label: "Ledger", icon: "list" },
@@ -86,7 +87,7 @@ export function SideFoot() {
   );
 }
 
-const TITLES: Record<string, string> = { "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Setup" };
+const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Setup" };
 
 /** 56px top bar: page name, live connection state, pending shortcut. */
 export function TopBar() {
