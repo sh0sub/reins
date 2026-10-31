@@ -29,6 +29,7 @@ import {
   listAgents,
   migrateDb,
   purgeAgents,
+  setAgentPaused,
   setTimestamps,
   spendSinceCents,
   updatePayment,
@@ -262,6 +263,8 @@ export async function seedDemo(db: ReinsDb, opts: SeedOptions = {}): Promise<See
     );
     // insertAgent stamps Date.now(); backdate so the agents predate the history they own
     await setTimestamps(db, { agent: agent.id }, lastStart + (i + 1) * DAY);
+    // the paused agent shows the "Agents 3 · 2 active · 1 paused" ledger KPI and the grey sidebar dot (mockup S4)
+    if (def.name === "Desk Restock Bot") await setAgentPaused(db, agent.id, lastStart + (i + 1) * DAY + 3_600_000);
     agents.set(key, agent);
   }
 

@@ -15,6 +15,7 @@ import {
 } from "ag-grid-community";
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
+import { Icon } from "@/components/Icon";
 import { decisionLabel, hardRules, statusChip } from "@/lib/format";
 
 // Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
@@ -34,6 +35,7 @@ const theme = themeQuartz.withParams({
   rowHeight: 40,
   headerHeight: 40,
   wrapperBorderRadius: 12,
+  cellHorizontalPadding: 8,
 });
 
 function Chip({ value, className }: { value: string; className: string }) {
@@ -93,8 +95,14 @@ interface GridContext {
 }
 function ReconCell(p: CustomCellRendererProps<LedgerRow>) {
   const r = p.data?.payment?.status === "completed" ? p.data.payment.reconciled : null;
-  if (!r) return <span className="caption">n/a</span>;
-  return <Chip value={r} className={r === "matched" ? "status status-ok" : r === "mismatch" ? "status status-bad" : "status"} />;
+  if (!r) return <span className="caption" title="Not reconciled (no completed PayPal payment)">n/a</span>;
+  // icon + hidden word keeps the column narrow so Status, PayPal ID and Risk all fit at 1440 px
+  return (
+    <span className={r === "matched" ? "status status-ok" : r === "mismatch" ? "status status-bad" : "status"} title={`Transaction Search: ${r}`}>
+      {r === "matched" ? <Icon name="check" className="ico-s" /> : r === "mismatch" ? <Icon name="x" className="ico-s" /> : <Icon name="clock" className="ico-s" />}
+      <span className="sr-only">{r}</span>
+    </span>
+  );
 }
 
 /** Row expansion (S4/S6 lite): rules, auditor reason EN/KO, mandate version, capture id, reconciliation. */
@@ -200,23 +208,23 @@ export function LedgerGrid({
         headerName: "Time",
         field: "created_at",
         sort: "desc",
-        width: 140,
+        width: 112,
         cellRenderer: group ? undefined : "agGroupCellRenderer",
         valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : ""),
         filter: "agDateColumnFilter",
         filterValueGetter: (p) => (p.data ? new Date(p.data.created_at) : null),
       },
-      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 96, sortable: false, filter: false },
+      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 78, sortable: false, filter: false },
       { headerName: "Agent", field: "agent_name", rowGroup: group, hide: group, enableRowGroup: true, filter: "agSetColumnFilter" },
-      { headerName: "Item", field: "items", flex: 2, minWidth: 180, tooltipField: "items" },
-      { headerName: "Merchant", field: "merchant", width: 150, filter: "agSetColumnFilter" },
+      { headerName: "Item", field: "items", flex: 2, minWidth: 130, tooltipField: "items" },
+      { headerName: "Merchant", field: "merchant", width: 112, filter: "agSetColumnFilter" },
       // Group/grand totals sum only paid rows (blocked and failed requests were never charged).
-      { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: 110, filter: "agNumberColumnFilter" },
-      { headerName: "Decision", colId: "decision", valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 120, filter: "agSetColumnFilter" },
-      { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 140, filter: "agSetColumnFilter", enableCellChangeFlash: true },
-      { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 120 },
-      { headerName: "Recon", colId: "recon", valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 110, filter: "agSetColumnFilter" },
-      { headerName: "Risk", field: "risk", width: 80, type: "rightAligned", filter: "agNumberColumnFilter" },
+      { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: 84, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Decision", colId: "decision", valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 98, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 138, minWidth: 130, filter: "agSetColumnFilter", enableCellChangeFlash: true },
+      { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 100, suppressHeaderFilterButton: true },
+      { headerName: "Recon", colId: "recon", valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Risk", field: "risk", width: 56, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
     ],
     [group],
   );
@@ -246,9 +254,10 @@ export function LedgerGrid({
         columnDefs={cols}
         context={context}
         getRowId={(p: GetRowIdParams<LedgerRow>) => p.data.request_id}
-        defaultColDef={{ sortable: true, resizable: true, filter: true, minWidth: 70 }}
+        defaultColDef={{ sortable: true, resizable: true, filter: true, minWidth: 60 }}
+        autoSizeStrategy={{ type: "fitGridWidth" }}
         suppressAggFuncInHeader
-        autoGroupColumnDef={{ headerName: "Agent / time", minWidth: 220, cellRendererParams: { suppressCount: false } }}
+        autoGroupColumnDef={{ headerName: "Agent / time", width: 150, minWidth: 130, cellRendererParams: { suppressCount: false } }}
         groupDefaultExpanded={1}
         groupTotalRow={undefined}
         grandTotalRow="pinnedBottom"

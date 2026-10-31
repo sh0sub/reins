@@ -8,6 +8,7 @@ import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { decisionLabel } from "@/lib/format";
+import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
 // AG Grid / AG Charts touch window: client only.
@@ -39,6 +40,7 @@ function LedgerScreen() {
   const params = useSearchParams();
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [roster, setRoster] = useState<ShellAgent[] | null>(null);
   const [agent, setAgent] = useState<string>(() => params.get("agent") ?? "all");
   // month to date like the overview; a deep link to one request (?r=) opens all time so the row is never filtered out
   const [period, setPeriod] = useState<Period>(() => {
@@ -77,9 +79,14 @@ function LedgerScreen() {
       })
       .catch((e: Error) => setError(e.message));
   }, []);
+  const loadRoster = useCallback(() => {
+    api<{ agents: ShellAgent[] }>("/api/agents").then((r) => setRoster(r.agents)).catch(() => setRoster(null));
+  }, []);
   useEffect(load, [load]);
+  useEffect(loadRoster, [loadRoster]);
   useLive((e) => {
     load();
+    loadRoster();
     if (e.type === "request.updated" && e.request?.status === "paid") setFlash(`New row · ${e.request.display_id} paid`);
   });
   useEffect(() => {
@@ -173,8 +180,7 @@ function LedgerScreen() {
         </div>
       ) : (
         <div className="stack-l">
-          <div className="ledger-top">
-            <div className="kpis">
+          <div className="kpis kpis-4">
               <div className="panel panel-tight stack-s">
                 <span className="caption">Paid</span>
                 <span className="metric">${kpi.paid.toFixed(2)}</span>
@@ -196,13 +202,11 @@ function LedgerScreen() {
                   Auto {kpi.auto} · Human {kpi.human} · Denied {kpi.denied}
                 </span>
               </div>
-            </div>
-            <section className="panel panel-tight stack-s" aria-labelledby="chart-h">
-              <h2 id="chart-h" className="section-title">
-                Paid by agent
-              </h2>
-              {rows ? <SpendChart rows={scoped} /> : <div className="skeleton" style={{ minHeight: 220 }} />}
-            </section>
+              <div className="panel panel-tight stack-s">
+                <span className="caption">Agents</span>
+                <span className="metric">{roster ? agentsKpi(roster).total : "–"}</span>
+                <span className="caption">{roster ? agentsKpi(roster).line : "Loading…"}</span>
+              </div>
           </div>
 
           <section className="panel panel-tight stack" aria-label="Transactions">
@@ -279,6 +283,13 @@ function LedgerScreen() {
               {filtered.length} of {scoped.length} rows ({periodLabel}) · {money(shownTotals.paid)} paid · {money(shownTotals.blocked)} blocked · expand a row for the auditor reason, mandate
               version, capture id and reconciliation; open an ID for the full decision trail.
             </p>
+          </section>
+
+          <section className="panel panel-tight stack-s" aria-labelledby="chart-h">
+            <h2 id="chart-h" className="section-title">
+              Paid by agent
+            </h2>
+            {rows ? <SpendChart rows={scoped} /> : <div className="skeleton" style={{ minHeight: 220 }} />}
           </section>
         </div>
       )}

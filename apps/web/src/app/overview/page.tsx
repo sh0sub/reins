@@ -412,6 +412,7 @@ function OverviewScreen() {
       <div className="page-head ov-head">
         <div>
           <h1>{head ? head.title : "Overview"}</h1>
+          <p className="tagline">Hold the reins on AI spending. Every agent purchase checked against its mandate, then approved, paid or blocked.</p>
           {shown && head && (
             <p className="muted">
               {w.lead} {usd(shown.totals.spent_cents)} of {usd(shown.totals.limit_cents)} across {shown.totals.agents} {shown.totals.agents === 1 ? "agent" : "agents"} · {head.range} · {envLabel(shown.paypal_env)}

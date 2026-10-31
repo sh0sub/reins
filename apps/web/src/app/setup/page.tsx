@@ -31,6 +31,62 @@ function StepHead({ n, title, state, note }: { n: number; title: string; state: 
   );
 }
 
+
+/** Left value-prop panel (S1 hero): promise, three feature cards, a mini approval card. */
+function Hero() {
+  return (
+    <aside className="ob-hero" aria-label="About Reins">
+      <div className="ob-brand">
+        <span className="brand-mark" aria-hidden />
+        Reins
+      </div>
+      <div className="stack">
+        <span className="ob-eyebrow">PayPal wallet for AI agents</span>
+        <p className="ob-display">Hold the reins on AI&nbsp;spending.</p>
+        <p className="ob-lead">Reins gives every AI agent a PayPal wallet with a leash, exposed as an MCP server any agent can call.</p>
+      </div>
+      <ul className="ob-vp">
+        <li>
+          <b>Budgets per agent</b>
+          <span>Monthly cap, auto-approve limit and allowed merchants in one mandate.</span>
+        </li>
+        <li>
+          <b>One-tap human approval</b>
+          <span>Anything above your limit lands on Telegram and the web inbox.</span>
+        </li>
+        <li>
+          <b>Full audit trail</b>
+          <span>Hard rules, Claude&apos;s review and the PayPal capture. Every request explained.</span>
+        </li>
+      </ul>
+      <div className="ob-float" aria-hidden>
+        <div className="ob-card">
+          <span className="ob-ag">RS</span>
+          <div>
+            <b>Research Scout</b>
+            <span>statista.com · Risk 2/10</span>
+          </div>
+          <b className="num">$59.00</b>
+          <span className="ob-pill ok">Approved</span>
+        </div>
+        <div className="ob-card bad">
+          <span className="ob-ag">RS</span>
+          <div>
+            <b>Blocked</b>
+            <span>fiverr.com · $450.00</span>
+          </div>
+          <span className="ob-pill">Denied</span>
+        </div>
+      </div>
+      <div className="ob-foot">
+        <span>PayPal Sandbox</span>
+        <span>MCP · stdio + Streamable HTTP</span>
+        <span>Open source</span>
+      </div>
+    </aside>
+  );
+}
+
 /** Screen S1: connect PayPal sandbox -> save a payment method (vault $0.01 or Treasury) -> link Telegram. */
 export default function SetupPage() {
   const [ws, setWs] = useState<WorkspaceView | null>(null);
@@ -146,14 +202,38 @@ export default function SetupPage() {
       </p>
     ) : null;
 
+  const steps: Array<{ n: number; title: string; sub: string; state: StepState }> = [
+    { n: 1, title: "Connect PayPal", sub: s1 === "done" ? "Verified" : "In progress", state: s1 },
+    { n: 2, title: "Payment method", sub: s2 === "done" ? "Saved" : s2 === "current" ? "In progress" : "Waiting", state: s2 },
+    { n: 3, title: "Telegram", sub: s3 === "done" ? "Linked" : "Approve on phone", state: s3 },
+  ];
+  const stepNo = steps.find((x) => x.state !== "done")?.n ?? 3;
+
   return (
-    <div style={{ maxWidth: 680 }}>
-      <div className="page-head">
-        <div>
-          <h1>Setup</h1>
-          <p className="muted">Three steps: connect PayPal, choose how agents pay, approve on your phone. Reins never stores card numbers.</p>
+    <div className="ob">
+      <Hero />
+      <div className="ob-main">
+        <div className="ob-top">
+          <span className="muted">Setup · Step {stepNo} of 3</span>
+          <Link className="btn-link" href="/overview">
+            Skip for now
+          </Link>
         </div>
-      </div>
+        <ol className="stepper" aria-label="Setup progress">
+          {steps.map((x) => (
+            <li key={x.n} className={x.state} aria-current={x.state === "current" ? "step" : undefined}>
+              <i aria-hidden>{x.state === "done" ? <Icon name="check" className="ico-s" /> : x.n}</i>
+              <div>
+                <b>{x.title}</b>
+                <span>{x.sub}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div>
+          <h1>Connect your PayPal sandbox</h1>
+          <p className="muted">Reins never stores card numbers. Payments run through PayPal; you keep the keys.</p>
+        </div>
 
       <ol className="stack-l" style={{ listStyle: "none", padding: 0, margin: 0 }}>
         <li className="panel stack">
@@ -236,7 +316,7 @@ export default function SetupPage() {
         </li>
       </ol>
 
-      <div className="row" style={{ marginTop: 24 }}>
+      <div className="row">
         {connected ? (
           <Link className={s2 === "done" ? "btn btn-primary" : "btn"} href="/agents">
             Continue to agents
@@ -246,6 +326,7 @@ export default function SetupPage() {
             Continue to agents
           </button>
         )}
+      </div>
       </div>
     </div>
   );
