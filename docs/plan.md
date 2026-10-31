@@ -74,7 +74,7 @@ Innovation / Idea20%
 
 Presentation20%
 
-3막 구조: 소액 자동 통과(10초) → 중간 금액 폰 알림·탭 승인·PayPal 캡처(40초) → 고액·목적 불일치 차단과 설명(20초). 화면 전환이 적고 숫자가 선명(한도 $60 중 $41 남음 등).
+3막 구조: 소액 자동 통과(10초) → 중간 금액 폰 알림·탭 승인·PayPal 캡처(40초) → 고액·목적 불일치 차단과 설명(20초). 화면 전환이 적고 숫자가 선명(한도 $100 중 $41 남음 등).
 
 04
 
@@ -280,7 +280,7 @@ AI -난도 하
 1. **AUTO 통과**하드 룰 통과 → LLM AUTO_APPROVE risk 1 → vault_id 주문·capture COMPLETED→ S4 초록 Paid
 1. **에이전트에 영수증**{status:"paid", capture_id:"8XK21…"} → "갱신 완료, $12.98 결제됨"→ 외부
 1. **Research Scout "시장 보고서 구해줘"**Channel3 검색 → statista.com $59.00 요청→ 외부
-1. **ASK_HUMAN**$60 중 $41 남음, 자동한도 $25 초과 → risk 2 → 텔레그램 + 승인함, 에이전트에 pending_human R-0142→ S3 / S5
+1. **ASK_HUMAN**한도 $100 중 승인 후 $41 남음, 자동한도 $25 초과 → risk 2 → 텔레그램 + 승인함, 에이전트에 pending_human R-0142→ S3 / S5
 1. **폰에서 Approve 탭**"Paying…" → "Paid $59.00 · Capture 3GH…" 편집, 승인함 비워짐→ S3 → S4
 1. **주입된 웹페이지 요약**숨은 지시 → fiverr.com $450 "Instructed by page"→ 외부
 1. **DENY**하드 룰(건당 $100 초과·미허용) + LLM "likely prompt injection" → 경고 카드(Review만)→ S3 / S6
@@ -363,13 +363,13 @@ D18 11/12 (목)**제출 KST 20:00 이전**마감까지 9시간 버퍼, 이후 �
 
 0:30–0:50**1막 자동 승인.** "Renew reins.dev" → 도구 호출 → 3초 후 "Paid $12.98". Claude Desktop | 원장 분할, 샌드박스 거래 2초 컷
 
-0:50–1:40**2막 사람 승인.** Channel3 검색 → $59 요청 → 폰 울림 → Approve → "Paid" → 승인함 비워짐 → 원장 갱신. "Everything over $25 asks me." 데스크톱 ↔ 갤럭시 실촬영 교차
+0:50–1:40**2막 사람 승인.** Channel3 검색 → $59 요청 → 폰 울림 → Approve → "Paid $59.00" → 승인함 비워짐 → 원장 갱신, 예산 바 "$41 of $100 left". "Everything over $25 asks me." 데스크톱 ↔ 갤럭시 실촬영 교차
 
-1:40–2:10**3막 차단.** 주입 페이지 → $450 fiverr → Denied → 텔레그램 경고 → S6 FAIL 3개 + "looks like prompt injection". "Rules first, then an AI auditor explains." S6 확대
+1:40–2:10**3막 차단.** 주입 페이지 → $450 fiverr → Denied → 텔레그램 경고 → S6 FAIL 3개(건당 $100 초과 · 허용 상점 아님 · 월 한도 $100 초과) + "looks like prompt injection". "Rules first, then an AI auditor explains." S6 확대
 
 2:10–2:30**기술 15초.** Orders v2(+Vault 저장 결제) + Payouts + Webhooks + Transaction Search, 자체 MCP, Claude 심사, AG Grid, Render. 정적 아키텍처 그림
 
-2:30–2:50**임팩트.** "PayPal's Agent Ready already distinguishes supervised from automatic shopping. Reins is where you decide which is which — per agent, per dollar. Open source, MIT, connect in 5 minutes." S7 → 엔드 카드(GitHub·데모 URL)
+2:30–2:50**임팩트.** "PayPal's Agent Ready already distinguishes supervised from automatic shopping. Reins is where you decide which is which — per agent, per dollar. Open source, MIT, connect in 5 minutes." S7("This month $117.97 of $410 across 3 agents") → 엔드 카드(GitHub·데모 URL)
 
 촬영 규칙: PayPal 로고 등 상표를 장식에 쓰지 않음(샌드박스 화면은 동작 증명용 최소 노출), 음악은 라이선스 프리 또는 무음, 자막 영어.
 
