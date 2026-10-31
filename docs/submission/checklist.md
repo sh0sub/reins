@@ -1,0 +1,69 @@
+# 제출 체크리스트 (Devpost, 마감 2026-11-13 05:00 KST, 목표 11-12 20:00 KST)
+
+상태: 완료 / 남음-Claude / 남음-사용자 계정 필요. 사용자 계정이 필요한 일은 Render 가입+Blueprint 적용, YouTube 업로드, Devpost 폼 제출 세 가지뿐이다.
+
+## Devpost 폼 필드
+
+| 항목 | 상태 | 메모 |
+|---|---|---|
+| 프로젝트 이름 / 태그라인(200자 이하) | 완료 | `docs/submission/devpost.md` (164자) |
+| Inspiration | 완료 | 선행 제품(Skyfire, 카드사 토큰) 차이 3줄 포함 |
+| What it does | 완료 | |
+| How we built it (PayPal 엔드포인트, MCP 4툴, Claude 심사+mock, AG Grid, Render) | 완료 | 엔드포인트는 코드로 확인 |
+| Challenges / Accomplishments / What we learned / What's next | 완료 | |
+| Built with 태그 | 완료 | |
+| Try it out 링크: 저장소 | 완료 | https://github.com/sh0sub/reins |
+| Try it out 링크: 라이브 URL | 남음-사용자 계정 필요 | Render 배포 뒤 실제 주소로 교체(`reins-web.onrender.com` 자리표시) |
+| Try it out 링크: MCP 주소 | 남음-사용자 계정 필요 | 배포 뒤 확인(`reins-mcp.onrender.com/mcp`) |
+| 영상 링크 | 남음-사용자 계정 필요 | YouTube 업로드 후 URL |
+| For judges 2분 체험 블록 | 완료 | 웹 승인함(텔레그램 없이), MCP 설정 스니펫 포함 |
+| 스폰서상 체크박스: Agentic Commerce, AG Grid, Render | 남음-사용자 계정 필요 | 폼에서 체크(문단은 devpost.md에 있음) |
+| 스폰서상 체크박스: APIMatic | 남음-Claude | 저장소에 사용 증거 없음. 아래 "APIMatic" 참고. 증거 없으면 체크하지 않는다 |
+| Devpost 폼 제출 | 남음-사용자 계정 필요 | 제출 후 수정 금지 |
+
+## 저장소
+
+| 항목 | 상태 | 메모 |
+|---|---|---|
+| 공개 GitHub 저장소 + 루트 LICENSE(MIT) | 완료 | About 라이선스 표시는 GitHub 설정에서 확인 필요 |
+| README(소개, 아키텍처, 빠른 시작, MCP 스니펫, 보안 노트, 선행 제품) | 완료 | |
+| README: 영상·라이브 URL 자리 | 남음-사용자 계정 필요 | 업로드/배포 뒤 실제 링크로 교체 |
+| README: API 표(이슈 #41) | 남음-Claude | 현재는 엔드포인트 목록 문단. 표가 필요하면 추가 |
+| README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
+| `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
+| 테스트·린트 | 완료 | 198 tests / 29 files 통과, `pnpm lint` 통과 |
+| 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
+| 커밋·푸시 | 남음-Claude | 이번 작업은 커밋하지 않음. 요청 시 진행 |
+
+## 배포(Render)
+
+| 항목 | 상태 | 메모 |
+|---|---|---|
+| `render.yaml`, `docs/deploy.md` | 완료 | 무료 플랜, 디스크·크론 없음 |
+| Render 가입 + Blueprint 적용, 환경변수 입력 | 남음-사용자 계정 필요 | `docs/deploy.md` 1~2단계 |
+| PayPal 웹훅 등록 + `PAYPAL_WEBHOOK_ID` 입력 | 남음-사용자 계정 필요 | deploy.md 3단계 |
+| Telegram 웹훅 등록(쓸 때만) | 남음-사용자 계정 필요 | deploy.md 4단계 |
+| smoke check 실행 | 남음-Claude | 배포 후 URL을 받으면 deploy.md 5단계를 대신 실행 |
+| 제출 직전에 서비스 깨우기 | 남음-사용자 계정 필요 | 15분 무요청 시 잠들고 데모 상태 초기화 |
+
+## 영상
+
+| 항목 | 상태 | 메모 |
+|---|---|---|
+| 영상 대본·촬영 스크립트(`scripts/demo/video-shots.mjs`) | 완료 | |
+| 3분 미만, 상표·저작권 음악 없음 확인 | 남음-Claude | 완성 파일 길이 확인 |
+| 선행 제품 차이 3줄 영상 반영(이슈 #44) | 남음-Claude | 현재 대본에는 없음. 마지막 카드에 추가할지 결정 |
+| 갤럭시 실기기 텔레그램 장면(계획서) | 남음-사용자 계정 필요 | 대본은 봇 카드 텍스트 패널 사용. 실기기 장면이 필요하면 직접 촬영 |
+| YouTube 공개 업로드 | 남음-사용자 계정 필요 | 공개(Public) 설정 |
+
+## APIMatic
+
+저장소 검색 결과 APIMatic은 `docs/plan.md`와 이슈 #21·#41에만 계획으로 나온다. 코드, 커밋, README에 사용 기록이 없다. Reins는 PayPal을 REST로 직접 호출하고 PayPal Server SDK를 쓰지 않는다. 남은 일(Claude): `npx context-plugins install paypal` 설치, Claude Code로 실제 작업 1건 이상(예: Orders v2/Payouts 호출 점검), README "Built with APIMatic" 섹션과 커밋 기록, 그 뒤 devpost.md APIMatic 문단 확정. 설치에 APIMatic 계정이 필요하면 그 부분만 사용자 몫이다.
+
+## 제출 직전·직후
+
+| 항목 | 상태 | 메모 |
+|---|---|---|
+| 깨끗한 환경 재설치 테스트(D17) | 남음-Claude | 새 디렉터리 clone, 빠른 시작 그대로 실행 |
+| 제출 후 시크릿 모드에서 라이브·저장소·영상 3개 링크 확인 | 남음-사용자 계정 필요 | 링크 열림 확인 |
+| 제출 후 수정 금지(D18) | 남음-사용자 계정 필요 | |

@@ -1,25 +1,101 @@
-# reins
+# Reins
 
-**Reins** gives every AI agent a PayPal wallet with a leash: budgets, rules, one-tap human approval and a full audit trail, exposed as an MCP server any agent can call.
+**Give every AI agent a PayPal wallet with a leash.**
 
-Built for the PayPal AI Hackathon 2026 (deadline 2026-11-12 PST). Targets: Best Use of Agentic Commerce, AG Grid.
+Agents can pay, but it is all or nothing. Reins gives each agent its own key and a versioned mandate (monthly cap, auto-approve limit, per-purchase cap, allowed merchants). Agents connect over MCP and call `request_purchase`. Hard rules run first, then a Claude auditor reviews purpose fit and risk and returns AUTO_APPROVE, ASK_HUMAN or DENY. Small, in-policy purchases are paid at once through PayPal Orders v2; bigger ones wait for one tap on a web inbox or Telegram card; manipulated ones (say, a web page telling the agent to buy a $450 logo) are blocked before any money moves. Every decision lands in an AG Grid ledger with a full audit trail.
 
-- Agent calls `request_purchase` over MCP (stdio or Streamable HTTP)
-- Hard rules first (monthly cap, per-purchase auto-approve limit, allow/deny lists), then Claude reviews purpose fit and risk: AUTO_APPROVE / ASK_HUMAN / DENY
-- ASK_HUMAN sends a Telegram card and a web inbox item; one tap decides
-- Approved purchases settle through PayPal Orders v2 (sandbox) and land in an AG Grid ledger
+Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, APIMatic, Render.
+
+- Demo video: _YouTube link (to add after upload)_
+- Live demo: https://reins-web.onrender.com _(to confirm after deploy; free instances sleep, first load takes about a minute)_
+- Devpost text: [docs/submission/devpost.md](docs/submission/devpost.md)
+
+## How it works
+
+```mermaid
+flowchart LR
+  A["AI agent<br/>Claude Desktop / Code / cron"] -- "MCP: request_purchase" --> M["apps/mcp<br/>stdio + Streamable HTTP"]
+  M -- "REST + agent key" --> W["apps/web<br/>Next.js API + dashboard"]
+  W --> P["packages/core<br/>hard rules, Claude auditor, strategies"]
+  P --> D[("SQLite<br/>libsql")]
+  P -- "Orders v2, Payouts" --> PP["PayPal sandbox"]
+  PP -- "webhooks (signature verified)" --> W
+  W <-- "approve / reject" --> T["Telegram bot (grammY)"]
+  W <-- "SSE inbox" --> U["You: web inbox, AG Grid ledger"]
+```
+
+Decision flow for `request_purchase`:
+
+1. Hard rules in code: monthly cap, per-purchase cap, allow and block lists. A failure is DENY, no model involved.
+2. Claude audits purpose fit and risk (structured verdict). Code bounds it: DENY on a model DENY or risk >= 8; AUTO_APPROVE only if risk <= 3 and the amount is within the auto-approve limit. Auditor timeout or error means ASK_HUMAN, never auto-pay. Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs.
+3. AUTO_APPROVE pays now. ASK_HUMAN returns `pending_human` and sends a web inbox item and a Telegram card (Approve, Approve + always allow this merchant, Reject). The agent polls `get_request_status` and gets the receipt.
+
+MCP tools: `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`.
+
+PayPal APIs used (sandbox): `POST /v1/oauth2/token`, Orders v2 (`POST /v2/checkout/orders` with `PayPal-Request-Id`, `GET` and `POST .../capture`, `store_in_vault` for saving the buyer's PayPal, then `vault_id` reorders), Payouts (`POST /v1/payments/payouts`, treasury mode), webhooks (`POST /v1/notifications/verify-webhook-signature`), Transaction Search (`GET /v1/reporting/transactions`, reconciliation).
+
+## Quickstart (no credentials)
+
+```bash
+pnpm install
+cp .env.example .env
+# in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
+pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410"
+pnpm dev:web                # http://localhost:3000
+pnpm test                   # 198 tests
+```
+
+Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
+
+## Connect your own Claude (MCP)
+
+Claude Code (stdio, from the repo root):
+
+```bash
+cp .mcp.json.example .mcp.json      # local file, do not commit
+export REINS_API_KEY=rk_live_...
+claude mcp list
+```
+
+Claude Code against a hosted server (Streamable HTTP):
+
+```bash
+claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp --header "Authorization: Bearer rk_live_..."
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "reins": {
+      "command": "npx",
+      "args": ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"],
+      "env": { "REINS_API_URL": "http://localhost:3000", "REINS_API_KEY": "rk_live_..." }
+    }
+  }
+}
+```
+
+Demo prompts and Channel3 product search setup: [agents/README.md](agents/README.md).
+
+## Security notes
+
+- Agent keys are stored only as SHA-256 hashes and shown once.
+- `request_purchase` is idempotent per agent and `client_request_id`; PayPal calls carry `PayPal-Request-Id`.
+- Agent-written fields are untrusted: the auditor prompt treats them as data, and hard rules hold even if the model is fooled.
+- No PayPal credentials or `vault_id` are sent to the LLM; rejection reasons do not echo the raw prompt text.
+- PayPal webhooks are verified with `verify-webhook-signature`; Telegram webhooks with a secret token.
+- Secrets live in environment variables (Render env vars in production), never in the repo. Logs avoid secrets and emails.
+- The public demo is deliberately open (`REINS_PUBLIC_DEMO=1`, no admin token) and sandbox-only. Set `REINS_ADMIN_TOKEN` for a private deployment.
 
 ## Status
 
-D10 checkpoint (2026-10-29): plan flow B runs end to end (AUTO paid, ASK_HUMAN approved on web or Telegram, DENY blocked),
-covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes ran on 2026-10-27/28 (vault auto-pay, payouts, webhook
-signatures OK; results in `docs/spikes/`).
+Plan flow B runs end to end (auto-paid, human-approved on web or Telegram, denied), covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes (vault auto-pay, payouts, webhook signatures) are in `docs/spikes/`. Also built: "Approve + always allow this merchant" (mandate versions), receipts (`/receipts/:id`), unusual-pattern flags (`REINS_QUIET_HOURS`, `REINS_TIMEZONE`), a DevOps cron demo agent, AI summaries, one-click "Tighten mandate".
 
-Should features (2026-10-31, `tests/integration/{merchant-rule,receipt,anomalies,devops-agent,ask-summary}.test.ts`):
-S5 "Approve + always allow this merchant" (web inbox + Telegram; saves a mandate version with a per-merchant auto-approve limit),
-S4 receipts (`receipt.receipt_url` returned over MCP, page at `/receipts/:id`), S3 unusual patterns (4th request to one merchant in
-24h, quiet hours via `REINS_QUIET_HOURS`/`REINS_TIMEZONE`, category outside the mandate: risk +, AUTO becomes ASK_HUMAN, never blocks
-alone), S6 DevOps cron agent (`pnpm agent:devops`), S2 AI summary of long agent answers on the Telegram card.
+## Prior art
+
+Skyfire and card-network agent tokens address agent payments too. Reins differs in three ways: PayPal-native (no separate wallet or crypto), open-source MCP server you connect in minutes, and a human approval UX with an AI auditor that explains its decision.
 
 ## Develop
 
