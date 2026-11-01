@@ -13,11 +13,13 @@
  *   { term: (vars) => ({ title, body, pos? }) } | { term: null }   in-page terminal card showing the real MCP exchange
  *   { tg: { from, agent } } | { tg: null }   real bot card text (apps/bot approvalCard) for vars[from], neutral panel
  *   { save: { name, js } }          store a page value in vars
+ *   { cmdk: "text" }                real Cmd+K, type the text, Enter (command palette: pages, agents, requests)
  * `prep` runs before the segment starts recording (not in the video).
  * Lines: "text" or ["subtitle text", "what macOS say speaks"]. One subtitle per line; keep them short.
  */
 
 const bodyHas = (s) => `document.body.innerText.includes(${JSON.stringify(s)})`;
+const gridless = `!!document.querySelector('button.pick') && !document.querySelector('.skeleton')`;
 const gridReady = `!!document.querySelector('.ag-row') && !document.querySelector('.skeleton')`;
 
 export const AGENT_DEVOPS = "Claude Code – DevOps";
@@ -57,13 +59,16 @@ export const SEGMENTS = [
       "Reins gives each agent its own key and a versioned mandate: a monthly cap, an auto-approve limit, a per-purchase cap, and allowed merchants.",
       ["Agents connect to Reins over MCP, from Claude Desktop, Claude Code, or a cron job.", "Agents connect to Reins over M C P, from Claude Desktop, Claude Code, or a cron job."],
     ],
-    prep: [{ nav: "/agents", wait: bodyHas("Agents & mandates") + " && " + bodyHas("Monthly cap") }, { sleep: 1.0 }],
+    prep: [{ nav: "/agents", wait: bodyHas("Agents & mandates") + " && " + bodyHas("Monthly cap") + " && " + gridless }, { sleep: 1.0 }],
     actions: [
       { sleep: 1.2 },
-      { at: 1, plus: 0.3 },
-      { tap: { sel: "button", text: "^RS\\s*Research Scout" } },
+      { at: 1, plus: 0.2 },
+      { tap: { sel: "button.pick", text: "Claude Code – DevOps" } },
+      { wait: "document.querySelector('textarea')?.value.includes('dev infrastructure')" },
+      { at: 1, plus: 3.8 },
+      { tap: { sel: "button.pick", text: "Research Scout" } },
       { wait: "document.querySelector('textarea')?.value.includes('market research')" },
-      { at: 1, plus: 5.2 },
+      { at: 1, plus: 6.2 },
       { scroll: { y: 380 }, dur: 1.2 },
       { at: 2, plus: 1.5 },
       { scroll: { y: 0 }, dur: 1.0 },
@@ -100,14 +105,14 @@ export const SEGMENTS = [
     id: "ask",
     kicker: "Act 2 · Ask a human",
     heading: "Over the limit: one tap decides",
-    chip: "Web inbox (SSE) + Telegram card",
-    bullets: ["$59 > $25 auto-approve limit", "Agent gets pending_human", "Approve + always allow → mandate v2", "Receipt back over MCP"],
+    chip: "Web inbox (live) + Telegram card",
+    bullets: ["$59 > $25 auto-approve limit", "Agent gets pending_human", "Also allow this merchant → mandate v2", "Receipt back over MCP"],
     lines: [
       ["Next, the research agent wants a $59 report.", "Next, the research agent wants a 59 dollar report."],
       ["That's over its $25 limit, so the agent gets pending_human, and the request lands in my inbox in real time.", "That's over its 25 dollar limit, so the agent gets pending human, and the request lands in my inbox in real time."],
       "I see the mandate check, the auditor's risk score, and the budget left after this purchase.",
       "The same approval card goes to my phone on Telegram.",
-      "I tap Approve plus always allow.",
+      ["I tick “also allow statista.com” and tap Approve.", "I tick also allow statista dot com, and tap Approve."],
       ["Reins pays, and saves mandate version two: statista.com, up to $59, now skips approval.", "Reins pays, and saves mandate version two: statista dot com, up to 59 dollars, now skips approval."],
       ["The agent polls get_request_status and gets its receipt.", "The agent polls get request status, and gets its receipt."],
     ],
@@ -124,8 +129,10 @@ export const SEGMENTS = [
       { tg: { from: "a2", agent: AGENT_SCOUT } },
       { at: 4 },
       { tg: null },
-      { scroll: { sel: "button", text: "^Approve \\+ always allow", block: "center" }, dur: 0.8 },
-      { tap: { sel: "button", text: "^Approve \\+ always allow statista" } },
+      { scroll: { sel: "label.check-row", block: "center" }, dur: 0.8 },
+      { tap: { sel: "label.check-row" } },
+      { sleep: 0.6 },
+      { tap: { sel: "button", text: "^Approve \\$59\\.00" } },
       { wait: bodyHas("Paid $59.00"), timeout: 10000 },
       { sleep: 1.4 },
       { scroll: { y: 0 }, dur: 0.6 },
@@ -139,10 +146,11 @@ export const SEGMENTS = [
     kicker: "Act 3 · Blocked",
     heading: "Prompt injection, stopped",
     chip: "Rules first, then the AI auditor explains",
-    bullets: ["Over the $100 per-purchase cap", "Only $41 of $100 left this month", "fiverr.com is not on the allow list", "Nothing was charged"],
+    bullets: ["Over the $100 per-purchase cap", "Only $32 of $100 left this month", "fiverr.com is not on the allow list", "Nothing was charged"],
     lines: [
       "Then a web page tells the agent to buy a premium logo, now, without asking.",
       ["It requests $450 on fiverr.com. Denied.", "It requests 450 dollars on Fiverr dot com. Denied."],
+      ["I jump to it with Command K.", "I jump to it with Command K."],
       "Three hard rules fail: the per-purchase cap, the monthly cap, and the allowed merchants.",
       "The auditor adds why: the reason reads like a prompt injection.",
       "Nothing was charged, and Telegram gets a blocked alert.",
@@ -157,13 +165,17 @@ export const SEGMENTS = [
       { at: 1 },
       { mcp: { as: AGENT_SCOUT, tool: "request_purchase", args: A3, save: "a3" } },
       { term: (v) => ({ title: `${AGENT_SCOUT} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A3) + resultBlock(v.a3, ["display_id", "status", "decision", "risk"]) }) },
-      { at: 2, plus: 0.4 },
+      { at: 2, plus: 0.0 },
       { term: null },
       { wait: bodyHas("Logo design package") },
-      { tap: { sel: '[row-id="{a3.request_id}"] .ag-group-contracted' } },
-      { wait: bodyHas("Tighten mandate") },
-      { scroll: { sel: ".ledger-detail", block: "center" }, dur: 0.8 },
-      { at: 4, plus: 0.6 },
+      { cmdk: "fiverr" },
+      { wait: bodyHas("Open details"), timeout: 15000 },
+      { at: 3, plus: 0.3 },
+      { tap: { sel: "button, a", text: "^Open details$" } },
+      { wait: "!!document.querySelector('.drawer .risk-card')", timeout: 15000 },
+      { at: 4, plus: 0.2 },
+      { scroll: { sel: ".risk-card", block: "center" }, dur: 1.0 },
+      { at: 5, plus: 0.6 },
       { tg: { from: "a3", agent: AGENT_SCOUT, kind: "blocked" } },
     ],
   },
@@ -179,7 +191,8 @@ export const SEGMENTS = [
     ],
     actions: [
       { tg: null },
-      { tap: { sel: "a", text: "^Tighten mandate$" } },
+      { sleep: 0.6 },
+      { tap: { sel: ".drawer a, .drawer button", text: "^Tighten mandate$" } },
       { wait: "location.pathname === '/agents' && " + bodyHas("Suggested from a blocked request"), timeout: 20000 },
       { sleep: 0.8 },
       { scroll: { sel: "#prefill-note", block: "start" }, dur: 1.0 },
@@ -225,7 +238,7 @@ export const SEGMENTS = [
     heading: "The whole month at a glance",
     chip: "Caps · decisions · weekly summary",
     lines: [
-      ["This month: $117.97 of $410 across three agents, and every decision by outcome.", "This month: 117 dollars 97, of 410, across three agents, and every decision by outcome."],
+      ["This month: $176.97 of $410 across three agents, and every decision by outcome.", "This month: 176 dollars 97, of 410, across three agents, and every decision by outcome."],
       "Plus a weekly summary that Claude writes from aggregate numbers when an API key is set.",
     ],
     prep: [{ nav: "/overview", wait: bodyHas("at a glance") + " && " + bodyHas("AI weekly summary") + " && !document.querySelector('.skeleton')" }, { sleep: 1.5 }],

@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 222 tests in 32 files (`pnpm test`), `pnpm lint` clean.
+Test count at time of writing: 224 tests in 32 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
@@ -28,7 +28,9 @@ Each agent gets its own API key and a versioned mandate: monthly cap, auto-appro
 - **Ask a human**: over the limit, or the auditor is unsure. The agent gets `pending_human`. The request appears in the web inbox in real time and as a Telegram card with Approve, Approve + always allow this merchant (saves a new mandate version), and Reject. The agent polls `get_request_status` and gets its receipt.
 - **Deny**: a hard rule fails (cap, block list, merchant not allowed) or the auditor sees manipulation. Nothing is charged, and the reason is explained in English and Korean.
 
-Around that: an AG Grid ledger of every decision with grouping and drill-down, a month overview (spend vs caps, decision mix, category donut, AI weekly summary), receipts, unusual-pattern flags (4th request to one merchant in 24 h, quiet hours, category outside the mandate), a one-click "Tighten mandate" from a blocked request, and a demo DevOps cron agent that pays infra bills through the same MCP server.
+Around that: an AG Grid ledger of every decision with grouping and drill-down, a month overview (spend vs caps, decision mix, category donut, weekly summary), receipts, unusual-pattern flags (4th request to one merchant in 24 h, quiet hours, category outside the mandate), a one-click "Tighten mandate" from a blocked request, and a demo DevOps cron agent that pays infra bills through the same MCP server.
+
+The dashboard is built to be driven fast: a sidebar agents list with live cap use (paused agents are marked), a Cmd/Ctrl+K palette that jumps to any page, agent or request, a request drawer with the decision timeline, a hard-rule table (which rules failed and by how much), the auditor's risk and reason in English and Korean, and the raw MCP request with the key redacted, plus pause/resume and key regeneration per agent, a mandate version dropdown (every version kept, open an old one to restore it), approval cards that show the mandate check and the budget left after approving, shareable deep links (`/ledger/R-0143`, `/approvals/R-0143`, `/agents/research-scout`) and a phone-width layout down to 390 px.
 
 ## How we built it
 
@@ -44,7 +46,7 @@ Around that: an AG Grid ledger of every decision with grouping and drill-down, a
 - `POST /v1/notifications/verify-webhook-signature` and a `/api/webhooks/paypal` endpoint that verifies every webhook (10 subscribed event types: order approved, capture completed/denied/declined, payout item succeeded/failed/blocked/returned/denied/unclaimed)
 - `GET /v1/reporting/transactions` (Transaction Search) for reconciliation of every capture against PayPal's records
 
-**MCP server, 4 tools** (Streamable HTTP and stdio): `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`. Works from Claude Desktop, Claude Code or any MCP client. `request_purchase` is idempotent per agent and `client_request_id`, so retries never pay twice.
+**MCP server, 4 tools** (Streamable HTTP and stdio): `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`. Works from Claude Desktop, Claude Code or any MCP client. The package `@reins/mcp` is in the repo but not published to npm. `request_purchase` is idempotent per agent and `client_request_id`, so retries never pay twice.
 
 **Claude.** Claude (Anthropic SDK structured outputs) is used for: purchase audit, category suggestions for a mandate, the weekly spend summary, and the English/Korean rejection reason, plus a summary of long agent answers on the Telegram card. Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs, so the whole app works with no credentials.
 
@@ -52,7 +54,7 @@ Around that: an AG Grid ledger of every decision with grouping and drill-down, a
 
 **Render.** A Blueprint (`render.yaml`) deploys two free web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and demo data is re-seeded on every boot, so the demo always starts clean (free instances sleep after about 15 minutes and reset).
 
-**Testing.** 222 Vitest tests across 32 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
+**Testing.** 224 Vitest tests across 32 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
 
 ## Challenges we ran into
 
@@ -67,7 +69,7 @@ Around that: an AG Grid ledger of every decision with grouping and drill-down, a
 - The $450 prompt-injection purchase is blocked by three independent hard rules before the AI even weighs in, and the demo video shows it end to end over real MCP calls.
 - The same approval works from the web inbox and Telegram, and "Approve + always allow" turns one human decision into a new versioned mandate.
 - A judge can try it with no keys: fake PayPal mode, mock auditor, seeded data, or point their own Claude at the hosted MCP server.
-- 200 passing tests and a clean lint.
+- 224 passing tests, clean typecheck and lint.
 
 ## What we learned
 
@@ -82,7 +84,7 @@ Around that: an AG Grid ledger of every decision with grouping and drill-down, a
 - Real merchant checkout for agent shopping (Channel3 product search is already wired in the demo agent configs)
 - Team accounts with roles, spend alerts and scheduled mandates
 - More categories of unusual-pattern detection, and mandate suggestions learned from approvals
-- A published SDK and Postman collection for non-MCP agents
+- Publish `@reins/mcp` to npm so the one-line `npx` config on the Agents screen works (today: clone or hosted HTTP), plus an SDK and Postman collection for non-MCP agents
 
 ## Built with (tags)
 
@@ -97,7 +99,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 
 ## For judges: try it in 2 minutes
 
-No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute.
+No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. Two honest notes: the Agents screen shows a short `npx -y @reins/mcp` config, but `@reins/mcp` is not published to npm yet, so use the Claude Code HTTP command or the clone-based stdio config below. And the demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor; the real PayPal sandbox calls are covered by the spikes in `docs/spikes/` and the sandbox take described in `docs/demo-checkpoint.md`.
 
 1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents.
 2. `/setup` then **Use demo merchant (sandbox)** connects the server's sandbox merchant, so the full flow works without your own PayPal keys.

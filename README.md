@@ -4,9 +4,9 @@
 
 Agents can pay, but it is all or nothing. Reins gives each agent its own key and a versioned mandate (monthly cap, auto-approve limit, per-purchase cap, allowed merchants). Agents connect over MCP and call `request_purchase`. Hard rules run first, then a Claude auditor reviews purpose fit and risk and returns AUTO_APPROVE, ASK_HUMAN or DENY. Small, in-policy purchases are paid at once through PayPal Orders v2; bigger ones wait for one tap on a web inbox or Telegram card; manipulated ones (say, a web page telling the agent to buy a $450 logo) are blocked before any money moves. Every decision lands in an AG Grid ledger with a full audit trail.
 
-Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, APIMatic, Render.
+Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, Render. (APIMatic is not claimed: the Context Plugin has not been used on this repo yet.)
 
-- Demo video: _YouTube link (to add after upload)_
+- Demo video: _YouTube link (to add after upload)_. Under 3 minutes; recorded locally on a scratch database with the fake PayPal client, the offline stand-in for the Claude auditor and Telegram off (the Telegram card in the video is the real bot's card text, shown as a panel). Re-record with `node scripts/demo/record-video.mjs` (script and narration: `scripts/demo/`).
 - Live demo: https://reins-web.onrender.com _(to confirm after deploy; free instances sleep, first load takes about a minute)_
 - Devpost text: [docs/submission/devpost.md](docs/submission/devpost.md)
 
@@ -57,7 +57,7 @@ REST endpoints used by the dashboard (admin routes need `REINS_ADMIN_TOKEN` only
 | Reconcile | `POST /api/reconcile`, `POST /api/cron/reconcile` | admin, cron secret |
 | Webhooks | `POST /api/webhooks/paypal` (signature verified), `POST /api/telegram/webhook` (secret token), `GET /api/health` | public |
 
-Dashboard deep links: `/ledger/R-0143` (or `/ledger?r=R-0143&drawer=1`) opens that request's detail drawer.
+Dashboard deep links: `/ledger/R-0143` (or `/ledger?r=R-0143&drawer=1`) opens that request's detail drawer, `/approvals/R-0143` opens the approvals inbox on that request, `/agents/research-scout` (name slug or agent id) opens that agent's mandate. An unknown id shows a notice instead of a blank page, and unknown routes get a branded 404.
 
 Agent controls: pause an agent (web, the S6 drawer or the Telegram card's "Pause this agent"), and every request it sends is denied by the "agent paused" hard rule before the auditor or PayPal runs; regenerate a key (old key stops working at once, the new one is shown once). Both are logged in `agent_events`.
 
@@ -71,7 +71,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410"
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 222 tests
+pnpm test                   # 224 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
@@ -106,7 +106,7 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-The Agents screen shows the same config in its short form (`npx -y @reins/mcp` with `REINS_URL` and `REINS_API_KEY`; `REINS_API_URL` also works). `@reins/mcp` is not published to npm yet, so until then use the clone path above.
+The Agents screen's "MCP connection" card shows the same config in its short form (`npx -y @reins/mcp` with `REINS_URL` and `REINS_API_KEY`; `REINS_API_URL` also works). **That short form does not work yet: `@reins/mcp` is not published to npm.** Until it is, use the clone path above (stdio via `tsx`) or the hosted Streamable HTTP endpoint.
 
 Demo prompts and Channel3 product search setup: [agents/README.md](agents/README.md).
 
@@ -122,7 +122,9 @@ Demo prompts and Channel3 product search setup: [agents/README.md](agents/README
 
 ## Status
 
-Plan flow B runs end to end (auto-paid, human-approved on web or Telegram, denied), covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes (vault auto-pay, payouts, webhook signatures) are in `docs/spikes/`. Also built: "Approve + always allow this merchant" (mandate versions), receipts (`/receipts/:id`), unusual-pattern flags (`REINS_QUIET_HOURS`, `REINS_TIMEZONE`), a DevOps cron demo agent, AI summaries, one-click "Tighten mandate".
+Plan flow B runs end to end (auto-paid, human-approved on web or Telegram, denied), covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes (vault auto-pay, payouts, webhook signatures) are in `docs/spikes/`. Also built: "Also allow this merchant" on approval (new mandate version), receipts (`/receipts/:id`), unusual-pattern flags (`REINS_QUIET_HOURS`, `REINS_TIMEZONE`), a DevOps cron demo agent, AI summaries, one-click "Tighten mandate".
+
+Dashboard details: a sidebar agents list with live cap use and a paused marker; a Cmd/Ctrl+K palette over pages, agents and requests; Agents KPI tile on the ledger; a mandate version dropdown (open an old version to restore it); an approval card with the mandate check (for example 3 of 4 pass), the auditor's risk and the budget left after approving, plus deny reasons and `A`/`D` keys; Pending and Decided tabs; a request drawer with the decision timeline, a hard-rule table, risk gauge, EN/KO reason and the raw MCP request (key redacted); a phone-width (390 px) layout with a card-style ledger. The weekly summary is a labelled template unless `ANTHROPIC_API_KEY` is set. The drawer's "Model" line (tokens, latency) is real only for live Claude runs; in the seed it is scripted demo data.
 
 ## Prior art
 

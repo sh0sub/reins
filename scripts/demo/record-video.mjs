@@ -526,6 +526,25 @@ async function record(cdp) {
       log(`  ${a.api.method} ${a.api.path} -> ${res.status} ${(await res.text()).slice(0, 160)}`);
     } else if (a.save) {
       vars[a.save.name] = await evaluate(a.save.js);
+    } else if (a.cmdk !== undefined) {
+      // real keyboard input: Cmd+K opens the palette, the text is typed key by key, Enter opens the first hit
+      const key = (type, k, extra = {}) => cdp.send("Input.dispatchKeyEvent", { type, key: k, ...extra });
+      await key("rawKeyDown", "Meta", { code: "MetaLeft", windowsVirtualKeyCode: 91, modifiers: 4 });
+      await key("rawKeyDown", "k", { code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 4 });
+      await key("keyUp", "k", { code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 4 });
+      await key("keyUp", "Meta", { code: "MetaLeft", windowsVirtualKeyCode: 91 });
+      await act({ wait: "!!document.querySelector('.cmdk-input') && document.activeElement === document.querySelector('.cmdk-input')", timeout: 5000 }, seg, recording);
+      await sleep(500);
+      for (const ch of a.cmdk) {
+        await key("keyDown", ch, { text: ch });
+        await key("keyUp", ch);
+        await sleep(130);
+      }
+      await act({ wait: "document.querySelector('.cmdk-item')", timeout: 8000 }, seg, recording);
+      await sleep(900);
+      await key("rawKeyDown", "Enter", { code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+      await key("keyUp", "Enter", { code: "Enter", windowsVirtualKeyCode: 13 });
+      await sleep(400);
     } else throw new Error(`unknown action ${JSON.stringify(a)}`);
   }
 
@@ -562,8 +581,7 @@ async function gallery(cdp, vars) {
   const pages = [
     ["02-overview", "/overview", "!document.querySelector('.skeleton') && document.body.innerText.includes('AI weekly summary')", 0],
     ["03-overview-summary", "/overview", "!document.querySelector('.skeleton') && document.body.innerText.includes('AI weekly summary')", 520],
-    ["05-inbox", "/inbox", "document.body.innerText.includes('pending')", 0],
-    ["07-ledger-blocked-detail", "/ledger", "!!document.querySelector('.ag-row')", 0, vars.a3?.request_id],
+    ["07-ledger-blocked-detail", `/ledger/${vars.a3?.data?.display_id ?? ""}`, "!!document.querySelector('.drawer .risk-card') && document.body.innerText.includes('Hard rules')", 0],
     ["08-ledger-paid-detail", "/ledger", "!!document.querySelector('.ag-row')", 0, vars.a2?.request_id],
     ["09-receipt", `/receipts/${vars.a2?.request_id ?? ""}`, "document.body.innerText.includes('59.00')", 0],
     ["10-agents-mandate", `/agents?agent=${scout}`, "document.body.innerText.includes('v3 · current')", 0],
@@ -588,7 +606,35 @@ async function gallery(cdp, vars) {
     const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from(shot.data, "base64"));
   }
-  log(`gallery: ${pages.length} page screenshots in ${SHOTS}`);
+  // an open approval for the inbox shot (a $40 Vercel upgrade from the DevOps agent: over its $30 limit, inside its caps)
+  await mcpCall("Claude Code – DevOps", "request_purchase", { merchant: "vercel.com", amount: "40.00", items: "Vercel Pro, 2 extra seats", reason: "Two contractors join for launch week", category: "infrastructure", client_request_id: "gallery-vercel-seats" });
+  const shoot = async (name, p, wait) => {
+    await cdp.send("Page.navigate", { url: BASE + p });
+    const t0 = Date.now();
+    while (Date.now() - t0 < 20000 && !(await evaluate(`!!(${wait})`).catch(() => false))) await sleep(200);
+    await sleep(1500);
+  };
+  const snap = async (name) => writeFileSync(path.join(SHOTS, `${name}.png`), Buffer.from((await cdp.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+  await shoot("05-inbox", "/inbox", "document.body.innerText.includes('Vercel Pro')");
+  await snap("05-inbox");
+  // command palette (real Cmd+K and typing)
+  await shoot("11-command-palette", "/overview", "!document.querySelector('.skeleton') && document.body.innerText.includes('AI weekly summary')");
+  const key = (type, k, extra = {}) => cdp.send("Input.dispatchKeyEvent", { type, key: k, ...extra });
+  await key("rawKeyDown", "k", { code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 4 });
+  await key("keyUp", "k", { code: "KeyK", windowsVirtualKeyCode: 75, modifiers: 4 });
+  await sleep(600);
+  for (const ch of "statista") {
+    await key("keyDown", ch, { text: ch });
+    await key("keyUp", ch);
+    await sleep(60);
+  }
+  await sleep(1200);
+  await snap("11-command-palette");
+  // phone width ledger
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+  await shoot("12-mobile-ledger", "/ledger", "!!document.querySelector('.ag-row') || document.body.innerText.includes('Paid')");
+  await snap("12-mobile-ledger");
+  log(`gallery: ${pages.length + 3} page screenshots in ${SHOTS}`);
 }
 
 /* ── 6. encode ─────────────────────────────────────────────────────────────── */
@@ -668,7 +714,7 @@ function encode() {
   mkdirSync(SHOTS, { recursive: true });
   frame(at("hook", 2, 1.0), path.join(SHOTS, "01-title.png"));
   frame(at("ask", 1, 2.0), path.join(SHOTS, "04-agent-request-over-mcp.png"));
-  frame(at("deny", 2, 0.0), path.join(SHOTS, "06-prompt-injection-blocked.png"));
+  frame(at("deny", 1, 2.2), path.join(SHOTS, "06-prompt-injection-blocked.png"));
   return total;
 }
 
