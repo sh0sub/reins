@@ -6,6 +6,8 @@ Agents can pay, but it is all or nothing. Reins gives each agent its own key and
 
 Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, Render. (APIMatic is not claimed: the Context Plugin has not been used on this repo yet.)
 
+Note: the ledger uses AG Grid Enterprise in trial mode (no licence key; set `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` to remove the trial watermark). A public deploy may show the watermark.
+
 - Demo video: _YouTube link (to add after upload)_. Under 3 minutes; recorded locally on a scratch database with the fake PayPal client, the offline stand-in for the Claude auditor and Telegram off (the Telegram card in the video is the real bot's card text, shown as a panel). Re-record with `node scripts/demo/record-video.mjs` (script and narration: `scripts/demo/`).
 - Live demo: https://reins-web.onrender.com _(to confirm after deploy; free instances sleep, first load takes about a minute)_
 - Devpost text: [docs/submission/devpost.md](docs/submission/devpost.md)
