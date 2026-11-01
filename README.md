@@ -69,7 +69,7 @@ PayPal APIs used (sandbox): `POST /v1/oauth2/token`, Orders v2 (`POST /v2/checko
 pnpm install
 cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
-pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410"
+pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
 pnpm test                   # 224 tests
 ```
@@ -106,7 +106,7 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-The Agents screen's "MCP connection" card shows the same config in its short form (`npx -y @reins/mcp` with `REINS_URL` and `REINS_API_KEY`; `REINS_API_URL` also works). **That short form does not work yet: `@reins/mcp` is not published to npm.** Until it is, use the clone path above (stdio via `tsx`) or the hosted Streamable HTTP endpoint.
+The Agents screen's "MCP connection" card shows this same clone-based stdio config (replace `/ABSOLUTE/PATH/TO/reins` with your checkout; `REINS_URL` and `REINS_API_URL` both work). `@reins/mcp` is not published to npm, so there is no short `npx -y @reins/mcp` form.
 
 Demo prompts and Channel3 product search setup: [agents/README.md](agents/README.md).
 

@@ -34,7 +34,7 @@
 | 테스트·린트 | 완료 | 224 tests / 32 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-01) |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 완료 | 2026-11-01 영상 스크립트·문서 갱신 커밋 |
-| `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫 자체는 아직 `npx -y @reins/mcp` 표기(앱 코드 미변경) |
+| `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫도 클론 기반 stdio(`npx -y tsx <경로>/apps/mcp/src/stdio.ts`)로 변경 |
 | 갤러리 스크린샷(`.local/screenshots`, 12장) | 완료 | 재생성: 개요, 승인함(Vercel 카드), 차단 드로어, 원장 행, 영수증, 에이전트, Cmd+K, 390px 원장. Devpost에 업로드는 사용자 몫 |
 
 ## 배포(Render)

@@ -84,7 +84,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 - Real merchant checkout for agent shopping (Channel3 product search is already wired in the demo agent configs)
 - Team accounts with roles, spend alerts and scheduled mandates
 - More categories of unusual-pattern detection, and mandate suggestions learned from approvals
-- Publish `@reins/mcp` to npm so the one-line `npx` config on the Agents screen works (today: clone or hosted HTTP), plus an SDK and Postman collection for non-MCP agents
+- Publish `@reins/mcp` to npm so a one-line `npx` config works (today: clone-based stdio or hosted HTTP), plus an SDK and Postman collection for non-MCP agents
 
 ## Built with (tags)
 
@@ -99,9 +99,9 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 
 ## For judges: try it in 2 minutes
 
-No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. Two honest notes: the Agents screen shows a short `npx -y @reins/mcp` config, but `@reins/mcp` is not published to npm yet, so use the Claude Code HTTP command or the clone-based stdio config below. And the demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor; the real PayPal sandbox calls are covered by the spikes in `docs/spikes/` and the sandbox take described in `docs/demo-checkpoint.md`.
+No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. Two honest notes: `@reins/mcp` is not published to npm yet, so the Agents screen shows the clone-based stdio config (replace the placeholder path with your checkout); the Claude Code HTTP command below also works. And the demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor; the real PayPal sandbox calls are covered by the spikes in `docs/spikes/` and the sandbox take described in `docs/demo-checkpoint.md`.
 
-1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents.
+1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents on a fresh seed; the video shows $176.97 of $410 after approving the $59 Statista request.
 2. `/setup` then **Use demo merchant (sandbox)** connects the server's sandbox merchant, so the full flow works without your own PayPal keys.
 3. `/agents` then create an agent and copy its `rk_live_...` key (shown once). Seeded `rk_demo_` keys are not usable.
 4. Connect your own Claude. Claude Code:
@@ -133,7 +133,7 @@ Reins is the control layer PayPal's supervised/automatic split implies: per-agen
 
 ### AG Grid
 
-The ledger is the product's audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows showing the full decision record (mandate check, auditor verdict and reason, budget left, PayPal order and capture), and Set filters, with AG Charts for spend per agent and the overview category donut. A blocked request deep-links into its expanded ledger row and offers one-click "Tighten mandate". The demo video shows grouping, drill-down and the chart.
+The ledger is the product's audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows showing the full decision record (mandate check, auditor verdict and reason, budget left, PayPal order and capture), and Set filters, with AG Charts for spend per agent and the overview category donut. A blocked request deep-links into its expanded ledger row and offers one-click "Tighten mandate". The demo video shows grouping, drill-down and the chart. Reins uses AG Grid Enterprise in trial mode (no licence key): the gallery screenshots and video were captured on localhost, where no watermark appeared in the frames checked, but the public deploy may show the Enterprise trial watermark and a console notice.
 
 ### APIMatic
 

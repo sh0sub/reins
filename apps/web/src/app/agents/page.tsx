@@ -246,7 +246,7 @@ function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (
   }
   // Same shape the server returns on create/rotate (mcpSnippet in core), with the key masked: the full key is shown once.
   const snippet = JSON.stringify(
-    { mcpServers: { reins: { command: "npx", args: ["-y", "@reins/mcp"], env: { REINS_API_KEY: `${agent.key_prefix}…redacted`, REINS_URL: apiUrl } } } },
+    { mcpServers: { reins: { command: "npx", args: ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"], env: { REINS_API_KEY: `${agent.key_prefix}…redacted`, REINS_URL: apiUrl } } } },
     null,
     2,
   );

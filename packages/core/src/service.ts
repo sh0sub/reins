@@ -170,7 +170,7 @@ export function mcpSnippet(apiBaseUrl: string, apiKey: string) {
     mcpServers: {
       reins: {
         command: "npx",
-        args: ["-y", "@reins/mcp"],
+        args: ["-y", "tsx", "/ABSOLUTE/PATH/TO/reins/apps/mcp/src/stdio.ts"],
         env: { REINS_URL: apiBaseUrl, REINS_API_KEY: apiKey },
       },
     },
