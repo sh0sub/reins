@@ -178,9 +178,9 @@ pnpm seed -- --force             # also run against a DB that has real data (onl
 pnpm seed -- --if-empty          # every boot (Render start command, /tmp starts empty): seed only if the DB has no agents, never forces
 ```
 
-Matches the plan's flow C: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,
+Matches the plan's flow C on a fresh seed: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,
 human-rejected, hard-rule-blocked (the $450 fiverr.com injection, R-0143), a declined card, an expired approval and 1 pending approval (R-0142):
-24 requests this month, Auto 19 · Human 4 · Blocked 1, and a current ISO week of 6 purchases for $84.98. Research Scout has mandate versions v1, v2, v3.
+24 requests this month, Auto 19 · Human 4 · Blocked 1, and a current ISO week of 6 purchases for $84.98. (The demo video shows $176.97 of $410 because the $59 Statista request is approved live on camera; the seed alone reads $117.97.) Research Scout has mandate versions v1, v2, v3.
 No PayPal or Claude calls (fake `FAKE-ORDER-*` / `FAKE-CAPTURE-*` ids; the auditor verdicts, tokens and latencies are scripted demo data). Seed agents use `rk_demo_` keys that are never stored or printed, so create
 a fresh agent for live MCP runs. Re-running replaces only seed rows and refuses a DB with other data unless `--force`. Pending approvals
 expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before a demo.
