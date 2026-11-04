@@ -93,7 +93,8 @@ function focusables(root: HTMLElement): HTMLElement[] {
 /** S6 "Model: Claude · 412 tokens · 1.9 s": the model name, then tokens and latency when they were recorded. */
 export function modelLine(a: { provider: string | null; tokens: number | null; latency_ms: number | null }): string {
   const p = a.provider ?? "";
-  const name = p.startsWith("claude") ? "Claude" : p === "mock" ? "mock auditor" : p;
+  // a real run records "claude:<model id>": show the model next to the name; seeded rows keep the plain "Claude"
+  const name = p.startsWith("claude") ? (p.includes(":") ? `Claude (${p.slice(p.indexOf(":") + 1)})` : "Claude") : p === "mock" ? "demo auditor (offline stand-in)" : p;
   return [`Model: ${name}`, a.tokens ? `${a.tokens} tokens` : null, a.latency_ms != null ? `${(a.latency_ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(" · ");
 }
 

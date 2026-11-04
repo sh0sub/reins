@@ -269,7 +269,7 @@ export default function SetupPage() {
                 </div>
               </div>
               <p className="alert alert-ok">
-                Connected · {ws.merchant_email ?? "sandbox merchant"} · {ws.paypal_env === "fake" ? "offline fake PayPal" : "Sandbox"} · oauth2/token 200
+                Connected · {ws.merchant_email ?? "sandbox merchant"} · {ws.paypal_env === "fake" ? "sandbox demo data" : "Sandbox"} · oauth2/token 200
               </p>
             </>
           ) : (

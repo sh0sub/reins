@@ -4,7 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Reins",
+  title: { default: "Reins", template: "%s - Reins" },
   description: "Spending guardrails for AI agents on PayPal",
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };

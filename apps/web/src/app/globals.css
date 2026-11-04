@@ -501,3 +501,19 @@ select.select-version { width: auto; min-width: 150px; font-weight: 700; color: 
 
 /* AG Grid cells set line-height to the row height; keep chips at their own height so they sit centred and are not clipped. */
 .ag-cell .status { line-height: 1.5; vertical-align: middle; }
+
+/* C2-7: one tap on a phone. The approve bar is pinned to the bottom of the viewport the whole time the pending request is on screen,
+   so Approve $X is visible without scrolling past the queue and the mandate check. The page gets bottom padding so nothing hides behind it. */
+.act-who { display: none; }
+@media (max-width: 719px) {
+  .main:has(.act-bar) { padding-bottom: 168px; }
+  .act-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; gap: var(--sp-2); background: var(--panel); border-top: 1px solid var(--line); box-shadow: 0 -8px 16px -12px rgba(0, 20, 53, 0.3);
+    padding: var(--sp-2) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom)); max-height: 70vh; overflow-y: auto; }
+  .act-who { display: block; }
+  .act-bar .act-row { flex-wrap: nowrap; }
+  .act-bar .act-row .btn { flex: 1 1 0; justify-content: center; padding: 0 var(--sp-3); }
+  .act-bar .act-row .btn-primary { flex: 2 1 0; }
+  .act-bar .check-row { font-size: 13px; }
+  .act-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .toast { bottom: 176px; z-index: 9; }
+}

@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 227 tests in 33 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 231 tests in 34 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
@@ -9,6 +9,13 @@ Test count at time of writing: 227 tests in 33 files (`pnpm test`), `pnpm lint` 
 A web page told my AI agent to buy a $450 logo. Reins blocked it: three hard rules failed in plain code before the AI auditor even weighed in, and nothing was charged.
 Reins gives every agent its own PayPal wallet with a leash (monthly cap, auto-approve limit, allowed merchants), served as an open-source MCP server.
 On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 small, in-policy purchases paid themselves and only the over-limit ones went to a human, with one-tap approval on web or Telegram.
+
+**Why it matters for PayPal merchants**
+- A business that lets an agent pay from its PayPal account today hands over one credential with no per-agent limit; Reins puts a per-agent mandate and a human approval in front of every Orders v2 call.
+- Every decision, denials included, lands in a ledger with PayPal order and capture IDs reconciled against Transaction Search, so finance can see what each agent bought and why.
+- It is the spending-controls layer that PayPal's supervised/automatic split implies, built only on public sandbox APIs. See "Who it is for and why now" below.
+
+Honest limits (fake client in the video, Agent Toolkit not integrated, not on npm yet) are in "Limits" at the end of this description, directly above "Try it out". The 2-minute judge path ("For judges") follows "Try it out".
 
 ### PayPal APIs used (all called from `packages/core`)
 
@@ -19,14 +26,6 @@ On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 sm
 | Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Real sandbox: $1.00 batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`) |
 | Webhooks (`verify-webhook-signature`) | Verify every PayPal event before storing it | Real sandbox: real and simulated events verified, forged request returns 401 (needs a public URL, so not exercised in the video) |
 | Transaction Search (`/v1/reporting/transactions`) | Reconcile every capture against PayPal's records | Implemented and unit/integration tested; the sandbox app needs the Transaction Search feature enabled, and the video reconcile uses the fake client |
-
-### Limits (read before judging)
-
-- The demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor. The real sandbox calls are in the spikes above.
-- `@reins/mcp` is not published to npm; use the clone-based stdio config or the hosted HTTP endpoint.
-- Free Render instances sleep after about 15 minutes and reset; open the live URL once and wait about a minute.
-- AG Grid Enterprise runs in trial mode (no licence key), so the public deploy may show the trial watermark and a console notice.
-- Sandbox only; no live PayPal onboarding.
 
 ---
 
@@ -45,6 +44,18 @@ Give every AI agent a PayPal wallet with a leash: budgets, rules, one-tap human 
 Agents can already pay, but it is all or nothing. PayPal's own agentic-commerce docs split agent payments into supervised and automatic, yet nothing tells you which agent gets which. I let agents renew my domains, buy research and pay infra bills, and then a web page told one of them to buy a $450 logo. The question stopped being "can an agent pay?" and became "who decides how much, to whom, and what happens when it is wrong?"
 
 Existing "agent wallet" products (Skyfire, card-network agent tokens) solve parts of this, but they need a separate wallet or crypto rails, or are closed. Reins is PayPal-native (your existing PayPal account, sandbox here), open-source, connects over MCP in minutes, and puts a human approval UX and an AI auditor that explains itself on top.
+
+### Who it is for and why now
+
+- **Solo developer with cron agents.** A domain-renewal bot, a research agent and an infra-bill agent each get their own key, monthly cap and allowed-merchant list instead of sharing one card. One tap approves the odd over-limit purchase from Telegram.
+- **Small business ops with a purchasing agent.** A restock or SaaS-renewal agent buys within a mandate; anything over the auto-approve limit waits in an inbox for the owner, and every decision is in an audit ledger for the books.
+- **Platform enabling agents for its sellers.** A marketplace or tooling platform that lets each seller's agent spend can give every agent its own versioned mandate and approval trail, behind one MCP endpoint.
+
+**Why now.** Gartner predicts that by 2028 15% of day-to-day work decisions will be made autonomously by agentic AI (up from 0% in 2024) and that 33% of enterprise software applications will include agentic AI; it also predicts over 40% of agentic AI projects will be canceled by the end of 2027. Source as reported by SD Times: https://sdtimes.com/agentic-ai/gartner-more-than-40-of-agentic-ai-projects-will-be-canceled-in-next-few-years/ . These are analyst forecasts, not Reins measurements.
+
+**How PayPal could adopt it.** The mandate (cap, auto-approve limit, allowed merchants, versioned) is a small, API-shaped object, so PayPal could offer it as a native spending-controls primitive on agent credentials, with Reins as the open reference implementation.
+
+**Roadmap.** (1) Publish `@reins/mcp` to npm so a one-line `npx` config works. (2) Production PayPal onboarding beyond sandbox. (3) Gate agent payments behind the PayPal Agent Toolkit: let the Toolkit call Reins before it pays. The Toolkit is not integrated today; Reins connects agents through its own MCP server.
 
 ## How it compares
 
@@ -92,7 +103,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 
 **Render.** A Blueprint (`render.yaml`) deploys two free web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and demo data is re-seeded on every boot, so the demo always starts clean (free instances sleep after about 15 minutes and reset).
 
-**Testing.** 227 Vitest tests across 33 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
+**Testing.** 231 Vitest tests across 34 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
 
 ## Challenges we ran into
 
@@ -107,7 +118,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 - The $450 prompt-injection purchase is blocked by three independent hard rules before the AI even weighs in, and the demo video shows it end to end over real MCP calls.
 - The same approval works from the web inbox and Telegram, and "Approve + always allow" turns one human decision into a new versioned mandate.
 - A judge can try it with no keys: fake PayPal mode, mock auditor, seeded data, or point their own Claude at the hosted MCP server.
-- 227 passing tests, clean typecheck and lint.
+- 231 passing tests, clean typecheck and lint.
 
 ## What we learned
 
@@ -128,6 +139,14 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 
 paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-search, mcp, model-context-protocol, claude, anthropic, ag-grid, ag-charts, typescript, nextjs, react, drizzle-orm, sqlite, libsql, grammy, telegram, zod, vitest, render
 
+## Limits (read before judging)
+
+- The demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor. The real sandbox calls are in the spikes above.
+- `@reins/mcp` is not published to npm; use the clone-based stdio config or the hosted HTTP endpoint.
+- Free Render instances sleep after about 15 minutes and reset; open the live URL once and wait about a minute.
+- AG Grid Enterprise runs in trial mode (no licence key), so the public deploy may show the trial watermark and a console notice.
+- Sandbox only; no live PayPal onboarding.
+
 ## Try it out links
 
 - Code: https://github.com/sh0sub/reins
@@ -137,7 +156,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 
 ## For judges: try it in 2 minutes
 
-No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. The Agents screen shows the clone-based stdio config (replace the placeholder path with your checkout); the Claude Code HTTP command below also works. See "Limits" above.
+(Also linked from the top of this description; the limits above apply.) No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. The Agents screen shows the clone-based stdio config (replace the placeholder path with your checkout); the Claude Code HTTP command below also works. See "Limits" above, just before "Try it out".
 
 1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents on a fresh seed; the video shows $176.97 of $410 after approving the $59 Statista request.
 2. `/setup` then **Use demo merchant (sandbox)** connects the server's sandbox merchant, so the full flow works without your own PayPal keys.

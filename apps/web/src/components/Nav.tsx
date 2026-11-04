@@ -164,12 +164,12 @@ export function SideFoot() {
         </span>
         {ws.merchant_email && <span className="mono side-email" title={ws.merchant_email}>{ws.merchant_email}</span>}
         <span className="caption">
-          {offline ? "Offline fake PayPal · " : ""}
+          {offline ? "Sandbox demo data · " : ""}
           {ws.payment_mode === "vaulted" ? "Automatic · vault" : ws.payment_mode === "treasury" ? "Treasury payouts" : "Supervised checkout"}
         </span>
         <span className="row caption">
           <span className={ws.telegram_linked ? "dot dot-ok" : "dot"} />
-          Telegram {ws.telegram_linked ? "linked" : "not linked"}
+          Telegram {ws.telegram_linked ? "linked" : "optional, not linked"}
         </span>
       </div>
       {user}

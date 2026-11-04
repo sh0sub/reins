@@ -178,7 +178,7 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         <dt>Audit · KO</dt>
         <dd lang="ko">{llm?.reasonKo ?? "—"}</dd>
         <dt>Decided by</dt>
-        <dd>{human ? `${human.actor} (${human.decision})` : llm ? `${llm.actor === "mock" ? "mock auditor" : "Claude"} · risk ${llm.risk ?? "?"}/10` : "hard rules"}</dd>
+        <dd>{human ? `${human.actor} (${human.decision})` : llm ? `${llm.actor === "mock" ? "demo auditor (offline stand-in)" : "Claude"} · risk ${llm.risk ?? "?"}/10` : "hard rules"}</dd>
       </dl>
       <dl>
         <dt>Mandate</dt>

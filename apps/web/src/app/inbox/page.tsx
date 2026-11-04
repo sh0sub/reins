@@ -78,7 +78,7 @@ function Activity({ row, telegram }: { row: InboxItem; telegram: boolean }) {
       {llm && (
         <li>
           <span className="label">Claude review · {llm.decision} · Risk {llm.risk ?? "?"}/10</span>
-          <span className="caption">{llm.actor === "mock" ? "Offline mock auditor" : llm.actor}</span>
+          <span className="caption">{llm.actor === "mock" ? "Demo auditor (offline stand-in)" : llm.actor}</span>
         </li>
       )}
       {telegram && askedAt && (
@@ -265,7 +265,7 @@ function Detail({
           <h3 id="audit-h">Reins check</h3>
           <p className="row">
             <span className={riskClass(row.risk)}>Risk {row.risk ?? "?"}/10</span>
-            <span className="caption">{llm?.actor === "mock" ? "mock auditor" : "Claude"}</span>
+            {llm?.actor === "mock" ? <span className="status status-info" title="No ANTHROPIC_API_KEY: a deterministic stand-in scores this request">Demo auditor (offline stand-in)</span> : <span className="caption">Claude</span>}
           </p>
           <p>{llm?.reasonEn ?? row.reason ?? "No auditor reason"}</p>
           {llm?.reasonKo && <p className="caption" lang="ko">{llm.reasonKo}</p>}
@@ -301,7 +301,8 @@ function Detail({
         </p>
       )}
 
-      <footer className="stack-s">
+      <footer className="stack-s act-bar">
+        <span className="caption act-who">{row.display_id} · {row.agent_name} · {row.merchant}</span>
         {!denyOpen && (
           <div className="stack-s">
             <label className="check-row">
@@ -310,7 +311,7 @@ function Detail({
                 Also allow <b>{row.merchant}</b> automatically up to ${row.amount}
               </span>
             </label>
-            <span id={`allow-${row.request_id}`} className="caption">
+            <span id={`allow-${row.request_id}`} className="caption act-note">
               Saves mandate v{(row.mandate_version ?? 0) + 1} when you approve. Caps and block list still apply.
             </span>
           </div>
@@ -346,14 +347,14 @@ function Detail({
             </div>
           </div>
         ) : (
-          <div className="row">
+          <div className="row act-row">
             <button className="btn btn-primary btn-lg" disabled={busy} onClick={() => onDecide("approve", undefined, alsoAllow)}>
               {busy ? "Paying…" : `Approve $${row.amount}`}
             </button>
             <button className="btn btn-lg" disabled={busy} onClick={() => setDenyOpen(true)}>
               Deny
             </button>
-            <span className="caption">
+            <span className="caption act-note">
               <kbd>A</kbd> approve · <kbd>D</kbd> deny (when this panel has focus)
             </span>
           </div>
@@ -537,6 +538,10 @@ function InboxScreen() {
   }, [notice]);
 
   const selected = useMemo(() => rows?.find((r) => r.request_id === selectedId || r.display_id === selectedId) ?? rows?.[0] ?? null, [rows, selectedId]);
+  // deep links such as /approvals/R-0143 get a tab title that names the request
+  useEffect(() => {
+    if (tab === "pending" && selected) document.title = `${selected.display_id} - Reins`;
+  }, [tab, selected]);
 
   async function decide(id: string, action: "approve" | "deny", note?: string, allowMerchant = false) {
     setBusy(id);

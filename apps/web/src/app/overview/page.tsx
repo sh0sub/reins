@@ -33,7 +33,7 @@ function when(iso: string, now = Date.now()) {
   if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
-const envLabel = (env: string) => (env === "sandbox" ? "PayPal Sandbox" : env === "fake" ? "Fake PayPal (offline)" : env);
+const envLabel = (env: string) => (env === "sandbox" ? "PayPal Sandbox" : env === "fake" ? "Sandbox demo data" : env);
 
 const PERIODS: Array<{ id: OverviewPeriod; label: string }> = [
   { id: "month", label: "This month" },
