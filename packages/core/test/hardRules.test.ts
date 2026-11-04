@@ -49,6 +49,14 @@ describe("M5 hard rules (stage 1)", () => {
     expect(failedRules(base({ monthSpentCents: 1900 }, { amountCents: 4100 }))).toEqual([]);
     expect(failedRules(base({ monthSpentCents: 1900 }, { amountCents: 4101 }))).toEqual(["monthly_limit"]);
   });
+  it("7b. monthly rule uses one unit: spent + this = total vs cap", () => {
+    const fail = evaluateHardRules(base({ monthSpentCents: 900 }, { amountCents: 45000 })).results.find((r) => r.rule === "monthly_limit");
+    expect(fail?.ok).toBe(false);
+    expect(fail?.detail).toBe("Spent $9.00 + this $450.00 = $459.00 > $60.00 monthly cap");
+    expect(fail?.value).toBe("$459.00");
+    const ok = evaluateHardRules(base({ monthSpentCents: 900 }, { amountCents: 1000 })).results.find((r) => r.rule === "monthly_limit");
+    expect(ok?.detail).toBe("Spent $9.00 + this $10.00 = $19.00 ≤ $60.00 monthly cap");
+  });
   it("8. denies a blocked merchant even when also allow-listed", () => {
     const m = { ...mandate, allowedMerchants: [...mandate.allowedMerchants, "fiverr.com"] };
     expect(failedRules(base({ mandate: m }, { merchant: "fiverr.com", amountCents: 100 }))).toEqual(["blocked_merchant"]);

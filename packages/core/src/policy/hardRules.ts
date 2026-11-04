@@ -106,15 +106,16 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
     );
   }
 
-  const remaining = mandate.monthlyLimitCents - input.monthSpentCents;
-  const monthlyOk = request.amountCents <= remaining;
+  const monthTotal = input.monthSpentCents + request.amountCents;
+  const monthlyOk = monthTotal <= mandate.monthlyLimitCents;
+  const monthlyMath = `Spent ${formatUsd(input.monthSpentCents)} + this ${formatUsd(request.amountCents)} = ${formatUsd(monthTotal)}`;
   add(
     "monthly_limit",
     monthlyOk,
     monthlyOk
-      ? `${formatUsd(Math.max(remaining, 0))} of ${formatUsd(mandate.monthlyLimitCents)} left this month`
-      : `Only ${formatUsd(Math.max(remaining, 0))} of ${formatUsd(mandate.monthlyLimitCents)} left this month`,
-    `${formatUsd(input.monthSpentCents + request.amountCents)} incl. this`,
+      ? `${monthlyMath} ≤ ${formatUsd(mandate.monthlyLimitCents)} monthly cap`
+      : `${monthlyMath} > ${formatUsd(mandate.monthlyLimitCents)} monthly cap`,
+    formatUsd(monthTotal),
     `≤ ${formatUsd(mandate.monthlyLimitCents)}`,
   );
 

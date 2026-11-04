@@ -143,7 +143,7 @@ describe("purchase flow", () => {
     expect((await submitPurchase(ctx, agent, { ...dataset, amount: "50.00" })).status).toBe("paid");
     const v = await submitPurchase(ctx, agent, { ...dataset, amount: "11.00" });
     expect(v.status).toBe("denied");
-    expect(v.reason).toContain("left this month");
+    expect(v.reason).toContain("monthly cap");
   });
 
   it("velocity: 4th request inside 10 minutes is denied", async () => {

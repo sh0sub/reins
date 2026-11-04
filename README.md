@@ -132,6 +132,16 @@ Dashboard details: a sidebar agents list with live cap use and a paused marker; 
 
 Skyfire and card-network agent tokens address agent payments too. Reins differs in three ways: PayPal-native (no separate wallet or crypto), open-source MCP server you connect in minutes, and a human approval UX with an AI auditor that explains its decision.
 
+| | Reins | Skyfire / card-network agent tokens | Bare PayPal Agent Toolkit |
+|---|---|---|---|
+| Per-agent mandate (limits, merchants, window) | Yes, versioned per agent | Per-agent wallet or token | No, one set of API credentials |
+| Hard rules enforced in code, before any money moves | Yes, deterministic | Limits on the token or wallet | No |
+| AI audit with a written explanation | Yes, Claude, advisory on top of the rules | No | No |
+| Human one-tap approval (Telegram / web) | Yes | Varies | No |
+| Open source, MCP, PayPal-native | Yes, MIT-style repo, MCP server | Mostly closed, separate wallet or rails | Open source, PayPal-native |
+
+**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal Orders v2: an agent asks Reins, and Reins decides, then creates the sandbox order itself. Composing Reins with the Agent Toolkit's own tools (letting the Toolkit call Reins before it pays) is not implemented; today agents connect through Reins' MCP server instead of the Toolkit.
+
 ## Develop
 
 ```bash
