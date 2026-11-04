@@ -82,3 +82,6 @@ export function resolveRequestId(rows: Array<Pick<LedgerRow, "display_id" | "req
 export function isUnknownRequest(rows: Array<Pick<LedgerRow, "display_id" | "request_id">> | null, id: string | null): boolean {
   return rows !== null && !!id && /^R-\d+$/i.test(id) && resolveRequestId(rows, id) === null;
 }
+
+/** "Nov 4, 17:42": short enough for a 128 px ledger column (or a phone card line) without an ellipsis. */
+export const shortTime = (v: string | number | Date | null | undefined): string => (v ? new Date(v).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "");

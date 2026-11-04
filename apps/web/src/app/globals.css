@@ -358,6 +358,21 @@ table.rules thead th { overflow-wrap: normal; }
 /* ledger grid: R-0143 cell opens the drawer */
 .cell-link { min-height: 32px; padding: 0; font-family: var(--reins-mono); font-size: 12px; }
 
+/* ledger at 390 px: card per request (AG Grid autoHeight rows) */
+.ledger-card-cell { padding: 0 !important; }
+.ledger-card { display: flex; align-items: flex-start; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2) var(--sp-2) 0; white-space: normal; line-height: 1.35; }
+.ledger-card-toggle { flex: none; width: 44px; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.ledger-card-chev { transition: transform 0.15s; transform: rotate(0deg); }
+.ledger-card-chev.is-open { transform: rotate(90deg); }
+.ledger-card-body { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.ledger-card-title { font-weight: 700; overflow-wrap: anywhere; }
+.ledger-id-recon { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.ledger-card-meta .cell-link { display: inline; min-height: 24px; }
+.ledger-card-meta { color: var(--muted); font-size: var(--semantic-typography-caption-size); }
+.ledger-card-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: 2px; }
+.ledger-group-row { display: inline-flex; align-items: baseline; gap: var(--sp-2); }
+.ledger-group-row span { color: var(--muted); font-size: var(--semantic-typography-caption-size); font-weight: 400; }
+
 /* ---- S5 Pending / Decided tabs ---- */
 .tabs { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--line); }
 .tabs > button { min-height: var(--component-button-target-touch); padding: 0 var(--sp-3); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: var(--sp-2); }

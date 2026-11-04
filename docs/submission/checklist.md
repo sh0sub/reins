@@ -29,10 +29,11 @@
 | 공개 GitHub 저장소 + 루트 LICENSE(MIT) | 완료 | About 라이선스 표시는 GitHub 설정에서 확인 필요 |
 | README(소개, 아키텍처, 빠른 시작, MCP 스니펫, 보안 노트, 선행 제품) | 완료 | |
 | README: 영상·라이브 URL 자리 | 남음-사용자 계정 필요 | 업로드/배포 뒤 실제 링크로 교체 |
-| README: API 표(이슈 #41) | 완료 | MCP 도구-REST 표와 영역별 엔드포인트 표 |
+| README: API 표(이슈 #41) | 완료 | MCP 도구-REST 표와 영역별 엔드포인트 표 (MCP 연결 섹션 아래로 이동) |
+| README 첫 화면 스크린샷·GIF | 완료 | `docs/img/` 개요·승인 카드·요청 드로어·원장 1440/390 PNG 8장 + $450 거절 GIF, README "See it" 섹션 |
 | README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
 | `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
-| 테스트·린트 | 완료 | 224 tests / 32 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-01) |
+| 테스트·린트 | 완료 | 227 tests / 33 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 완료 | 2026-11-01 영상 스크립트·문서 갱신 커밋 |
 | `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫도 클론 기반 stdio(`npx -y tsx <경로>/apps/mcp/src/stdio.ts`)로 변경 |

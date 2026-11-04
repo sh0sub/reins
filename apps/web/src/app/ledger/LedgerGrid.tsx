@@ -16,7 +16,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { decisionLabel, hardRules, statusChip } from "@/lib/format";
+import { decisionLabel, hardRules, shortTime, statusChip } from "@/lib/format";
 
 // Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -53,7 +53,8 @@ function StatusCell(p: CustomCellRendererProps<LedgerRow>) {
   return <Chip value={c.label} className={c.className} />;
 }
 function PayPalIdCell(p: CustomCellRendererProps<LedgerRow>) {
-  const id = p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null;
+  if (!p.data) return null;
+  const id = p.data.payment?.capture_id ?? p.data.payment?.payout_batch_id ?? null;
   if (!id) return <span className="caption">—</span>;
   return (
     <button
@@ -69,6 +70,15 @@ function PayPalIdCell(p: CustomCellRendererProps<LedgerRow>) {
     >
       {id.slice(0, 5)}…{id.slice(-1)}
     </button>
+  );
+}
+/** PayPal ID plus the reconciliation icon, for grids too narrow for a separate Recon column. */
+function PayPalReconCell(p: CustomCellRendererProps<LedgerRow>) {
+  return (
+    <span className="ledger-id-recon">
+      <PayPalIdCell {...p} />
+      <ReconCell {...p} />
+    </span>
   );
 }
 /** R-0143: opens the S6 drawer (grid rows are 40px, so the hit area is the full row height; the expansion has a 48px button too). */
@@ -90,10 +100,51 @@ function IdCell(p: CustomCellRendererProps<LedgerRow>) {
     </button>
   );
 }
+/** 390 px ledger: one card per request (item, id · merchant · time, decision + status chips); the chevron expands the same row detail. */
+function CardCell(p: CustomCellRendererProps<LedgerRow>) {
+  const [open, setOpen] = useState(() => p.node.expanded);
+  useEffect(() => {
+    const sync = () => setOpen(p.node.expanded);
+    p.node.addEventListener("expandedChanged", sync);
+    return () => p.node.removeEventListener("expandedChanged", sync);
+  }, [p.node]);
+  const row = p.data;
+  if (!row) return null;
+  const d = decisionLabel(row);
+  const st = statusChip(row);
+  const openDrawer = (p.context as GridContext | undefined)?.openDrawer;
+  const showAgent = Boolean((p as { showAgent?: boolean }).showAgent);
+  return (
+    <div className="ledger-card">
+      <button type="button" className="ledger-card-toggle" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} details for ${row.display_id}`} onClick={() => p.node.setExpanded(!open)}>
+        <Icon name="arrow" className={open ? "ico-s ledger-card-chev is-open" : "ico-s ledger-card-chev"} />
+      </button>
+      <div className="ledger-card-body">
+        <div className="ledger-card-title">{row.items}</div>
+        <div className="ledger-card-meta">
+          <button type="button" className="btn-link cell-link" aria-label={`Open details for ${row.display_id}`} onClick={() => openDrawer?.(row.request_id)}>
+            {row.display_id}
+          </button>{" "}
+          <span>
+            · {showAgent ? `${row.agent_name} · ` : ""}
+            {row.merchant} · {shortTime(row.created_at).replace(/ /g, "\u00a0")}
+          </span>
+        </div>
+        <div className="ledger-card-chips">
+          {d !== "PENDING" && d.toLowerCase() !== st.label.toLowerCase() && (
+            <Chip value={d} className={d === "DENIED" ? "status status-bad" : d === "HUMAN" ? "status status-warn" : d === "AUTO" ? "status status-ok" : "status"} />
+          )}
+          <Chip value={st.label} className={st.className} />
+        </div>
+      </div>
+    </div>
+  );
+}
 interface GridContext {
   openDrawer?: (id: string) => void;
 }
 function ReconCell(p: CustomCellRendererProps<LedgerRow>) {
+  if (!p.data) return null;
   const r = p.data?.payment?.status === "completed" ? p.data.payment.reconciled : null;
   if (!r) return <span className="caption" title="Not reconciled (no completed PayPal payment)">n/a</span>;
   // icon + hidden word keeps the column narrow so Status, PayPal ID and Risk all fit at 1440 px
@@ -174,6 +225,24 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
   );
 }
 
+/** Phone group header (full-width row): agent name, request count and what was paid. */
+function GroupRowLabel(p: { value?: string; node: { allChildrenCount: number | null; aggData?: Record<string, unknown> } }) {
+  const paid = p.node.aggData?.amount;
+  return (
+    <span className="ledger-group-row">
+      <strong>{p.value}</strong>
+      <span>
+        {p.node.allChildrenCount} {p.node.allChildrenCount === 1 ? "request" : "requests"}
+        {typeof paid === "number" ? ` · $${paid.toFixed(2)} paid` : ""}
+      </span>
+    </span>
+  );
+}
+
+function TotalCell() {
+  return <strong>Total</strong>;
+}
+
 function paidSum(p: IAggFuncParams<LedgerRow>): number {
   let total = 0;
   p.rowNode.allLeafChildren?.forEach((n) => {
@@ -203,7 +272,8 @@ export function LedgerGrid({
   const context = useMemo<GridContext>(() => ({ openDrawer: onOpen }), [onOpen]);
   const apiRef = useRef<GridApi<LedgerRow> | null>(null);
   // phones: keep Agent/time, Item, Amount and Status visible; the rest is one tap away in the row detail and drawer
-  const [narrow, setNarrow] = useState(false);
+  // (this component only renders client-side, see the dynamic import with ssr: false)
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 719px)").matches);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 719px)");
     const sync = () => setNarrow(mq.matches);
@@ -211,35 +281,55 @@ export function LedgerGrid({
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
-  const cols = useMemo<ColDef<LedgerRow>[]>(
-    () => [
-      {
-        headerName: "Time",
-        field: "created_at",
-        sort: "desc",
-        width: 112,
-        minWidth: narrow ? 70 : undefined,
-        // on a phone the group column carries the agent name and the expander, so grouped rows drop this column
-        hide: narrow && group,
-        cellRenderer: group ? undefined : "agGroupCellRenderer",
-        valueFormatter: (p) => (p.value ? new Date(p.value).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : ""),
-        filter: "agDateColumnFilter",
-        filterValueGetter: (p) => (p.data ? new Date(p.data.created_at) : null),
-      },
-      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, hide: narrow, width: 78, sortable: false, filter: false },
-      { headerName: "Agent", field: "agent_name", rowGroup: group, hide: group, enableRowGroup: true, filter: "agSetColumnFilter" },
-      { headerName: "Item", field: "items", flex: 2, minWidth: narrow ? 70 : 130, tooltipField: "items" },
-      { headerName: "Merchant", field: "merchant", hide: narrow, width: 112, filter: "agSetColumnFilter" },
-      // Group/grand totals sum only paid rows (blocked and failed requests were never charged).
-      { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: 84, minWidth: narrow ? 66 : undefined, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Decision", colId: "decision", hide: narrow, valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 112, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 138, minWidth: narrow ? 84 : 130, filter: "agSetColumnFilter", enableCellChangeFlash: true },
-      { headerName: "PayPal ID", colId: "paypal", hide: narrow, valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: PayPalIdCell, width: 100, suppressHeaderFilterButton: true },
-      { headerName: "Recon", colId: "recon", hide: narrow, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Risk", field: "risk", hide: narrow, width: 64, minWidth: 60, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
-    ],
-    [group, narrow],
-  );
+  // desktop: Recon (an icon column) drops out when the grid itself is narrower than 1240 px (its icon then sits inside the PayPal ID cell), so Time, Item and Merchant never truncate hard
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [roomy, setRoomy] = useState(true);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setRoomy((e?.contentRect.width ?? 1100) >= 1240));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const cols = useMemo<ColDef<LedgerRow>[]>(() => {
+    const time: ColDef<LedgerRow> = {
+      headerName: "Time",
+      field: "created_at",
+      sort: "desc",
+      width: 128,
+      // phones: the card shows the time; this column only keeps the newest-first sort
+      hide: narrow,
+      // carries the row-detail chevron and the pinned "Total" label (group rows are full width, so no group column does)
+      cellRendererSelector: (p) => (p.node.footer ? { component: TotalCell } : { component: "agGroupCellRenderer" }),
+      valueFormatter: (p) => shortTime(p.value),
+      filter: "agDateColumnFilter",
+      filterValueGetter: (p) => (p.data ? new Date(p.data.created_at) : null),
+    };
+    const agent: ColDef<LedgerRow> = { headerName: "Agent", field: "agent_name", rowGroup: group, hide: group || narrow, enableRowGroup: true, filter: "agSetColumnFilter" };
+    // Group/grand totals sum only paid rows (blocked and failed requests were never charged).
+    const amount: ColDef<LedgerRow> = { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: narrow ? 84 : 96, minWidth: narrow ? 74 : 96, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true };
+    if (narrow) {
+      return [
+        time,
+        agent,
+        { headerName: "Request", colId: "card", flex: 1, minWidth: 190, autoHeight: true, sortable: false, filter: false, resizable: false, valueGetter: (p) => p.data?.items ?? null, cellRendererSelector: (p) => (p.node.footer ? { component: TotalCell } : { component: CardCell, params: { showAgent: !group } }), cellClass: "ledger-card-cell" },
+        amount,
+      ];
+    }
+    return [
+      time,
+      { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 74, sortable: false, filter: false },
+      agent,
+      { headerName: "Item", field: "items", flex: 2, minWidth: 110, tooltipField: "items" },
+      { headerName: "Merchant", field: "merchant", width: 132, minWidth: 120, filter: "agSetColumnFilter" },
+      amount,
+      { headerName: "Decision", colId: "decision", valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 96, filter: "agSetColumnFilter" },
+      { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 132, minWidth: 128, filter: "agSetColumnFilter", enableCellChangeFlash: true },
+      { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: roomy ? PayPalIdCell : PayPalReconCell, width: roomy ? 92 : 116, suppressHeaderFilterButton: true },
+      { headerName: "Recon", colId: "recon", hide: !roomy, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Risk", field: "risk", width: 56, minWidth: 52, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+    ];
+  }, [group, narrow, roomy]);
 
   useEffect(() => {
     apiRef.current?.setGridOption("quickFilterText", quickFilter);
@@ -259,8 +349,9 @@ export function LedgerGrid({
   useEffect(focusRow, [focusRow, rows]);
 
   return (
-    <div style={{ height: "min(70vh, 640px)", minHeight: 420 }}>
+    <div ref={boxRef} style={{ height: narrow ? "calc(100dvh - 140px)" : "calc(100dvh - 190px)", minHeight: 420 }}>
       <AgGridReact<LedgerRow>
+        key={narrow ? "cards" : "table"}
         theme={theme}
         rowData={rows}
         columnDefs={cols}
@@ -269,7 +360,9 @@ export function LedgerGrid({
         defaultColDef={{ sortable: true, resizable: true, filter: true, minWidth: 60 }}
         autoSizeStrategy={{ type: "fitGridWidth" }}
         suppressAggFuncInHeader
-        autoGroupColumnDef={{ headerName: "Agent / time", width: narrow ? 128 : 250, minWidth: narrow ? 110 : 200, cellRendererParams: { suppressCount: false } }}
+        // full-width group rows (agent, request count, paid total): leaves keep the whole width instead of a mostly empty group column
+        groupDisplayType="groupRows"
+        groupRowRendererParams={{ innerRenderer: GroupRowLabel, suppressCount: true }}
         groupDefaultExpanded={1}
         // rows never slide under a stuck group row, so every row of the last group is readable without extra scrolling
         suppressGroupRowsSticky
