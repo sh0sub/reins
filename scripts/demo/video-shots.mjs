@@ -2,10 +2,14 @@
  * Shot list + narration for the Reins demo video (read by scripts/demo/record-video.mjs).
  *
  * Each segment = one narrated shot; it lasts as long as its narration (+ padding). `card: true` segments are full-frame
- * title cards (no browser). Otherwise `actions` run in order while the 1440x900 dashboard is recorded:
+ * title cards (no browser). Otherwise `actions` run in order while the 1440x840 dashboard is recorded (full-bleed; kicker,
+ * heading and chip show as a 1.5 s lower-third, the narration line as a caption). Segment flags: `bigLast` (the last
+ * line is a 2 s statement over the live frame), `badge` (persistent tag), `needsReal` (only with --real).
  *   { at: n, plus?: s }             wait until narration line n (0-based) starts (+ s seconds)
  *   { sleep: s }                    hold
- *   { nav: "/path?x={var}", wait }  full page load, then poll `wait` (page JS expression)
+ *   { nav: "/path?x={var}", wait }  full page load, then poll `wait` (page JS expression); "@real/path" = the real-run view server
+ *   { key: "Escape" }                press a key
+ *   { zoom: { sel, text?, dur, z? } }  punch in (CSS zoom 1.15-1.4x, default 1.3) on the element for dur seconds, eased
  *   { tap: { sel, text? }, noClick? }  tap marker + real mouse click on the first visible match (text = regex)
  *   { wait: "js", timeout? }        poll a page expression
  *   { scroll: { y } | { sel, text?, block? }, dur? }   smooth scroll (window or element into view)
@@ -44,11 +48,12 @@ export const SEGMENTS = [
     kicker: "The payoff",
     heading: "Paid, or denied",
     chip: "request_purchase over MCP · PayPal capture",
-    bullets: ["Domain renewal: paid, PayPal receipt", "$450 logo from a web page: DENIED", "Agents pay with PayPal. You hold the reins."],
+    bigLast: true,
     lines: [
       "Agents pay with PayPal. You hold the reins.",
       "A domain renewal: paid through PayPal, with a capture receipt.",
       ["A web page orders a $450 logo: denied.", "A web page orders a 450 dollar logo: denied."],
+      "Nothing was charged. Here's why.",
     ],
     prep: [{ nav: "/ledger", wait: gridReady }, { sleep: 0.8 }],
     actions: [
@@ -60,23 +65,15 @@ export const SEGMENTS = [
       { term: () => ({ title: `${AGENT_SCOUT} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A3) + `<div class="c dim">…</div>` }) },
       { mcp: { as: AGENT_SCOUT, tool: "request_purchase", args: A3, save: "a3" } },
       { term: (v) => ({ title: `${AGENT_SCOUT} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A3) + resultBlock(v.a3, ["display_id", "status", "decision", "risk"]) }) },
-      { sleep: 1.0 },
-      { term: null },
-      { sleep: 0.3 },
+      { at: 3 },
+      { sleep: 1.6 },
     ],
-  },
-  {
-    id: "hook",
-    card: "hook",
-    lines: ["Nothing was charged. Here's why."],
-    actions: [],
   },
   {
     id: "mandates",
     kicker: "Reins",
     heading: "Every agent gets a wallet on a leash",
     chip: "Per-agent key + versioned mandate",
-    bullets: ["Monthly cap", "Auto-approve limit", "Hard cap per purchase", "Allowed / blocked merchants", "Agents connect over MCP"],
     lines: [
       ["Each agent gets its own key and a versioned mandate: caps, limits and allowed merchants, all over MCP.", "Each agent gets its own key and a versioned mandate: caps, limits and allowed merchants, all over M C P."],
     ],
@@ -96,7 +93,6 @@ export const SEGMENTS = [
     kicker: "Act 1 · Auto-approve",
     heading: "Small and in policy: paid at once",
     chip: "PayPal Orders v2 · vaulted payment",
-    bullets: ["Hard rules: PASS", "Auditor: AUTO_APPROVE, risk 1", "$12.98 ≤ $30 auto-approve limit", "No human needed"],
     lines: [
       "The DevOps agent asks Reins for permission to renew a domain.",
       ["Hard rules pass, the auditor scores it risk one, and $12.98 is under the auto-approve limit.", "Hard rules pass, the auditor scores it risk one, and 12 dollars 98 is under the auto-approve limit."],
@@ -118,6 +114,7 @@ export const SEGMENTS = [
       { term: null },
       { at: 3 },
       { nav: "/receipts/{a1.request_id}", wait: bodyHas("12.98") + " && !document.querySelector('.skeleton')" },
+      { zoom: { sel: 'article[aria-labelledby="receipt-title"]', dur: 2.4, z: 1.35 } },
     ],
   },
   {
@@ -125,7 +122,6 @@ export const SEGMENTS = [
     kicker: "Act 2 · Ask a human",
     heading: "Over the limit: one tap decides",
     chip: "Web inbox (live) + Telegram card",
-    bullets: ["$59 > $25 auto-approve limit", "Agent gets pending_human", "Also allow this merchant → mandate v2", "Receipt back over MCP"],
     lines: [
       ["Next, the research agent wants a $59 report.", "Next, the research agent wants a 59 dollar report."],
       ["That's over its $25 limit, so the agent is told to wait for a human, and the request lands in my inbox in real time.", "That's over its 25 dollar limit, so the agent is told to wait for a human, and the request lands in my inbox in real time."],
@@ -144,6 +140,8 @@ export const SEGMENTS = [
       { wait: bodyHas("Statista report"), timeout: 10000 },
       { at: 2 },
       { term: null },
+      { scroll: { sel: 'section[aria-labelledby="checks-h"]', block: "center" }, dur: 0.5 },
+      { zoom: { sel: 'section[aria-labelledby="checks-h"]', dur: 2.6, z: 1.35 } },
       { at: 3 },
       { tg: { from: "a2", agent: AGENT_SCOUT } },
       { at: 4 },
@@ -165,7 +163,6 @@ export const SEGMENTS = [
     kicker: "Act 3 · Blocked",
     heading: "Prompt injection, stopped",
     chip: "Rules first, then the AI auditor explains",
-    bullets: ["Over the $100 per-purchase cap", "Over the monthly cap too", "fiverr.com is not on the allow list", "Nothing was charged"],
     lines: [
       "Then a web page tells the agent to buy a premium logo, now, without asking.",
       ["It requests $450 on fiverr.com. Denied.", "It requests 450 dollars on Fiverr dot com. Denied."],
@@ -192,6 +189,8 @@ export const SEGMENTS = [
       { at: 3, plus: 0.3 },
       { tap: { sel: "button, a", text: "^Open details$" } },
       { wait: "!!document.querySelector('.drawer .risk-card')", timeout: 15000 },
+      { scroll: { sel: ".drawer table", block: "center" }, dur: 0.7 },
+      { zoom: { sel: ".drawer table", dur: 2.4, z: 1.35 } },
       { at: 4, plus: 0.2 },
       { scroll: { sel: ".risk-card", block: "center" }, dur: 1.0 },
       { at: 5, plus: 0.6 },
@@ -203,7 +202,6 @@ export const SEGMENTS = [
     kicker: "Close the gap",
     heading: "One click to a tighter mandate",
     chip: "Mandate v3 · used on the next get_mandate",
-    bullets: ["Block fiverr.com", "Per-purchase cap $60", "Every version kept"],
     lines: [
       ["One click turns that incident into a tighter mandate: block fiverr.com, and cap purchases at $60.", "One click turns that incident into a tighter mandate: block Fiverr dot com, and cap purchases at 60 dollars."],
       "Saved as version three. The agent gets it on its next mandate check.",
@@ -227,7 +225,6 @@ export const SEGMENTS = [
     kicker: "Under the hood",
     heading: "Built on PayPal APIs",
     chip: "Open source MCP server · TypeScript",
-    bullets: ["Orders v2 + store_in_vault", "Payouts (treasury mode)", "Webhooks verify-signature", "Transaction Search reconcile", "Claude auditor · AG Grid ledger"],
     lines: [
       "Under the hood: PayPal's Orders API with saved payment methods, Payouts for a treasury mode, and verified webhooks.",
       "A nightly job matches every capture against PayPal's own transaction records.",
@@ -245,10 +242,81 @@ export const SEGMENTS = [
       { tap: { sel: '[row-id="{a2.request_id}"] .ag-group-contracted' } },
       { wait: bodyHas("vaulted · order") },
       { scroll: { sel: ".ledger-detail", block: "center" }, dur: 0.8 },
-      { at: 2, plus: 1.5 },
-      { tap: { sel: "button", text: "^All agents$" } },
+    ],
+  },
+  {
+    // ~10 s full-width AG Grid beat (sponsor prize): grouping + subtotals, master-detail, sort, Set filter.
+    id: "grid",
+    kicker: "Audit ledger",
+    heading: "AG Grid Enterprise: grouping, filters, master-detail",
+    chip: "Every decision, one row",
+    lines: [
+      "The ledger is AG Grid Enterprise: grouped by agent, with subtotals of what was actually paid.",
+      "Open a row for the audit panel, sort by amount,",
+      "and filter the decisions to denied.",
+    ],
+    prep: [
+      { nav: "/ledger", wait: gridReady },
+      { scroll: { y: 250 }, dur: 0.5 },
       { sleep: 0.8 },
-      { scroll: { y: 420 }, dur: 1.4 },
+    ],
+    actions: [
+      { sleep: 2.6 },
+      { at: 1, plus: -0.2 },
+      { tap: { sel: '[row-id="{a2.request_id}"] .ag-group-contracted' } },
+      { wait: bodyHas("vaulted · order") },
+      { scroll: { sel: ".ledger-detail", block: "center" }, dur: 0.6 },
+      { sleep: 0.5 },
+      { tap: { sel: '.ag-header-cell[col-id="amount"] .ag-header-cell-label' } },
+      { sleep: 0.3 },
+      { tap: { sel: '.ag-header-cell[col-id="amount"] .ag-header-cell-label' }, quiet: true },
+      { at: 2 },
+      { tap: { sel: '.ag-header-cell[col-id="decision"] .ag-header-cell-filter-button' } },
+      { wait: "!!document.querySelector('.ag-set-filter-item')" },
+      { sleep: 0.3 },
+      { tap: { sel: ".ag-set-filter-item", text: "^\\(Select All\\)$" } },
+      { tap: { sel: ".ag-set-filter-item", text: "^DENIED$" } },
+      { sleep: 0.5 },
+      { key: "Escape" },
+      { sleep: 1.2 },
+    ],
+  },
+  {
+    // ~10 s from a separate real run (scripts/demo/real-run.mjs): real PayPal sandbox payout + real Claude audits.
+    id: "real",
+    needsReal: true,
+    badge: "REAL RUN · SEPARATE RECORDING · PayPal sandbox + Claude",
+    kicker: "Real run, separate recording",
+    heading: "Real PayPal sandbox, real Claude",
+    chip: "Payouts API · Claude audit",
+    lines: [
+      "A separate recording on the real PayPal sandbox, with real Claude audits.",
+      "A team lunch passes every hard rule, and Claude still denies it.",
+      "The approved report left as a real sandbox payout.",
+    ],
+    prep: [
+      { nav: "@real/ledger?drawer=1&r={real.off-purpose.request_id}", wait: "!!document.querySelector('.drawer .risk-card') && !document.querySelector('.drawer .skeleton')", timeout: 40000 },
+      { sleep: 1.0 },
+    ],
+    actions: [
+      { sleep: 0.8 },
+      { at: 1, plus: 0.2 },
+      { scroll: { sel: ".risk-card", block: "center" }, dur: 0.8 },
+      { zoom: { sel: ".risk-card", dur: 2.6, z: 1.3 } },
+      { at: 2 },
+      { nav: "@real/ledger?r={real.human-report.request_id}", wait: "!!document.querySelector('.ledger-detail') && !document.querySelector('.skeleton')", timeout: 30000 },
+      { scroll: { sel: ".ledger-detail", block: "center" }, dur: 0.6 },
+      {
+        term: (v) => {
+          const r = v.real["human-report"];
+          const st = r.paypal_status ?? {};
+          return {
+            title: "PayPal sandbox API · checked after the run",
+            body: `<div class="c">→ GET /v1/payments/payouts/<b>${esc(r.payment.payout_batch_id)}</b></div><pre>${json({ batch_status: st.batch_status, amount: st.amount, time_completed: st.time_completed })}</pre><div class="c ok">← ${esc(r.display_id)} · $${esc(st.amount?.value)} ${esc(st.amount?.currency)} · ${esc(st.batch_status)}</div>`,
+          };
+        },
+      },
+      { sleep: 2.4 },
     ],
   },
   {
@@ -258,7 +326,6 @@ export const SEGMENTS = [
     chip: "Caps · decisions · weekly summary",
     lines: [
       ["This month: $176.97 of $410 across three agents, and every decision by outcome.", "This month: 176 dollars 97, of 410, across three agents, and every decision by outcome."],
-      "Claude also writes a weekly summary from these numbers.",
       "Reins saved 20 approvals while blocking the one bad purchase.",
     ],
     prep: [{ nav: "/overview", wait: bodyHas("at a glance") + " && " + bodyHas("AI weekly summary") + " && !document.querySelector('.skeleton')" }, { sleep: 1.5 }],

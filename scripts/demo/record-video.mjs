@@ -8,6 +8,8 @@
  *
  * Options: --port 3927 (web)  --mcp-port 3933  --work <frames/audio/DB dir, default .local/video/work>
  *          --out <mp4>  --shots <gallery dir, default .local/screenshots>  --voice Samantha  --rate 182  --stills 8
+ *          --real <dir with real-run.json + reins-real.db from scripts/demo/real-run.mjs>  --real-port 3943
+ *            (adds the ~10 s "real run" beat: a read-only server on a copy of that DB; without --real the beat is skipped)
  *
  * What it runs (all offline, nothing real is called):
  *  - a fresh scratch DB at <work>/reins-video.db: `pnpm seed -- --db`, then scripts/demo/prep-db.mjs (removes the three
@@ -18,11 +20,14 @@
  *  - the MCP Streamable HTTP server (apps/mcp/src/http.ts) pointed at that web server; the recorder calls it with
  *    JSON-RPC tools/call exactly like an MCP client would
  * Both servers and Chrome are stopped at the end. Needs: Google Chrome, ffmpeg/ffprobe, sqlite3, macOS `say`.
- * Shot list + narration: scripts/demo/video-shots.mjs. ffmpeg here lacks drawtext/libass, so subtitles, side panels
- * and title cards are rendered by Chrome as transparent PNGs and overlaid.
+ * Shot list + narration: scripts/demo/video-shots.mjs. ffmpeg here lacks drawtext/libass, so subtitles, lower-thirds
+ * and title cards are rendered by Chrome as transparent PNGs and overlaid. Layout: the dashboard fills ~92% of the frame;
+ * each shot opens with a 1.5 s lower-third, narration shows as a caption, and `zoom` actions punch in 1.3x on a card.
+ * Recording-only touches (injected into the page, not product code): the Korean audit line is hidden (the product shows
+ * it) and the sidebar's Telegram line reads "Telegram: demo" because the bot is switched off for the recording.
  */
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SEGMENTS } from "./video-shots.mjs";
 import { prepVideoDb } from "./prep-db.mjs";
@@ -45,15 +50,20 @@ const STILLS = Number(args.stills ?? 8);
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const FFMPEG = existsSync("/opt/homebrew/bin/ffmpeg") ? "/opt/homebrew/bin/ffmpeg" : "ffmpeg";
 const FFPROBE = existsSync("/opt/homebrew/bin/ffprobe") ? "/opt/homebrew/bin/ffprobe" : "ffprobe";
+const REAL_DIR = args.real ? path.resolve(args.real) : null;
+const REAL_PORT = Number(args["real-port"] ?? 3943);
+const REAL_BASE = `http://localhost:${REAL_PORT}`;
 const REPO_URL = "github.com/sh0sub/reins";
 const TZ = "America/Los_Angeles";
 
-// Layout (1920x1080): side panel on the left, dashboard screen on the right, subtitle under the screen.
+// Layout (1920x1080): the dashboard screen is full-bleed (1766 px = 92% of the width); captions are overlays on it.
 const W = 1920, H = 1080, FPS = 30;
-const VW = 1440, VH = 900, DPR = 1.5; // recorded viewport (CSS px) and device scale
-const SCR_W = 1360, SCR_H = 850, SCR_X = 520, SCR_Y = 40;
-const SUB_Y = SCR_Y + SCR_H + 18;
+const VW = 1440, VH = 840, DPR = 1.75; // recorded viewport (CSS px) and device scale (1.75 -> 2520 px frames, enough for a 1.4x punch-in)
+const SCR_W = 1766, SCR_H = 1030, SCR_X = 77, SCR_Y = 12;
+const K = SCR_W / VW; // CSS px -> output px
+const HI = 1.4; // the screen layer is scaled to 1.4x once, zooms crop from it
 const LEAD = 0.5, GAP = 0.3, TAIL = 0.9;
+const L3_TO = 1.8; // lower-third window ends 1.8 s into each shot
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(`[rec ${new Date().toISOString().slice(11, 19)}]`, ...a);
@@ -167,27 +177,15 @@ async function launchChrome() {
 
 /* ── 2. stage graphics (one RGBA PNG per subtitle cue) ─────────────────────── */
 const FONT = `-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif`;
-const FOOT = "Recorded locally on a seeded scratch database: fake PayPal client (no money moves), offline stand-in for the Claude auditor, Telegram off.";
+const FOOT = "Recorded locally on a scratch database: fake PayPal client (no money moves), offline stand-in for the Claude auditor, Telegram off. The real-run beat is a separate recording.";
 
 function cardHtml(seg, ci) {
-  const shown = seg.cues.slice(0, ci + 1).map((c) => c.text);
-  const base = `html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;font-family:${FONT};-webkit-font-smoothing:antialiased}
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{margin:0;width:${W}px;height:${H}px;overflow:hidden;font-family:${FONT};-webkit-font-smoothing:antialiased}
     body{background:radial-gradient(1200px 700px at 30% 20%,#1e3a8a 0%,#0b1736 60%,#081028 100%);color:#fff}
     .wrap{position:absolute;left:180px;right:180px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:34px}
     .brand{display:flex;align-items:center;gap:18px;font-size:34px;font-weight:800;letter-spacing:-.01em}
     .brand i{display:block;width:40px;height:40px;border-radius:11px;background:#3b82f6}
-    .foot{position:absolute;left:180px;right:180px;bottom:56px;font-size:20px;color:#9fb2dd}`;
-  if (seg.card === "hook") {
-    return `<!doctype html><html><head><meta charset="utf-8"><style>${base}
-      p{margin:0;font-size:60px;line-height:1.18;font-weight:700;letter-spacing:-.015em;color:#fff}
-      p.dim{color:#7f93c4}
-      p.big{font-size:76px;color:#fff}
-      </style></head><body><div class="wrap">
-      <div class="brand"><i></i>Reins</div>
-      ${shown.map((t, i) => `<p class="${i === 2 ? "big" : i < ci ? "dim" : ""}">${esc(t)}</p>`).join("")}
-      </div><div class="foot">A spending leash for AI agents on PayPal · demo, ${new Date().getFullYear()}</div></body></html>`;
-  }
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${base}
     h1{margin:0;font-size:120px;line-height:1;font-weight:800;letter-spacing:-.03em}
     .tag{font-size:44px;line-height:1.25;font-weight:600;color:#dbe6ff;max-width:1400px}
     .row{display:flex;gap:18px;flex-wrap:wrap}
@@ -204,33 +202,33 @@ function cardHtml(seg, ci) {
     </div></body></html>`;
 }
 
-function stageHtml(seg, idx, cueText) {
-  const total = SEGMENTS.length;
+/**
+ * Transparent overlay over the full-bleed dashboard: hole (canvas frame), footer note, optional badge, and per cue
+ * the caption (bottom of the screen). `l3` adds the 1.5 s lower-third; `big` is the 2 s statement over the live frame.
+ */
+function stageHtml(seg, { text, l3, big }) {
+  const bottom = H - (SCR_Y + SCR_H); // canvas band under the screen
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;width:${W}px;height:${H}px;background:transparent;overflow:hidden;font-family:${FONT};color:#0f172a;-webkit-font-smoothing:antialiased}
-  .hole{position:absolute;left:${SCR_X}px;top:${SCR_Y}px;width:${SCR_W}px;height:${SCR_H}px;border-radius:18px;box-shadow:0 0 0 1px #c7d2fe,0 24px 60px 0 rgba(30,58,138,.18),0 0 0 3000px #eef2ff}
-  .left{position:absolute;left:64px;top:40px;bottom:120px;width:${SCR_X - 110}px;display:flex;flex-direction:column;justify-content:center;gap:22px;z-index:2}
-  .brand{display:flex;align-items:center;gap:12px;font-size:24px;font-weight:800;color:#0b2a6f;position:absolute;top:0;left:0}
-  .brand i{display:block;width:26px;height:26px;border-radius:8px;background:#1d4ed8}
-  .kick{font-size:20px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1d4ed8}
-  h1{margin:0;font-size:46px;line-height:1.1;font-weight:800;letter-spacing:-.015em}
-  .chip{align-self:flex-start;background:#dbe4ff;color:#1e3a8a;border-radius:999px;padding:10px 18px;font-size:19px;font-weight:700;line-height:1.3}
-  ul{margin:4px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px}
-  li{font-size:21px;line-height:1.3;color:#334155;padding-left:26px;position:relative}
-  li:before{content:"";position:absolute;left:4px;top:9px;width:9px;height:9px;border-radius:50%;background:#1d4ed8}
-  .sub{position:absolute;left:${SCR_X}px;width:${SCR_W}px;top:${SUB_Y}px;height:${H - SUB_Y - 14}px;display:flex;align-items:center;justify-content:center;text-align:center;z-index:2}
-  .sub span{font-size:31px;line-height:1.3;font-weight:600;color:#0f172a}
-  .foot{position:absolute;left:64px;bottom:34px;width:${SCR_X - 110}px;font-size:15px;line-height:1.4;color:#64748b;z-index:2}
-  .bar{position:absolute;left:64px;bottom:118px;width:${SCR_X - 110}px;height:5px;border-radius:3px;background:#c7d2fe;z-index:2}
-  .bar i{display:block;height:5px;border-radius:3px;background:#1d4ed8;width:${(((idx + 1) / total) * 100).toFixed(1)}%}
+  .hole{position:absolute;left:${SCR_X}px;top:${SCR_Y}px;width:${SCR_W}px;height:${SCR_H}px;border-radius:16px;box-shadow:0 0 0 1px #c7d2fe,0 18px 48px 0 rgba(30,58,138,.16),0 0 0 3000px #eef2ff}
+  .foot{position:absolute;left:${SCR_X}px;width:${SCR_W}px;bottom:0;height:${bottom}px;display:flex;align-items:center;justify-content:space-between;font-size:15px;color:#64748b}
+  .foot b{display:flex;align-items:center;gap:8px;color:#0b2a6f;font-size:17px;font-weight:800}
+  .foot b i{display:block;width:16px;height:16px;border-radius:5px;background:#1d4ed8}
+  .l3{position:absolute;left:${SCR_X + 36}px;bottom:${bottom + 128}px;max-width:900px;background:rgba(255,255,255,.96);border-left:7px solid #1d4ed8;border-radius:14px;padding:16px 26px 18px 22px;box-shadow:0 14px 40px rgba(15,23,42,.28)}
+  .l3 .k{font-size:19px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1d4ed8}
+  .l3 h1{margin:2px 0 8px;font-size:42px;line-height:1.1;font-weight:800;letter-spacing:-.015em}
+  .l3 .c{display:inline-block;background:#dbe4ff;color:#1e3a8a;border-radius:999px;padding:7px 16px;font-size:18px;font-weight:700}
+  .badge{position:absolute;left:${SCR_X + 24}px;top:${SCR_Y + 84}px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:999px;padding:9px 20px;font-size:20px;font-weight:800;letter-spacing:.03em;box-shadow:0 6px 20px rgba(15,23,42,.2)}
+  .sub{position:absolute;left:${SCR_X}px;width:${SCR_W}px;bottom:${bottom + 22}px;display:flex;justify-content:center;pointer-events:none}
+  .sub span{max-width:1480px;text-align:center;font-size:31px;line-height:1.3;font-weight:600;color:#fff;background:rgba(11,23,54,.88);border-radius:14px;padding:10px 26px 12px;box-shadow:0 10px 30px rgba(15,23,42,.3)}
+  .big{position:absolute;left:${SCR_X}px;width:${SCR_W}px;top:${SCR_Y + SCR_H / 2 - 120}px;height:190px;display:flex;align-items:center;justify-content:center;background:rgba(11,23,54,.84)}
+  .big span{font-size:84px;font-weight:800;letter-spacing:-.02em;color:#fff}
   </style></head><body>
   <div class="hole"></div>
-  <div class="left" style="position:absolute"><div class="brand"><i></i>Reins</div>
-    <div class="kick">${esc(seg.kicker)}</div><h1>${esc(seg.heading)}</h1><div class="chip">${esc(seg.chip)}</div>
-    ${seg.bullets ? `<ul>${seg.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}</div>
-  <div class="sub">${cueText ? `<span>${esc(cueText)}</span>` : ""}</div>
-  <div class="bar"><i></i></div>
-  <div class="foot">${esc(FOOT)}</div>
+  <div class="foot"><b><i></i>Reins</b><span>${esc(FOOT)}</span><span></span></div>
+  ${seg.badge ? `<div class="badge">${esc(seg.badge)}</div>` : ""}
+  ${l3 ? `<div class="l3"><div class="k">${esc(seg.kicker)}</div><h1>${esc(seg.heading)}</h1><span class="c">${esc(seg.chip)}</span></div>` : ""}
+  ${big ? `<div class="big"><span>${esc(text)}</span></div>` : text ? `<div class="sub"><span>${esc(text)}</span></div>` : ""}
   </body></html>`;
 }
 
@@ -241,17 +239,25 @@ async function renderStage(cdp) {
   await cdp.send("Page.enable");
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
-  for (const [si, seg] of SEGMENTS.entries()) {
-    seg.stage = [];
-    for (const [ci, cue] of seg.cues.entries()) {
-      const html = path.join(dir, `${seg.id}-${ci}.html`);
-      const png = path.join(dir, `${seg.id}-${ci}.png`);
-      writeFileSync(html, seg.card ? cardHtml(seg, ci) : stageHtml(seg, si, cue.text));
-      await cdp.send("Page.navigate", { url: `file://${html}` });
+  for (const seg of SEGMENTS) {
+    seg.stage = []; // [{ png, start }] background overlay changes over the shot
+    const shoot = async (name, html, start) => {
+      const f = path.join(dir, `${name}.html`);
+      const png = path.join(dir, `${name}.png`);
+      writeFileSync(f, html);
+      await cdp.send("Page.navigate", { url: `file://${f}` });
       await sleep(250);
-      const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
-      writeFileSync(png, Buffer.from(shot.data, "base64"));
-      seg.stage.push(png);
+      writeFileSync(png, Buffer.from((await cdp.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+      seg.stage.push({ png, start });
+    };
+    for (const [ci, cue] of seg.cues.entries()) {
+      const start = ci === 0 ? 0 : cue.start;
+      if (seg.card) await shoot(`${seg.id}-${ci}`, cardHtml(seg, ci), start);
+      else if (seg.bigLast && ci === seg.cues.length - 1) await shoot(`${seg.id}-${ci}`, stageHtml(seg, { text: cue.text, big: true }), start);
+      else if (ci === 0) {
+        await shoot(`${seg.id}-${ci}-l3`, stageHtml(seg, { text: cue.text, l3: true }), 0);
+        if (!seg.cues[1] || seg.cues[1].start > L3_TO + 0.05) await shoot(`${seg.id}-${ci}`, stageHtml(seg, { text: cue.text }), L3_TO);
+      } else await shoot(`${seg.id}-${ci}`, stageHtml(seg, { text: cue.text }), start);
     }
   }
   await cdp.send("Emulation.setDefaultBackgroundColorOverride", {});
@@ -337,6 +343,31 @@ async function startServers() {
   log(`web on ${BASE} (log ${webLog}), MCP on ${MCP_URL} (log ${mcpLog}); month so far $${(ov.totals.spent_cents / 100).toFixed(2)}`);
   // compile every route once so the first visit in the recording is not a blank dev compile
   for (const p of ["/overview", "/inbox", "/agents", "/ledger", "/setup", "/receipts/none", "/api/inbox", "/api/ledger", "/api/agents", "/api/overview/summary"]) await fetch(BASE + p).catch(() => null);
+  if (REAL_DIR) await startRealView(env);
+}
+
+/** Read-only server on a COPY of the real-run DB (scripts/demo/real-run.mjs). No PayPal/Claude credentials, Telegram off. */
+async function startRealView(baseEnv) {
+  if (!(await portFree(REAL_PORT))) throw new Error(`port ${REAL_PORT} is already in use; pass --real-port`);
+  const src = path.join(REAL_DIR, "reins-real.db");
+  if (!existsSync(src) || !existsSync(path.join(REAL_DIR, "real-run.json"))) throw new Error(`--real ${REAL_DIR} needs reins-real.db and real-run.json (run scripts/demo/real-run.mjs)`);
+  const dst = path.join(WORK, "reins-real-view.db");
+  for (const f of [dst, `${dst}-wal`, `${dst}-shm`]) rmSync(f, { force: true });
+  run("/usr/bin/sqlite3", [src, `.backup '${dst}'`]);
+  const env = { ...baseEnv, DATABASE_URL: `file:${dst}`, PAYPAL_ENV: "sandbox", PUBLIC_BASE_URL: REAL_BASE, REINS_API_URL: REAL_BASE, REINS_NEXT_DIST_DIR: ".next-real" };
+  const logFile = spawnServer("web-real", process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", String(REAL_PORT)], path.join(ROOT, "apps/web"), env);
+  for (let i = 0; i < 180; i++) {
+    try {
+      if ((await fetch(`${REAL_BASE}/api/health`)).ok) break;
+    } catch {
+      /* booting */
+    }
+    await sleep(500);
+  }
+  const ws = await (await fetch(`${REAL_BASE}/api/workspace`)).json();
+  if (ws.paypal_env !== "sandbox") throw new Error(`real view DB is not a sandbox workspace (${ws.paypal_env})`);
+  for (const p of ["/ledger", "/api/ledger", "/api/agents"]) await fetch(REAL_BASE + p).catch(() => null);
+  log(`real-run view on ${REAL_BASE} (log ${logFile})`);
 }
 
 let mcpId = 0;
@@ -389,7 +420,12 @@ async function setupPage(cdp) {
   await cdp.send("Emulation.setLocaleOverride", { locale: "en-US" }).catch(() => null);
   await cdp.send("Emulation.setTimezoneOverride", { timezoneId: TZ }).catch(() => null);
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
-    source: `document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='nextjs-portal{display:none!important}';document.head.appendChild(s)});`,
+    // recording-only: hide the Korean audit line (the product shows it), and label the sidebar's Telegram line "demo"
+    // (the bot is off for the recording; the card text in the video comes from the real bot code)
+    source: `document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');
+      s.textContent='nextjs-portal{display:none!important}[lang="ko"]{display:none!important}dt:has(+ dd[lang="ko"]){display:none!important}';document.head.appendChild(s);
+      setInterval(()=>{document.querySelectorAll('.side-foot .caption').forEach((e)=>{const t=e.lastChild;
+        if(/^Telegram/.test((e.textContent||'').trim())&&t&&t.nodeType===3&&t.textContent!=='demo'){e.firstElementChild?.classList.add('dot-ok');e.childNodes[1].textContent='Telegram: ';t.textContent='demo'}})},200)});`,
   });
 }
 
@@ -422,7 +458,8 @@ async function record(cdp) {
   await sleep(800);
 
   const vars = {};
-  const fill = (s) => s.replace(/\{([\w.]+)\}/g, (_, k) => k.split(".").reduce((o, p) => o?.[p] ?? o?.data?.[p], vars) ?? "");
+  if (REAL_DIR) vars.real = Object.fromEntries(JSON.parse(readFileSync(path.join(REAL_DIR, "real-run.json"), "utf8")).map((r) => [r.label, r]));
+  const fill = (s) => s.replace(/\{([\w.-]+)\}/g, (_, k) => k.split(".").reduce((o, p) => o?.[p] ?? o?.data?.[p], vars) ?? "");
   const findJs = (sel, text) => `(() => {
     const re = ${text ? `new RegExp(${JSON.stringify(text)}, 'i')` : "null"};
     const el = [...document.querySelectorAll(${JSON.stringify(sel)})].find((e) => {
@@ -466,7 +503,7 @@ async function record(cdp) {
       while (recording && visible() < target) await sleep(30);
     } else if (a.sleep !== undefined) await sleep(a.sleep * 1000);
     else if (a.nav) {
-      await cdp.send("Page.navigate", { url: BASE + fill(a.nav) });
+      await cdp.send("Page.navigate", { url: a.nav.startsWith("@real") ? REAL_BASE + fill(a.nav.slice(5)) : BASE + fill(a.nav) });
       await sleep(300);
       if (a.wait) await act({ wait: a.wait, timeout: a.timeout ?? 30000 }, seg, recording);
     } else if (a.tap) {
@@ -499,6 +536,23 @@ async function record(cdp) {
           el?.scrollIntoView({ behavior: 'smooth', block: ${JSON.stringify(a.scroll.block ?? "center")} }); })()`);
       }
       await sleep((a.dur ?? 1) * 1000);
+    } else if (a.key) {
+      await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: a.key, code: a.key, windowsVirtualKeyCode: a.key === "Escape" ? 27 : 13 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: a.key, code: a.key, windowsVirtualKeyCode: a.key === "Escape" ? 27 : 13 });
+      await sleep(250);
+    } else if (a.zoom) {
+      // punch in on an element for a.zoom.dur seconds: the window is applied at encode time (crop from the 1.4x layer)
+      const r = await evaluate(`(() => { const re = ${a.zoom.text ? `new RegExp(${JSON.stringify(a.zoom.text)}, 'i')` : "null"};
+        const el = [...document.querySelectorAll(${JSON.stringify(a.zoom.sel)})].find((e) => { const b = e.getBoundingClientRect(); return b.width > 1 && b.height > 1 && (!re || re.test(e.innerText || '')); });
+        if (!el) return null; const b = el.getBoundingClientRect();
+        return { x: Math.max(0, b.left), y: Math.max(0, b.top), w: Math.min(b.width, innerWidth), h: Math.min(b.height, innerHeight) }; })()`);
+      if (!r) throw new Error(`zoom target not found: ${a.zoom.sel}`);
+      const fit = Math.min(VW / r.w, VH / r.h) * 0.92;
+      const z = Math.max(1.15, Math.min(a.zoom.z ?? 1.3, fit, HI));
+      const t0 = visible();
+      (seg.zooms ??= []).push({ a: t0, b: t0 + a.zoom.dur, cx: (r.x + r.w / 2) * K, cy: (r.y + r.h / 2) * K, z });
+      log(`  zoom ${a.zoom.sel} x${z.toFixed(2)} ${t0.toFixed(1)}-${(t0 + a.zoom.dur).toFixed(1)}s`);
+      await sleep(a.zoom.dur * 1000);
     } else if (a.mcp) {
       const toolArgs = typeof a.mcp.args === "function" ? a.mcp.args(vars) : a.mcp.args;
       vars[a.mcp.save] = await mcpCall(a.mcp.as, a.mcp.tool, toolArgs);
@@ -650,6 +704,27 @@ function concatList(file, items, total) {
   writeFileSync(file, lines.join("\n"));
 }
 
+/**
+ * Screen layer: scaled once to 1.4x, then zoompan crops it. Each zoom window eases in and out (0.4 s smoothstep);
+ * the view centre moves from the screen centre to the target while it zooms, so the card grows in place.
+ */
+function zoomFilter(zooms) {
+  const even = (n) => 2 * Math.round(n / 2);
+  if (!zooms.length) return `[1:v]scale=${SCR_W}:${SCR_H}:flags=lanczos,setsar=1,fps=${FPS}[scr]`;
+  const R = 0.4;
+  const env = zooms.map((zm) => {
+    const e = `clip(min((it-${zm.a.toFixed(3)})/${R},(${zm.b.toFixed(3)}-it)/${R}),0,1)`;
+    return `(${e}*${e}*(3-2*${e}))`;
+  });
+  const zExpr = `1+${zooms.map((zm, i) => `${(zm.z - 1).toFixed(3)}*${env[i]}`).join("+")}`;
+  const cx = `${SCR_W / 2}+${zooms.map((zm, i) => `${env[i]}*${(zm.cx - SCR_W / 2).toFixed(1)}`).join("+")}`;
+  const cy = `${SCR_H / 2}+${zooms.map((zm, i) => `${env[i]}*${(zm.cy - SCR_H / 2).toFixed(1)}`).join("+")}`;
+  return [
+    `[1:v]scale=${even(SCR_W * HI)}:${even(SCR_H * HI)}:flags=lanczos,setsar=1,fps=${FPS}[hi]`,
+    `[hi]zoompan=z='${zExpr}':x='clip((${cx})*${HI}-(iw/zoom)/2,0,iw-iw/zoom)':y='clip((${cy})*${HI}-(ih/zoom)/2,0,ih-ih/zoom)':d=1:s=${SCR_W}x${SCR_H}:fps=${FPS}[scr]`,
+  ].join(";");
+}
+
 function encode() {
   const dir = path.join(WORK, "segments");
   rmSync(dir, { recursive: true, force: true });
@@ -659,7 +734,7 @@ function encode() {
   for (const seg of SEGMENTS) {
     const dur = seg.duration;
     const bgList = path.join(dir, `${seg.id}-stage.txt`);
-    concatList(bgList, seg.stage.map((f, i) => ({ file: f, start: i === 0 ? 0 : seg.cues[i].start })), dur);
+    concatList(bgList, seg.stage.map((f) => ({ file: f.png, start: f.start })), dur);
     const out = path.join(dir, `${seg.id}.mp4`);
     const common = ["-map", "[v]", "-map", "[a]", "-t", dur.toFixed(3), "-r", String(FPS), "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", out];
     if (seg.card) {
@@ -679,7 +754,7 @@ function encode() {
       concatList(scrList, ticks, dur);
       const filter = [
         `color=c=0xeef2ff:s=${W}x${H}:r=${FPS}:d=${dur.toFixed(3)}[base]`,
-        `[1:v]scale=${SCR_W}:${SCR_H}:flags=lanczos,setsar=1,fps=${FPS}[scr]`,
+        zoomFilter(seg.zooms ?? []),
         `[base][scr]overlay=${SCR_X}:${SCR_Y}:eof_action=repeat[b1]`,
         `[0:v]format=rgba,fps=${FPS}[stage]`,
         `[b1][stage]overlay=0:0:eof_action=repeat,format=yuv420p[v]`,
@@ -712,7 +787,7 @@ function encode() {
     return s.start + Math.min(s.cues[cue].start + plus, s.duration - 0.1);
   };
   mkdirSync(SHOTS, { recursive: true });
-  frame(at("hook", 0, 1.0), path.join(SHOTS, "01-title.png"));
+  frame(at("close", 0, 1.0), path.join(SHOTS, "01-title.png"));
   frame(at("ask", 1, 2.0), path.join(SHOTS, "04-agent-request-over-mcp.png"));
   frame(at("deny", 1, 2.2), path.join(SHOTS, "06-prompt-injection-blocked.png"));
   return total;
@@ -721,6 +796,7 @@ function encode() {
 /* ── main ──────────────────────────────────────────────────────────────────── */
 try {
   mkdirSync(WORK, { recursive: true });
+  if (!REAL_DIR) SEGMENTS.splice(0, SEGMENTS.length, ...SEGMENTS.filter((s) => !s.needsReal)); // the real-run beat needs --real
   log(`work=${WORK} out=${OUT}`);
   buildAudio();
   const cdp = await launchChrome();
