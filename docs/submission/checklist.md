@@ -57,7 +57,8 @@
 | 영상 대본·촬영 스크립트(`scripts/demo/video-shots.mjs`) | 완료 | 2026-11-01 재녹화: 사이드바 에이전트 목록, Cmd+K로 차단 요청 이동, 요청 드로어(하드 룰 표·위험도), 새 승인 카드(체크박스+Approve), 월 합계 $176.97 반영. 이전 영상은 `.local/video/reins-demo-prev.mp4` |
 | 3분 미만, 상표·저작권 음악 없음 확인 | 완료 | 2:34(153.9초; 오프닝은 결제 완료+$450 거절 페이오프, 훅 3.4초, 엔드 카드 6초), macOS 음성 해설만, 음악 없음, 프레임 컨택트 시트로 깨진/멈춘 화면 없음 확인. 영상 파일은 커밋하지 않음(`.local/`) |
 | 월 한도 문구 단위 통일 재녹화(C2 UI-1) | 남음 | 하드 룰 문구가 "Spent $9.00 + this $450.00 = $459.00 > $100.00 monthly cap"으로 바뀜. 영상의 R-0143 드로어 프레임이 옛 문구("$91.00 of $100.00 left")라 재녹화 필요 |
-| Devpost·README 비교 표(C2 DEV-1) | 완료 | Skyfire/카드 토큰/PayPal Agent Toolkit 표. C3 M4: "Compose: gate the Toolkit" 행 추가, 옵트인 어댑터(`packages/core/src/pay/toolkit.ts`)는 가짜 Toolkit 단위 테스트까지만 검증, 실제 `@paypal/agent-toolkit` 실행은 안 함이라고 명시 |
+| 데스크톱 승인 바(C4 P1) | 완료 | 1440x900에서 Approve/Deny가 접힘 아래에 있던 문제 수정: 720px 이상에서도 상세 패널 하단에 sticky 바(A/D 힌트). `docs/img/approval-1440.png`·`ledger-1440.png` 재촬영(KPI 타일 보이게 맨 위). 영상의 승인 구간(1440)은 옛 레이아웃이라 재녹화 시 반영됨 |
+| Devpost·README 비교 표(C2 DEV-1) | 완료 | Skyfire/카드 토큰/PayPal Agent Toolkit 표. C3 M4: "Compose: gate the Toolkit" 행 추가, 옵트인 어댑터(`packages/core/src/pay/toolkit.ts`). C4 K1: 실제 `@paypal/agent-toolkit` 1.11.0으로 샌드박스에서 `create_order` 승인 1건 성공·거절 1건 Toolkit 호출 0회 확인(`docs/spikes/d5-toolkit-gate.md`). 캡처(`pay_order`)는 구매자 승인 필요로 PayPal이 422 거절 — 미완료라고 명시. Devpost 표·README 갱신 |
 | 영상 설명 정합(C3 M6) | 남음-재녹화 후 | Devpost "Limits"·README가 "본편은 가짜 PayPal 클라이언트, 'REAL RUN' 배지 구간(약 10초)만 실제 샌드박스"라고 적음. 재녹화 뒤 해당 구간의 정확한 초(mm:ss-mm:ss)를 여기와 Devpost Limits에 채울 것 |
 | 영어 전용 화면(C3 M5) | 완료 | 승인·위험 카드·원장·드로어에서 한국어 reasonKo는 `<html lang="ko">` 또는 `?lang=ko`일 때만 표시(데이터는 유지). docs/img 4장 재촬영. 영상은 재녹화 필요 |
 | 공유 링크 안전(C3 M5) | 완료 | `/approvals/R-0143`(이미 결정됨)은 "already decided (Blocked)"+결정 기록 링크, 없는 id는 "Request not found", 승인 바 숨김, 탭 제목 반영 |

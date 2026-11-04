@@ -25,7 +25,7 @@ Sandbox only; the video's main run is simulated and one badged segment is a real
 | Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Yes | $1.00 batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`); the badged real-run segment shows a sandbox payout |
 | Webhooks (`verify-webhook-signature`) | Verify every PayPal event before storing it | Yes | Real and simulated events verified, forged request returns 401; needs a public URL, so not in the video |
 | Transaction Search (`/v1/reporting/transactions`) | Reconcile every capture against PayPal's records | No | Unit and integration tested; the sandbox app needs the Transaction Search feature enabled |
-| Agent Toolkit tools `create_order`, `capture_order` (opt-in `reinsGate`) | Run a Toolkit order only after the mandate, rules and audit pass | No | Unit-tested with a fake Toolkit; not run against the real `@paypal/agent-toolkit` package |
+| Agent Toolkit tools `create_order`, `pay_order` (capture) (opt-in `reinsGate`) | Run a Toolkit order only after the mandate and rules pass | Yes for `create_order`; capture not completed | Real `@paypal/agent-toolkit` 1.11.0: an approved request created a sandbox order through the Toolkit, a denied one made 0 Toolkit calls. Its `pay_order` capture was refused by PayPal (HTTP 422) because the buyer had not approved; that approval needs a sandbox buyer login. Run log and the four fixes it forced: `docs/spikes/d5-toolkit-gate.md` (mock auditor in that run) |
 
 ---
 
@@ -55,7 +55,7 @@ Existing "agent wallet" products (Skyfire, card-network agent tokens) solve part
 
 **How PayPal could adopt it.** The mandate (cap, auto-approve limit, allowed merchants, versioned) is a small, API-shaped object, so PayPal could offer it as a native spending-controls primitive on agent credentials, with Reins as the open reference implementation.
 
-**Roadmap.** (1) Publish `@reins/mcp` to npm so a one-line `npx` config works. (2) Production PayPal onboarding beyond sandbox. (3) Run the opt-in Agent Toolkit gate (`reinsGate`) against the real `@paypal/agent-toolkit` package in the sandbox; today it is unit-tested with a fake Toolkit.
+**Roadmap.** (1) Publish `@reins/mcp` to npm so a one-line `npx` config works. (2) Production PayPal onboarding beyond sandbox. (3) Complete a capture through the Agent Toolkit once a sandbox buyer approval is automated; the gate already creates orders through the real `@paypal/agent-toolkit` in the sandbox (`docs/spikes/d5-toolkit-gate.md`).
 
 ## How it compares
 
@@ -66,9 +66,9 @@ Existing "agent wallet" products (Skyfire, card-network agent tokens) solve part
 | AI audit with a written explanation | Yes, Claude, advisory on top of the rules | No | No |
 | Human one-tap approval (Telegram / web) | Yes | Varies | No |
 | Open source, MCP, PayPal-native | Yes, MIT-style repo, MCP server | Mostly closed, separate wallet or rails | Open source, PayPal-native |
-| Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (fake-Toolkit unit tests) | n/a | This is the layer being gated |
+| Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (run against the real Toolkit in the sandbox; unit tests too) | n/a | This is the layer being gated |
 
-**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal payments. By default Reins creates the sandbox order itself; with the opt-in adapter (`packages/core/src/pay/toolkit.ts`, example in the README) an approved request is created and captured through the Toolkit's `create_order` and `capture_order`, and a denied or held request never reaches the Toolkit. Covered by unit tests with a fake Toolkit; not yet run against the real Toolkit package, and only approval-link (supervised) orders are supported.
+**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal payments. By default Reins creates the sandbox order itself; with the opt-in adapter (`packages/core/src/pay/toolkit.ts`, example in the README) an approved request is created and captured through the Toolkit's `create_order` and `capture_order`, and a denied or held request never reaches the Toolkit. Run against the real `@paypal/agent-toolkit` 1.11.0 in the sandbox (`docs/spikes/d5-toolkit-gate.md`): the approved request created a PayPal order through the Toolkit's `create_order`, the denied one made zero Toolkit calls. The Toolkit's capture tool (`pay_order`) was called but PayPal refused it until the buyer approves on the sandbox login page, so a completed capture through the Toolkit is not shown. Only approval-link (supervised) orders are supported.
 
 ## What it does
 
@@ -143,7 +143,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 ## Limits (read before judging)
 
 - The demo video's main run was recorded locally on a scratch database with the simulated PayPal client (no money moves) and the offline stand-in for the Claude auditor. One segment, badged "REAL RUN" on screen (about 10 s, exact seconds in `docs/submission/checklist.md`), is a separate recording on the real PayPal sandbox with real Claude audits. The other real sandbox calls are in the spikes above.
-- The Agent Toolkit adapter is tested with a fake Toolkit only.
+- The Agent Toolkit adapter created a sandbox order through the real `@paypal/agent-toolkit` and refused a denied one before any Toolkit call, but a capture through the Toolkit was not completed (it needs a sandbox buyer login). That run used the mock auditor.
 - `@reins/mcp` is not published to npm; use the clone-based stdio config or the hosted HTTP endpoint.
 - Free Render instances sleep after about 15 minutes and reset; open the live URL once and wait about a minute.
 - AG Grid Enterprise runs in trial mode (no licence key), so the public deploy may show the trial watermark and a console notice.
@@ -188,7 +188,7 @@ Run it locally with zero credentials: `pnpm install && cp .env.example .env && p
 
 ### Best Use of Agentic Commerce (PayPal)
 
-Reins is the control layer PayPal's supervised/automatic split implies: per-agent mandates, hard rules, an AI auditor, one-tap approval over web or Telegram, and an audit trail. It uses Orders v2 with vaulted payment for unattended purchases, Payouts for a treasury mode, signed webhooks and Transaction Search reconciliation, exposes it as an open MCP server, and can gate the PayPal Agent Toolkit's `create_order` behind the same checks (fake-Toolkit tests).
+Reins is the control layer PayPal's supervised/automatic split implies: per-agent mandates, hard rules, an AI auditor, one-tap approval over web or Telegram, and an audit trail. It uses Orders v2 with vaulted payment for unattended purchases, Payouts for a treasury mode, signed webhooks and Transaction Search reconciliation, exposes it as an open MCP server, and can gate the PayPal Agent Toolkit's `create_order` behind the same checks (run against the real Toolkit in the sandbox for `create_order`; capture not completed).
 
 ### AG Grid
 

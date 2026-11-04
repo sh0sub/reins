@@ -12,19 +12,35 @@ import type { Agent } from "@reins/db";
  * the Toolkit.
  *
  * Verified: unit tests with a fake Toolkit (packages/core/test/toolkit.test.ts) cover the gate, the call shape
- * and the denial path. Not verified: a run against the real @paypal/agent-toolkit package; its tool argument and
- * response shapes are assumed from its documentation. Only approval-link (supervised) orders are supported,
- * because the Toolkit's create_order has no vault_id option.
+ * and the denial path, and scripts/demo/toolkit-gate-run.mjs ran it against the real @paypal/agent-toolkit 1.11.0
+ * in the PayPal sandbox (docs/spikes/d5-toolkit-gate.md; that run fixed the argument types and the capture tool
+ * name/response shape). Only approval-link (supervised) orders are supported, because the Toolkit's create_order
+ * has no vault_id option.
  */
 export interface ToolkitLike {
   /** Same shape as PayPalAPI.run(method, args) in @paypal/agent-toolkit; the result may be a JSON string or an object. */
-  run(method: "create_order" | "capture_order", args: Record<string, unknown>): Promise<unknown>;
+  run(method: "create_order" | "pay_order", args: Record<string, unknown>): Promise<unknown>;
 }
 
 function parseResult(raw: unknown): Record<string, unknown> {
   const v = typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
   if (!v || typeof v !== "object") throw new Error("Agent Toolkit returned an unreadable result");
+  // PayPalAPI.run() does not throw: it returns { error: { message, type } } as a JSON string
+  const err = (v as { error?: { message?: unknown } }).error;
+  if (err) throw new Error(`Agent Toolkit error: ${String(typeof err === "object" ? err.message : err).replace(/\s+/g, " ").slice(0, 300)}`);
+  // PayPal HTTP errors come back as { ok: false, status, code, message } (LlmError), also without throwing
+  const o = v as { ok?: unknown; code?: unknown; message?: unknown };
+  if (o.ok === false) throw new Error(`Agent Toolkit error ${String(o.code ?? "")}: ${String(o.message ?? "").replace(/\s+/g, " ").slice(0, 300)}`.trim());
   return v as Record<string, unknown>;
+}
+
+/** @paypal/agent-toolkit 1.11.0 exposes order capture as `pay_order` ("Process payment for an authorized order"). */
+export const CAPTURE_TOOL = "pay_order" as const;
+
+/** The Toolkit wraps a capture as { status: "success", response: <PayPal order> }; accept a bare order too. */
+function unwrapCapture(res: Record<string, unknown>): Order {
+  const inner = res.response;
+  return (inner && typeof inner === "object" ? inner : res) as Order;
 }
 
 /**
@@ -45,7 +61,7 @@ export function toolkitPayPalClient(toolkit: ToolkitLike, base: PayPalClient): P
       const res = parseResult(
         await toolkit.run("create_order", {
           currencyCode: unit.amount.currency_code,
-          items: [{ name: (unit.description ?? "Reins purchase").slice(0, 127), quantity: "1", itemCost: unit.amount.value }],
+          items: [{ name: (unit.description ?? "Reins purchase").slice(0, 127), quantity: 1, itemCost: Number(unit.amount.value), itemTotal: Number(unit.amount.value) }],
           ...(ctx?.return_url ? { returnUrl: ctx.return_url } : {}),
           ...(ctx?.cancel_url ? { cancelUrl: ctx.cancel_url } : {}),
         }),
@@ -55,8 +71,7 @@ export function toolkitPayPalClient(toolkit: ToolkitLike, base: PayPalClient): P
       return { id: res.id, status: (res.status as Order["status"]) ?? "CREATED", links, purchase_units: [{ ...unit }] };
     },
     async captureOrder(orderId: string): Promise<Order> {
-      const res = parseResult(await toolkit.run("capture_order", { id: orderId }));
-      return res as unknown as Order;
+      return unwrapCapture(parseResult(await toolkit.run(CAPTURE_TOOL, { id: orderId })));
     },
   };
 }
@@ -68,8 +83,8 @@ export function withToolkit(ctx: ReinsContext, toolkit: ToolkitLike): ReinsConte
 
 export interface ToolkitCall {
   tool: "create_order";
-  /** The Toolkit's own create_order arguments (currencyCode, items[{name, quantity, itemCost}]). */
-  args: { currencyCode?: string; items: Array<{ name: string; quantity?: string | number; itemCost: string | number }> };
+  /** The Toolkit's own create_order arguments (currencyCode, items[{name, quantity, itemCost, itemTotal}]). */
+  args: { currencyCode?: string; items: Array<{ name: string; quantity?: string | number; itemCost: string | number; itemTotal?: string | number }> };
   /** What the Toolkit call cannot say: who is paid and why. */
   merchant: string;
   reason: string;
@@ -99,6 +114,6 @@ export async function reinsGate(ctx: ReinsContext, agent: Agent, toolkit: Toolki
 
 /** Capture an order the buyer approved, through the Toolkit's capture_order. */
 export async function captureViaToolkit(toolkit: ToolkitLike, orderId: string) {
-  const order = parseResult(await toolkit.run("capture_order", { id: orderId })) as unknown as Order;
+  const order = unwrapCapture(parseResult(await toolkit.run(CAPTURE_TOOL, { id: orderId })));
   return { order, captureId: firstCapture(order)?.id };
 }

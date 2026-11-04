@@ -198,6 +198,7 @@ function Detail({
     setAlsoAllow(false);
   }, [row.request_id]);
 
+  // Keys act only while the detail panel has focus, so a stray key press elsewhere can never approve a payment.
   function onKey(e: KeyboardEvent) {
     if (busy || (e.target as HTMLElement).closest("input, textarea")) return;
     if (e.key === "a" || e.key === "A") onDecide("approve", undefined, alsoAllow);
@@ -307,7 +308,7 @@ function Detail({
         <span className="caption act-who">{row.display_id} · {row.agent_name} · {row.merchant}</span>
         {!denyOpen && (
           <div className="stack-s">
-            <label className="check-row">
+            <label className="check-row" title={`Saves mandate v${(row.mandate_version ?? 0) + 1} when you approve. Caps and block list still apply.`}>
               <input type="checkbox" checked={alsoAllow} disabled={busy} onChange={(e) => setAlsoAllow(e.target.checked)} aria-describedby={`allow-${row.request_id}`} />
               <span>
                 Also allow <b>{row.merchant}</b> automatically up to ${row.amount}
@@ -356,8 +357,9 @@ function Detail({
             <button className="btn btn-lg" disabled={busy} onClick={() => setDenyOpen(true)}>
               Deny
             </button>
-            <span className="caption act-note">
-              <kbd>A</kbd> approve · <kbd>D</kbd> deny (when this panel has focus)
+            <span className="caption act-keys" title="With the panel focused (click inside it first)">
+              <span><kbd>A</kbd> approve</span>
+              <span><kbd>D</kbd> deny</span>
             </span>
           </div>
         )}

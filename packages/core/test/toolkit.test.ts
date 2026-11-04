@@ -11,7 +11,8 @@ function fakeToolkit() {
       calls.push({ method, args });
       if (method === "create_order")
         return JSON.stringify({ id: "TK-ORDER-1", status: "PAYER_ACTION_REQUIRED", links: [{ rel: "payer-action", href: "https://www.sandbox.paypal.com/checkoutnow?token=TK-ORDER-1" }] });
-      return JSON.stringify({ id: args.id, status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: "TK-CAP-1", status: "COMPLETED" }] } }] });
+      // the real Toolkit wraps a capture as { status: "success", response: <order> }
+      return JSON.stringify({ status: "success", response: { id: args.id, status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: "TK-CAP-1", status: "COMPLETED" }] } }] } });
     },
   };
   return { toolkit, calls };
@@ -33,7 +34,7 @@ describe("reinsGate: Reins decides, the Agent Toolkit executes", () => {
     const { toolkit, calls } = fakeToolkit();
     const view = await reinsGate(ctx, agent, toolkit, call("statista.com", "20.00"));
     expect(calls.map((c) => c.method)).toEqual(["create_order"]);
-    expect(calls[0]!.args).toMatchObject({ currencyCode: "USD", items: [{ quantity: "1", itemCost: "20.00" }] });
+    expect(calls[0]!.args).toMatchObject({ currencyCode: "USD", items: [{ quantity: 1, itemCost: 20, itemTotal: 20 }] });
     expect(view.status).toBe("awaiting_buyer");
     expect(view.amount).toBe("20.00");
     expect(ctx.paypal.calls).not.toContain("createOrder"); // the order came from the Toolkit, not Reins' direct call
@@ -70,10 +71,20 @@ describe("reinsGate: Reins decides, the Agent Toolkit executes", () => {
     await expect(reinsGate(ctx, agent, broken, call("statista.com", "0"))).rejects.toThrow(/payable amount/);
   });
 
-  it("captures an approved order through the Toolkit capture_order", async () => {
+  it("captures an approved order through the Toolkit pay_order tool (unwraps its response)", async () => {
     const { toolkit, calls } = fakeToolkit();
     const out = await captureViaToolkit(toolkit, "TK-ORDER-1");
-    expect(calls[0]).toEqual({ method: "capture_order", args: { id: "TK-ORDER-1" } });
+    expect(calls[0]).toEqual({ method: "pay_order", args: { id: "TK-ORDER-1" } });
     expect(out.captureId).toBe("TK-CAP-1");
+  });
+
+  it("turns the Toolkit's non-throwing error results into errors (no false success)", async () => {
+    const refused: ToolkitLike = { run: async () => JSON.stringify({ ok: false, status: 422, code: "PAYPAL_API_HTTP_ERROR", message: "Payer has not yet approved the Order for payment." }) };
+    await expect(captureViaToolkit(refused, "ORDER-1")).rejects.toThrow(/not yet approved/);
+    const invalid: ToolkitLike = { run: async () => JSON.stringify({ error: { message: "itemTotal Required", type: "paypal_error" } }) };
+    const ctx = await createTestContext();
+    await setMode(ctx, "supervised");
+    const { agent } = await seedAgent(ctx);
+    expect((await reinsGate(ctx, agent, invalid, call("statista.com", "20.00"))).status).toBe("failed");
   });
 });

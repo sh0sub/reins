@@ -162,18 +162,18 @@ Skyfire and card-network agent tokens address agent payments too. Reins differs 
 | AI audit with a written explanation | Yes, Claude, advisory on top of the rules | No | No |
 | Human one-tap approval (Telegram / web) | Yes | Varies | No |
 | Open source, MCP, PayPal-native | Yes, MIT-style repo, MCP server | Mostly closed, separate wallet or rails | Open source, PayPal-native |
-| Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (fake-Toolkit unit tests) | n/a | This is the layer being gated |
+| Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (run against the real Toolkit in the sandbox; unit tests too) | n/a | This is the layer being gated |
 
-**Works with the PayPal Agent Toolkit (opt-in, unit-tested with a fake Toolkit).** By default Reins creates the sandbox order itself. With the adapter in `packages/core/src/pay/toolkit.ts`, an approved request is created and captured through the Toolkit's `create_order` and `capture_order`; a denied or held request never reaches the Toolkit. It has not been run against the real `@paypal/agent-toolkit` package, and it supports approval-link (supervised) orders only, because the Toolkit's `create_order` has no `vault_id` option.
+**Works with the PayPal Agent Toolkit (opt-in, run against the real package in the sandbox).** By default Reins creates the sandbox order itself. With the adapter in `packages/core/src/pay/toolkit.ts`, an approved request is created through the Toolkit's `create_order` and captured with its `pay_order`; a denied or held request never reaches the Toolkit. Verified with `@paypal/agent-toolkit` 1.11.0 in the PayPal sandbox (`scripts/demo/toolkit-gate-run.mjs`, log in [docs/spikes/d5-toolkit-gate.md](docs/spikes/d5-toolkit-gate.md)): the approved request created a sandbox order through the Toolkit and the denied one made 0 Toolkit calls. The Toolkit capture call was refused by PayPal (HTTP 422) because the buyer had not approved on the sandbox login page, so a completed capture through the Toolkit is not shown. It supports approval-link (supervised) orders only, because the Toolkit's `create_order` has no `vault_id` option.
 
 ```ts
 import { reinsGate } from "@reins/core";
 
-// `toolkit` is any object with run(method, args), such as the Agent Toolkit's PayPalAPI (shape assumed from its docs).
+// `toolkit` is any object with run(method, args), such as the PayPalAPI from `new PayPalMCPToolkit(...).getPaypalAPIService()`.
 // The agent wants the Toolkit to create an order; Reins checks its mandate first.
 const view = await reinsGate(ctx, agent, toolkit, {
   tool: "create_order",
-  args: { currencyCode: "USD", items: [{ name: "Market report", quantity: "1", itemCost: "20.00" }] },
+  args: { currencyCode: "USD", items: [{ name: "Market report", quantity: 1, itemCost: 20, itemTotal: 20 }] },
   merchant: "statista.com",
   reason: "User asked for a market research report",
 });

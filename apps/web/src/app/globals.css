@@ -507,7 +507,17 @@ select.select-version { width: auto; min-width: 150px; font-weight: 700; color: 
 /* C2-7: one tap on a phone. The approve bar is pinned to the bottom of the viewport the whole time the pending request is on screen,
    so Approve $X is visible without scrolling past the queue and the mandate check. The page gets bottom padding so nothing hides behind it. */
 .act-who { display: none; }
+/* P1: on desktop the same bar sticks to the bottom of the viewport while the detail panel is on screen, so Approve and Deny stay
+   visible at 1440x900 without scrolling past the activity log. It spans the panel edge to edge and the panel clips its corners. */
+.act-keys { margin-left: auto; display: inline-flex; gap: var(--sp-3); align-items: center; }
+@media (min-width: 720px) {
+  .panel:has(> .act-bar) { overflow: clip; padding-bottom: 0; }
+  .act-bar { position: sticky; bottom: 0; z-index: 4; background: var(--panel); border-top: 1px solid var(--line); box-shadow: 0 -8px 16px -12px rgba(0, 20, 53, 0.25);
+    margin: 0 calc(-1 * var(--component-panel-padding)); padding: var(--sp-3) var(--component-panel-padding); gap: var(--sp-2); }
+  .act-bar .act-note:not(.act-keys) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 @media (max-width: 719px) {
+  .act-keys { display: none; }
   .main:has(.act-bar) { padding-bottom: 168px; }
   .act-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; gap: var(--sp-2); background: var(--panel); border-top: 1px solid var(--line); box-shadow: 0 -8px 16px -12px rgba(0, 20, 53, 0.3);
     padding: var(--sp-2) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom)); max-height: 70vh; overflow-y: auto; }
