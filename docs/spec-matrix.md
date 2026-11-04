@@ -126,3 +126,11 @@ Audit round 8 confirmation pass (R8c-* rows). Second fresh temp-DB seed, `PAYPAL
 | R8c-win-ledger-unknown-id | S6 | /ledger/R-9999 tells the user the request does not exist | match | polish fix: red alert "Request R-9999 not found..." above the ledger (ledger/page.tsx, isUnknownRequest in lib/format.ts, test in apps/web/test/shell.test.ts; polish/r9999-390.png) |
 | POLISH-dev-404 | Shell | No unidentified 404 on /ledger | match | the 404 was the browser /favicon.ico request (no icon defined); added app/icon.svg, now /ledger loads with zero 4xx (CDP network log) |
 | POLISH-nf-390 | Shell | 404 page at 390 matches the mobile shell | match | root cause: at <=949px .shell is a single-column grid with min-height 100vh, and the implicit auto rows stretched, so the sticky icon nav row grew to ~280px on short pages (404, empty states); fixed with grid-template-rows: auto minmax(0, 1fr); 390/720/1440 re-shot twice, nav at top (scratchpad converge/reins/polish2/nf1-390.png) |
+
+Cycle 1 (win-cycle) rows.
+
+| id | artifact section | expected | status | evidence |
+|---|---|---|---|---|
+| C1-R1-devpost-lead | Submission | Devpost opens with pitch, PayPal API table with real-vs-fake status, one Limits list | match | docs/submission/devpost.md top; statuses from docs/spikes/d2, d3 |
+| C1-A10-apimatic | Submission | No internal APIMatic warning in paste-ready text | match | moved to docs/submission/internal-notes.md; devpost.md keeps Agentic Commerce, AG Grid, Render |
+| C1-video-narration | Video | Spoken text has no tool names; names stay on screen (bullets, terminal cards); overview ends with 20 approvals saved | match | video-shots.mjs; matches the on-screen Overview card "Saved you 20 approvals" (Auto 19 + Human 4 + Blocked 1 = 24 requests) |

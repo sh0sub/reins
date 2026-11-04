@@ -16,9 +16,10 @@
 | Try it out 링크: 라이브 URL | 남음-사용자 계정 필요 | Render 배포 뒤 실제 주소로 교체(`reins-web.onrender.com` 자리표시) |
 | Try it out 링크: MCP 주소 | 남음-사용자 계정 필요 | 배포 뒤 확인(`reins-mcp.onrender.com/mcp`) |
 | 영상 링크 | 남음-사용자 계정 필요 | YouTube 업로드 후 URL |
+| Devpost 첫머리 3줄 피치, PayPal API 표(실제 샌드박스/가짜 구분), 단일 "Limits" 목록 | 완료 | R1 (devpost.md 상단) |
 | For judges 2분 체험 블록 | 완료 | 웹 승인함(텔레그램 없이), MCP 설정 스니펫 포함 |
 | 스폰서상 체크박스: Agentic Commerce, AG Grid, Render | 남음-사용자 계정 필요 | 폼에서 체크(문단은 devpost.md에 있음) |
-| 스폰서상 체크박스: APIMatic | 남음-Claude | 저장소에 사용 증거 없음. 아래 "APIMatic" 참고. 증거 없으면 체크하지 않는다 |
+| 스폰서상 체크박스: APIMatic | 남음-Claude | 저장소에 사용 증거 없음. 아래 "APIMatic" 참고(경고문은 `docs/submission/internal-notes.md`로 옮김, devpost.md에는 없음). 증거 없으면 체크하지 않는다 |
 | Devpost 폼 제출 | 남음-사용자 계정 필요 | 제출 후 수정 금지 |
 
 ## 저장소

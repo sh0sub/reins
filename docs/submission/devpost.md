@@ -4,6 +4,32 @@ Test count at time of writing: 224 tests in 32 files (`pnpm test`), `pnpm lint` 
 
 ---
 
+## Pitch (put this first in "What it does" / the opening of the story)
+
+A web page told my AI agent to buy a $450 logo. Reins blocked it: three hard rules failed in plain code before the AI auditor even weighed in, and nothing was charged.
+Reins gives every agent its own PayPal wallet with a leash (monthly cap, auto-approve limit, allowed merchants), served as an open-source MCP server.
+On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 small, in-policy purchases paid themselves and only the over-limit ones went to a human, with one-tap approval on web or Telegram.
+
+### PayPal APIs used (all called from `packages/core`)
+
+| PayPal API | What Reins uses it for | Status |
+|---|---|---|
+| Orders v2 (`/v2/checkout/orders`, capture, `PayPal-Request-Id`) | Pay an approved request | Real sandbox: spike `docs/spikes/d2-payment.md`, COMPLETED captures. The demo video uses the fake client |
+| Vault (`store_in_vault = ON_SUCCESS`, reorder with `vault_id`) | Save the buyer's PayPal once, then pay unattended | Real sandbox: VAULTED, reorder without the buyer. Video: fake client |
+| Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Real sandbox: $1.00 batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`) |
+| Webhooks (`verify-webhook-signature`) | Verify every PayPal event before storing it | Real sandbox: real and simulated events verified, forged request returns 401 (needs a public URL, so not exercised in the video) |
+| Transaction Search (`/v1/reporting/transactions`) | Reconcile every capture against PayPal's records | Implemented and unit/integration tested; the sandbox app needs the Transaction Search feature enabled, and the video reconcile uses the fake client |
+
+### Limits (read before judging)
+
+- The demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor. The real sandbox calls are in the spikes above.
+- `@reins/mcp` is not published to npm; use the clone-based stdio config or the hosted HTTP endpoint.
+- Free Render instances sleep after about 15 minutes and reset; open the live URL once and wait about a minute.
+- AG Grid Enterprise runs in trial mode (no licence key), so the public deploy may show the trial watermark and a console notice.
+- Sandbox only; no live PayPal onboarding.
+
+---
+
 ## Project name
 
 Reins
@@ -99,7 +125,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 
 ## For judges: try it in 2 minutes
 
-No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. Two honest notes: `@reins/mcp` is not published to npm yet, so the Agents screen shows the clone-based stdio config (replace the placeholder path with your checkout); the Claude Code HTTP command below also works. And the demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor; the real PayPal sandbox calls are covered by the spikes in `docs/spikes/` and the sandbox take described in `docs/demo-checkpoint.md`.
+No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. The Agents screen shows the clone-based stdio config (replace the placeholder path with your checkout); the Claude Code HTTP command below also works. See "Limits" above.
 
 1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents on a fresh seed; the video shows $176.97 of $410 after approving the $59 Statista request.
 2. `/setup` then **Use demo merchant (sandbox)** connects the server's sandbox merchant, so the full flow works without your own PayPal keys.
@@ -133,13 +159,7 @@ Reins is the control layer PayPal's supervised/automatic split implies: per-agen
 
 ### AG Grid
 
-The ledger is the product's audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows showing the full decision record (mandate check, auditor verdict and reason, budget left, PayPal order and capture), and Set filters, with AG Charts for spend per agent and the overview category donut. A blocked request deep-links into its expanded ledger row and offers one-click "Tighten mandate". The demo video shows grouping, drill-down and the chart. Reins uses AG Grid Enterprise in trial mode (no licence key): the gallery screenshots and video were captured on localhost, where no watermark appeared in the frames checked, but the public deploy may show the Enterprise trial watermark and a console notice.
-
-### APIMatic
-
-**Do not tick this box unless the evidence below exists.** Repo search found APIMatic only in planning docs (docs/plan.md, issues #21 and #41): the plan was to develop with Claude Code plus the APIMatic PayPal Context Plugin (`npx context-plugins install paypal`) and document it in a README section and the commit log. There is no APIMatic usage recorded in the code, commit history or README, and Reins calls PayPal over plain REST, not the PayPal Server SDK. To claim it honestly we need: install the plugin, use it for at least one real task (for example generating or checking the Orders v2 / Payouts calls), commit a short "Built with the APIMatic Context Plugin" note with what it changed, then paste that into this paragraph.
-
-Draft paragraph (use only after that is done): "We developed Reins with Claude Code and the APIMatic PayPal Context Plugin, which gave the coding agent accurate PayPal API context while we wrote the Orders v2 vault flow and Payouts client. Notes and examples are in the README section 'Built with APIMatic'."
+The ledger is the product's audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows showing the full decision record (mandate check, auditor verdict and reason, budget left, PayPal order and capture), and Set filters, with AG Charts for spend per agent and the overview category donut. A blocked request deep-links into its expanded ledger row and offers one-click "Tighten mandate". The demo video shows grouping, drill-down and the chart.
 
 ### Render
 

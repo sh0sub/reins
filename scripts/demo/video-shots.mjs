@@ -55,7 +55,7 @@ export const SEGMENTS = [
     chip: "Per-agent key + versioned mandate",
     bullets: ["Monthly cap", "Auto-approve limit", "Hard cap per purchase", "Allowed / blocked merchants", "Agents connect over MCP"],
     lines: [
-      "Agents can already pay, but it's all or nothing.",
+      "Agents can pay now, but it's all or nothing.",
       "Reins gives each agent its own key and a versioned mandate: a monthly cap, an auto-approve limit, a per-purchase cap, and allowed merchants.",
       ["Agents connect to Reins over MCP, from Claude Desktop, Claude Code, or a cron job.", "Agents connect to Reins over M C P, from Claude Desktop, Claude Code, or a cron job."],
     ],
@@ -81,9 +81,9 @@ export const SEGMENTS = [
     chip: "PayPal Orders v2 · vaulted payment",
     bullets: ["Hard rules: PASS", "Auditor: AUTO_APPROVE, risk 1", "$12.98 ≤ $30 auto-approve limit", "No human needed"],
     lines: [
-      ["The DevOps agent renews a domain through the MCP tool request_purchase.", "The DevOps agent renews a domain through the M C P tool, request purchase."],
+      "The DevOps agent asks Reins for permission to renew a domain.",
       ["Hard rules pass, the auditor scores it risk one, and $12.98 is under the auto-approve limit.", "Hard rules pass, the auditor scores it risk one, and 12 dollars 98 is under the auto-approve limit."],
-      ["So Reins pays right away with PayPal Orders v2, using the PayPal account saved once with store_in_vault.", "So Reins pays right away with PayPal Orders V2, using the PayPal account saved once with store in vault."],
+      "So Reins pays right away through PayPal, using the account I saved once.",
     ],
     prep: [
       { nav: "/ledger", wait: gridReady },
@@ -109,12 +109,12 @@ export const SEGMENTS = [
     bullets: ["$59 > $25 auto-approve limit", "Agent gets pending_human", "Also allow this merchant → mandate v2", "Receipt back over MCP"],
     lines: [
       ["Next, the research agent wants a $59 report.", "Next, the research agent wants a 59 dollar report."],
-      ["That's over its $25 limit, so the agent gets pending_human, and the request lands in my inbox in real time.", "That's over its 25 dollar limit, so the agent gets pending human, and the request lands in my inbox in real time."],
+      ["That's over its $25 limit, so the agent is told to wait for a human, and the request lands in my inbox in real time.", "That's over its 25 dollar limit, so the agent is told to wait for a human, and the request lands in my inbox in real time."],
       "I see the mandate check, the auditor's risk score, and the budget left after this purchase.",
       "The same approval card goes to my phone on Telegram.",
       ["I tick “also allow statista.com” and tap Approve.", "I tick also allow statista dot com, and tap Approve."],
       ["Reins pays, and saves mandate version two: statista.com, up to $59, now skips approval.", "Reins pays, and saves mandate version two: statista dot com, up to 59 dollars, now skips approval."],
-      ["The agent polls get_request_status and gets its receipt.", "The agent polls get request status, and gets its receipt."],
+      "The agent checks back, and gets its receipt.",
     ],
     prep: [{ nav: "/inbox", wait: bodyHas("Approvals") + " && " + bodyHas("pending") }, { sleep: 1.0 }],
     actions: [
@@ -210,8 +210,8 @@ export const SEGMENTS = [
     chip: "Open source MCP server · TypeScript",
     bullets: ["Orders v2 + store_in_vault", "Payouts (treasury mode)", "Webhooks verify-signature", "Transaction Search reconcile", "Claude auditor · AG Grid ledger"],
     lines: [
-      ["Under the hood: Orders v2 with vaulted payments, Payouts for a prefunded treasury mode, and webhooks checked with verify-signature.", "Under the hood: Orders V2 with vaulted payments, Payouts for a prefunded treasury mode, and webhooks checked with verify signature."],
-      "A nightly job matches every capture against Transaction Search.",
+      "Under the hood: PayPal's Orders API with saved payment methods, Payouts for a treasury mode, and verified webhooks.",
+      "A nightly job matches every capture against PayPal's own transaction records.",
       ["Claude audits each request after the hard rules, and every decision lands in an AG Grid ledger.", "Claude audits each request after the hard rules, and every decision lands in an A G Grid ledger."],
     ],
     prep: [
@@ -239,7 +239,8 @@ export const SEGMENTS = [
     chip: "Caps · decisions · weekly summary",
     lines: [
       ["This month: $176.97 of $410 across three agents, and every decision by outcome.", "This month: 176 dollars 97, of 410, across three agents, and every decision by outcome."],
-      "Plus a weekly summary that Claude writes from aggregate numbers when an API key is set.",
+      "Claude also writes a weekly summary from these numbers.",
+      "Reins saved 20 approvals while blocking the one bad purchase.",
     ],
     prep: [{ nav: "/overview", wait: bodyHas("at a glance") + " && " + bodyHas("AI weekly summary") + " && !document.querySelector('.skeleton')" }, { sleep: 1.5 }],
     actions: [{ sleep: 0.6 }, { at: 1, plus: 0.2 }, { scroll: { y: 380 }, dur: 1.4 }],
