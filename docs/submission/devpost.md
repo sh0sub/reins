@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 241 tests in 35 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 241 tests in 36 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
