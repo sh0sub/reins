@@ -39,13 +39,36 @@ const resultBlock = (r, keys) =>
 
 export const SEGMENTS = [
   {
+    // Opens on the payoff: the same two real calls the auto and deny segments re-send later (idempotent client_request_id).
+    id: "payoff",
+    kicker: "The payoff",
+    heading: "Paid, or denied",
+    chip: "request_purchase over MCP · PayPal capture",
+    bullets: ["Domain renewal: paid, PayPal receipt", "$450 logo from a web page: DENIED", "Agents pay with PayPal. You hold the reins."],
+    lines: [
+      "Agents pay with PayPal. You hold the reins.",
+      "A domain renewal: paid through PayPal, with a capture receipt.",
+      ["A web page orders a $450 logo: denied.", "A web page orders a 450 dollar logo: denied."],
+    ],
+    prep: [{ nav: "/ledger", wait: gridReady }, { sleep: 0.8 }],
+    actions: [
+      { term: () => ({ title: `${AGENT_DEVOPS} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A1) + `<div class="c dim">…</div>` }) },
+      { mcp: { as: AGENT_DEVOPS, tool: "request_purchase", args: A1, save: "a1" } },
+      { at: 1 },
+      { term: (v) => ({ title: `${AGENT_DEVOPS} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A1) + resultBlock(v.a1, ["display_id", "status", "decision", "receipt"]) }) },
+      { at: 2 },
+      { term: () => ({ title: `${AGENT_SCOUT} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A3) + `<div class="c dim">…</div>` }) },
+      { mcp: { as: AGENT_SCOUT, tool: "request_purchase", args: A3, save: "a3" } },
+      { term: (v) => ({ title: `${AGENT_SCOUT} · Reins MCP (Streamable HTTP)`, body: callBlock("request_purchase", A3) + resultBlock(v.a3, ["display_id", "status", "decision", "risk"]) }) },
+      { sleep: 1.0 },
+      { term: null },
+      { sleep: 0.3 },
+    ],
+  },
+  {
     id: "hook",
     card: "hook",
-    lines: [
-      "I let AI agents renew my domains, buy research, and restock my desk.",
-      ["Then a web page told one of them to buy a $450 logo.", "Then a web page told one of them to buy a 450 dollar logo."],
-      "Nothing was charged. Here's why.",
-    ],
+    lines: ["Nothing was charged. Here's why."],
     actions: [],
   },
   {
@@ -55,23 +78,17 @@ export const SEGMENTS = [
     chip: "Per-agent key + versioned mandate",
     bullets: ["Monthly cap", "Auto-approve limit", "Hard cap per purchase", "Allowed / blocked merchants", "Agents connect over MCP"],
     lines: [
-      "Agents can pay now, but it's all or nothing.",
-      "Reins gives each agent its own key and a versioned mandate: a monthly cap, an auto-approve limit, a per-purchase cap, and allowed merchants.",
-      ["Agents connect to Reins over MCP, from Claude Desktop, Claude Code, or a cron job.", "Agents connect to Reins over M C P, from Claude Desktop, Claude Code, or a cron job."],
+      ["Each agent gets its own key and a versioned mandate: caps, limits and allowed merchants, all over MCP.", "Each agent gets its own key and a versioned mandate: caps, limits and allowed merchants, all over M C P."],
     ],
     prep: [{ nav: "/agents", wait: bodyHas("Agents & mandates") + " && " + bodyHas("Monthly cap") + " && " + gridless }, { sleep: 1.0 }],
     actions: [
-      { sleep: 1.2 },
-      { at: 1, plus: 0.2 },
+      { sleep: 0.9 },
       { tap: { sel: "button.pick", text: "Claude Code – DevOps" } },
       { wait: "document.querySelector('textarea')?.value.includes('dev infrastructure')" },
-      { at: 1, plus: 3.8 },
+      { sleep: 1.6 },
       { tap: { sel: "button.pick", text: "Research Scout" } },
       { wait: "document.querySelector('textarea')?.value.includes('market research')" },
-      { at: 1, plus: 6.2 },
       { scroll: { y: 380 }, dur: 1.2 },
-      { at: 2, plus: 1.5 },
-      { scroll: { y: 0 }, dur: 1.0 },
     ],
   },
   {
@@ -84,6 +101,7 @@ export const SEGMENTS = [
       "The DevOps agent asks Reins for permission to renew a domain.",
       ["Hard rules pass, the auditor scores it risk one, and $12.98 is under the auto-approve limit.", "Hard rules pass, the auditor scores it risk one, and 12 dollars 98 is under the auto-approve limit."],
       "So Reins pays right away through PayPal, using the account I saved once.",
+      "And here is the receipt, with the PayPal capture ID.",
     ],
     prep: [
       { nav: "/ledger", wait: gridReady },
@@ -98,7 +116,8 @@ export const SEGMENTS = [
       { wait: bodyHas("reins.dev domain renewal") },
       { at: 2, plus: 1.0 },
       { term: null },
-      { sleep: 0.4 },
+      { at: 3 },
+      { nav: "/receipts/{a1.request_id}", wait: bodyHas("12.98") + " && !document.querySelector('.skeleton')" },
     ],
   },
   {
@@ -146,7 +165,7 @@ export const SEGMENTS = [
     kicker: "Act 3 · Blocked",
     heading: "Prompt injection, stopped",
     chip: "Rules first, then the AI auditor explains",
-    bullets: ["Over the $100 per-purchase cap", "Only $32 of $100 left this month", "fiverr.com is not on the allow list", "Nothing was charged"],
+    bullets: ["Over the $100 per-purchase cap", "Over the monthly cap too", "fiverr.com is not on the allow list", "Nothing was charged"],
     lines: [
       "Then a web page tells the agent to buy a premium logo, now, without asking.",
       ["It requests $450 on fiverr.com. Denied.", "It requests 450 dollars on Fiverr dot com. Denied."],
@@ -248,12 +267,7 @@ export const SEGMENTS = [
   {
     id: "close",
     card: "close",
-    lines: [
-      "PayPal already separates supervised from automatic agent payments.",
-      "Reins is where you decide which is which: per agent, per dollar.",
-      "Unlike standalone agent wallets or card-network agent tokens, it runs on the PayPal account you already have, plugs into any MCP agent in minutes, and keeps a human one tap away.",
-      ["Open source, MIT licensed.", "Open source, M I T licensed."],
-    ],
+    lines: [["Reins. Per agent, per dollar. Open source, MIT licensed.", "Reins. Per agent, per dollar. Open source, M I T licensed."]],
     actions: [],
   },
 ];

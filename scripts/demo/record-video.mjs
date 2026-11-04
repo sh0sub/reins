@@ -712,7 +712,7 @@ function encode() {
     return s.start + Math.min(s.cues[cue].start + plus, s.duration - 0.1);
   };
   mkdirSync(SHOTS, { recursive: true });
-  frame(at("hook", 2, 1.0), path.join(SHOTS, "01-title.png"));
+  frame(at("hook", 0, 1.0), path.join(SHOTS, "01-title.png"));
   frame(at("ask", 1, 2.0), path.join(SHOTS, "04-agent-request-over-mcp.png"));
   frame(at("deny", 1, 2.2), path.join(SHOTS, "06-prompt-injection-blocked.png"));
   return total;

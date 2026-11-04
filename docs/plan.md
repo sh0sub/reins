@@ -355,7 +355,7 @@ D18 11/12 (목)**제출 KST 20:00 이전**마감까지 9시간 버퍼, 이후 �
 
 여유 규칙: Day 2 결과가 나쁘면 Day 3에 Treasury 확정. Day 10 체크포인트 실패 시 S7·Ask agent·DevOps 에이전트 삭제.
 
-#### 3분 영상 시나리오 (총 2:50)
+#### 3분 영상 시나리오 (초안 2:50; 실제 녹화본은 2:34, 페이오프로 시작 → 훅 카드 3.4초 → … → 엔드 카드 6초. 순서는 scripts/demo/video-shots.mjs 기준)
 
 0:00–0:12**훅.** "I let Claude renew my domains, buy datasets, restock my desk. Last week a web page told it to buy a $450 logo. Here's why nothing was charged." 검은 화면 텍스트 → 로고 1초
 
