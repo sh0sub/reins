@@ -223,7 +223,7 @@ function LedgerScreen() {
 
           <section className="panel panel-tight stack" aria-label="Transactions">
             <div className="row between">
-              <div className="row" role="group" aria-label="Agent filter">
+              <div className="row ledger-f-agents" role="group" aria-label="Agent filter">
                 <button className="chip-btn" aria-pressed={agent === "all"} onClick={() => setAgent("all")}>
                   All agents
                 </button>
@@ -233,7 +233,7 @@ function LedgerScreen() {
                   </button>
                 ))}
               </div>
-              <div className="row">
+              <div className="row ledger-f-ctl">
                 <label className="sr-only" htmlFor="period-f">Period</label>
                 <select id="period-f" className="input" style={{ width: "auto" }} value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
                   {PERIODS.map((p) => (
@@ -254,7 +254,7 @@ function LedgerScreen() {
                   Group by agent
                 </button>
                 <label className="sr-only" htmlFor="ledger-q">Search</label>
-                <input id="ledger-q" className="input" style={{ width: 200 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+                <input id="ledger-q" className="input ledger-q" style={{ width: 200 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
             </div>
             {categories.length > 0 && (

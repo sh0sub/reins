@@ -476,7 +476,18 @@ table.rules thead th { overflow-wrap: normal; }
 /* ---- ledger: 4 KPI tiles across, grid gets the full content width ---- */
 .kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1099px) { .kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 479px) { .kpis-4 { grid-template-columns: minmax(0, 1fr); } }
+/* phones: keep 2x2 tiles with compact type so the AG Grid starts in the first viewport */
+@media (max-width: 479px) {
+  .kpis-4 { gap: var(--sp-2); }
+  .kpis-4 .panel-tight { padding: 12px; gap: 2px; }
+  .kpis-4 .metric { font-size: 20px; }
+  .kpis-4 .caption { font-size: 11px; line-height: 1.3; }
+  /* agent chips scroll sideways in one row; search shares a row with the group toggle */
+  .ledger-f-agents { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -4px; padding: 0 4px; }
+  .ledger-f-agents .chip-btn { flex: none; }
+  .ledger-f-ctl .input { min-height: 40px; }
+  .ledger-f-ctl .ledger-q { flex: 1 1 110px; width: auto !important; min-width: 0; }
+}
 .tagline { margin-top: var(--sp-1); font-weight: 600; color: var(--reins-navy); }
 .side-pp { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; }
 .side-pp .status { margin-left: auto; }

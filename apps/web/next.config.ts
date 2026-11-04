@@ -6,6 +6,8 @@ const config: NextConfig = {
   transpilePackages: ["@reins/core", "@reins/db", "@reins/bot"],
   serverExternalPackages: ["@libsql/client", "libsql", "drizzle-orm", "@anthropic-ai/sdk", "grammy"],
   typedRoutes: false,
+  // "approvals" is the product's own word (Telegram, docs, video); the list lives at /inbox
+  redirects: async () => [{ source: "/approvals", destination: "/inbox", permanent: false }],
   devIndicators: false, // the dev badge would sit on top of the mobile approve bar and shows up in demo recordings
 };
 

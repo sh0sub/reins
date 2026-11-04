@@ -152,7 +152,7 @@ export function SideFoot() {
       </div>
     </div>
   );
-  if (!ws) return <div className="side-foot"><span className="caption">PayPal status unavailable</span>{user}</div>;
+  if (!ws) return <div className="side-foot"><span className="side-pp"><span className="dot" /><b className="label">PayPal Sandbox</b></span><span className="caption">Checking connection…</span>{user}</div>;
   const offline = ws.paypal_env === "fake";
   return (
     <div className="side-foot">

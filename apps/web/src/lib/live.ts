@@ -29,6 +29,8 @@ export interface EventSourceLike {
   onopen: ((e: Event) => void) | null;
 }
 
+export const CONNECT_TIMEOUT_MS = 3_000;
+
 export class LiveConnection {
   private source: EventSourceLike | null = null;
   private listeners = new Set<Listener>();
@@ -38,6 +40,7 @@ export class LiveConnection {
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
   status: LiveStatus = "offline";
 
   constructor(private readonly opts: LiveOptions = {}) {}
@@ -97,7 +100,17 @@ export class LiveConnection {
         this.emit({ type, request });
       });
     }
+    // an open stream is already "live"; the `ready` event only adds the heartbeat length and the resync
+    es.onopen = () => {
+      if (this.status === "connecting" || this.status === "reconnecting") this.setStatus("live");
+    };
     es.onerror = () => this.restart();
+    // never sit on "Connecting…": if neither open nor ready arrives within 3 s, show Offline while retries continue
+    if (this.connectTimer) clearTimeout(this.connectTimer);
+    this.connectTimer = setTimeout(() => {
+      this.connectTimer = null;
+      if (this.source === es && this.status !== "live") this.setStatus("offline");
+    }, CONNECT_TIMEOUT_MS);
     this.watchdog ??= setInterval(() => {
       if (this.source && this.now() - this.lastSeen > this.heartbeatMs * 2.5) this.restart();
     }, 5_000);
@@ -137,6 +150,8 @@ export class LiveConnection {
     this.source = null;
     if (this.watchdog) clearInterval(this.watchdog);
     if (this.retryTimer) clearTimeout(this.retryTimer);
+    if (this.connectTimer) clearTimeout(this.connectTimer);
+    this.connectTimer = null;
     this.watchdog = null;
     this.retryTimer = null;
     this.attempt = 0;

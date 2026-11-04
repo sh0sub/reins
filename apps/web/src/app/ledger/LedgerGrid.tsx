@@ -277,7 +277,9 @@ export function LedgerGrid({
   const apiRef = useRef<GridApi<LedgerRow> | null>(null);
   // phones: keep Agent/time, Item, Amount and Status visible; the rest is one tap away in the row detail and drawer
   // (this component only renders client-side, see the dynamic import with ssr: false)
-  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 719px)").matches);
+  // null until mounted: the first client render matches the server/loading skeleton, then the real layout mounts once (no remount flash)
+  const [narrowState, setNarrow] = useState<boolean | null>(null);
+  const narrow = narrowState === true;
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 719px)");
     const sync = () => setNarrow(mq.matches);
@@ -294,7 +296,7 @@ export function LedgerGrid({
     const ro = new ResizeObserver(([e]) => setRoomy((e?.contentRect.width ?? 1100) >= 1240));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [narrowState !== null]);
   const cols = useMemo<ColDef<LedgerRow>[]>(() => {
     const time: ColDef<LedgerRow> = {
       headerName: "Time",
@@ -352,6 +354,7 @@ export function LedgerGrid({
 
   useEffect(focusRow, [focusRow, rows]);
 
+  if (narrowState === null) return <div className="skeleton" style={{ minHeight: 420 }} />;
   return (
     <div ref={boxRef} style={{ height: narrow ? "calc(100dvh - 140px)" : "calc(100dvh - 190px)", minHeight: 420 }}>
       <AgGridReact<LedgerRow>
