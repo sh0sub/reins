@@ -54,3 +54,7 @@ The adapter was written from the Toolkit's documentation. Running the real packa
 - Only approval-link (supervised) orders: the Toolkit's `create_order` has no `vault_id` option.
 - The sandbox capture was not completed (needs a buyer login); a completed capture through the Toolkit is untested live.
 - The mock auditor was used, so this spike says nothing about audit quality.
+
+## Cycle 5 follow-up: approving the order automatically
+
+Not done. The sandbox buyer's email is in `.env` but its password is not, and the approval step needs that login on the PayPal sandbox page (no API approves an order for the buyer). The 422 above therefore stands. To finish it by hand: open the `approve_url` of an `awaiting_buyer` order, sign in as the sandbox buyer, approve, then call `pay_order` (`captureViaToolkit`) on that order id.

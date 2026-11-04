@@ -33,7 +33,7 @@
 | README 첫 화면 스크린샷·GIF | 완료 | `docs/img/` 개요·승인 카드·요청 드로어·원장 1440/390 PNG 8장 + $450 거절 GIF, README "See it" 섹션 |
 | README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
 | `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
-| 테스트·린트 | 완료 | 238 tests / 35 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
+| 테스트·린트 | 완료 | 239 tests / 35 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 완료 | 2026-11-01 영상 스크립트·문서 갱신 커밋 |
 | `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫도 클론 기반 stdio(`npx -y tsx <경로>/apps/mcp/src/stdio.ts`)로 변경 |
@@ -59,6 +59,7 @@
 | 월 한도 문구 단위 통일 재녹화(C2 UI-1) | 남음 | 하드 룰 문구가 "Spent $9.00 + this $450.00 = $459.00 > $100.00 monthly cap"으로 바뀜. 영상의 R-0143 드로어 프레임이 옛 문구("$91.00 of $100.00 left")라 재녹화 필요 |
 | 데스크톱 승인 바(C4 P1) | 완료 | 1440x900에서 Approve/Deny가 접힘 아래에 있던 문제 수정: 720px 이상에서도 상세 패널 하단에 sticky 바(A/D 힌트). `docs/img/approval-1440.png`·`ledger-1440.png` 재촬영(KPI 타일 보이게 맨 위). 영상의 승인 구간(1440)은 옛 레이아웃이라 재녹화 시 반영됨 |
 | Devpost·README 비교 표(C2 DEV-1) | 완료 | Skyfire/카드 토큰/PayPal Agent Toolkit 표. C3 M4: "Compose: gate the Toolkit" 행 추가, 옵트인 어댑터(`packages/core/src/pay/toolkit.ts`). C4 K1: 실제 `@paypal/agent-toolkit` 1.11.0으로 샌드박스에서 `create_order` 승인 1건 성공·거절 1건 Toolkit 호출 0회 확인(`docs/spikes/d5-toolkit-gate.md`). 캡처(`pay_order`)는 구매자 승인 필요로 PayPal이 422 거절 — 미완료라고 명시. Devpost 표·README 갱신 |
+| 영상 실제/모의 구분표(C5 M4) | 남음-최종 컷 후 | 최종 컷이 나오면 mm:ss 구간을 채울 것. 지금 확정된 구분: 모의(가짜 PayPal 클라이언트·오프라인 감사기) = 훅, 자동 결제, 한도 초과 승인, $450 거절, 원장, 엔드 카드 / 실제(PayPal 샌드박스 + 실제 Claude) = 'REAL RUN' 배지 구간 하나(약 10초, 별도 녹화) / Telegram 카드 = 실제 봇의 카드 텍스트를 패널로 표시. 실제 구간 mm:ss: __:__–__:__ |
 | 영상 설명 정합(C3 M6) | 남음-재녹화 후 | Devpost "Limits"·README가 "본편은 가짜 PayPal 클라이언트, 'REAL RUN' 배지 구간(약 10초)만 실제 샌드박스"라고 적음. 재녹화 뒤 해당 구간의 정확한 초(mm:ss-mm:ss)를 여기와 Devpost Limits에 채울 것 |
 | 영어 전용 화면(C3 M5) | 완료 | 승인·위험 카드·원장·드로어에서 한국어 reasonKo는 `<html lang="ko">` 또는 `?lang=ko`일 때만 표시(데이터는 유지). docs/img 4장 재촬영. 영상은 재녹화 필요 |
 | 공유 링크 안전(C3 M5) | 완료 | `/approvals/R-0143`(이미 결정됨)은 "already decided (Blocked)"+결정 기록 링크, 없는 id는 "Request not found", 승인 바 숨김, 탭 제목 반영 |

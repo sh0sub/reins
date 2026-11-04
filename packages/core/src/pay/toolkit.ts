@@ -7,8 +7,8 @@ import type { Agent } from "@reins/db";
  * Opt-in composition with the PayPal Agent Toolkit (@paypal/agent-toolkit): Reins decides, the Toolkit executes.
  *
  * Reins stays the policy layer (mandate, hard rules, Claude audit, human approval, ledger). When a request is
- * approved, the PayPal order is created and captured by calling the Toolkit's own `create_order` and
- * `capture_order` tools instead of Reins' direct Orders v2 calls. A call the gate does not approve never reaches
+ * approved, the PayPal order is created (and captured once the buyer has approved it) by calling the Toolkit's own `create_order` and
+ * `pay_order` (capture) tools instead of Reins' direct Orders v2 calls. A call the gate does not approve never reaches
  * the Toolkit.
  *
  * Verified: unit tests with a fake Toolkit (packages/core/test/toolkit.test.ts) cover the gate, the call shape
@@ -112,7 +112,7 @@ export async function reinsGate(ctx: ReinsContext, agent: Agent, toolkit: Toolki
   return submitPurchase(withToolkit(ctx, toolkit), agent, input);
 }
 
-/** Capture an order the buyer approved, through the Toolkit's capture_order. */
+/** Capture an order the buyer approved, through the Toolkit's `pay_order` tool. */
 export async function captureViaToolkit(toolkit: ToolkitLike, orderId: string) {
   const order = unwrapCapture(parseResult(await toolkit.run(CAPTURE_TOOL, { id: orderId })));
   return { order, captureId: firstCapture(order)?.id };

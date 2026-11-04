@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 238 tests in 35 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 239 tests in 35 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
@@ -9,6 +9,12 @@ Test count at time of writing: 238 tests in 35 files (`pnpm test`), `pnpm lint` 
 A web page told my AI agent to buy a $450 logo. Reins blocked it: three hard rules failed in plain code before the AI auditor even weighed in, and nothing was charged.
 Reins gives every agent its own PayPal wallet with a leash (monthly cap, auto-approve limit, allowed merchants), served as an open-source MCP server.
 On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 small, in-policy purchases paid themselves and only the over-limit ones went to a human, with one-tap approval on web or Telegram.
+
+**Verified in the real PayPal sandbox** (ids from `docs/spikes/`):
+- Orders v2 order `04X61877K0529583E` COMPLETED, capture `03A015968J4767410`, buyer's PayPal vaulted.
+- Buyer-absent re-order with only a `vault_id`: order `880199579M655730R` COMPLETED.
+- Payouts batch `UALE8USQRMHYW`: batch and item SUCCESS; the signed `PAYMENT.PAYOUTS-ITEM.SUCCEEDED` webhook was verified, a forged one got 401.
+- Agent Toolkit 1.11.0: `create_order` made sandbox order `3KE34883913235318` after Reins approved it; a $450 request made 0 Toolkit calls. Toolkit capture (`pay_order`) was refused with HTTP 422 until a buyer approves, so it is not shown as completed.
 
 **Why it matters for PayPal merchants**
 - A business that lets an agent pay from its PayPal account today hands over one credential with no per-agent limit; Reins puts a per-agent mandate and a human approval in front of every Orders v2 call.
@@ -68,7 +74,7 @@ Existing "agent wallet" products (Skyfire, card-network agent tokens) solve part
 | Open source, MCP, PayPal-native | Yes, MIT-style repo, MCP server | Mostly closed, separate wallet or rails | Open source, PayPal-native |
 | Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (run against the real Toolkit in the sandbox; unit tests too) | n/a | This is the layer being gated |
 
-**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal payments. By default Reins creates the sandbox order itself; with the opt-in adapter (`packages/core/src/pay/toolkit.ts`, example in the README) an approved request is created and captured through the Toolkit's `create_order` and `capture_order`, and a denied or held request never reaches the Toolkit. Run against the real `@paypal/agent-toolkit` 1.11.0 in the sandbox (`docs/spikes/d5-toolkit-gate.md`): the approved request created a PayPal order through the Toolkit's `create_order`, the denied one made zero Toolkit calls. The Toolkit's capture tool (`pay_order`) was called but PayPal refused it until the buyer approves on the sandbox login page, so a completed capture through the Toolkit is not shown. Only approval-link (supervised) orders are supported.
+**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal payments. By default Reins creates the sandbox order itself; with the opt-in adapter (`packages/core/src/pay/toolkit.ts`, example in the README) an approved request is created through the Toolkit's `create_order` (its capture tool `pay_order` is wired, but a completed capture is not shown), and a denied or held request never reaches the Toolkit. Run against the real `@paypal/agent-toolkit` 1.11.0 in the sandbox (`docs/spikes/d5-toolkit-gate.md`): the approved request created a PayPal order through the Toolkit's `create_order`, the denied one made zero Toolkit calls. The Toolkit's capture tool (`pay_order`) was called but PayPal refused it until the buyer approves on the sandbox login page, so a completed capture through the Toolkit is not shown. Only approval-link (supervised) orders are supported.
 
 ## What it does
 
@@ -104,7 +110,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 
 **Render.** A Blueprint (`render.yaml`) deploys two free web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and demo data is re-seeded on every boot, so the demo always starts clean (free instances sleep after about 15 minutes and reset).
 
-**Testing.** 238 Vitest tests across 35 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
+**Testing.** 239 Vitest tests across 35 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
 
 ## Challenges we ran into
 
@@ -119,7 +125,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 - The $450 prompt-injection purchase is blocked by three independent hard rules before the AI even weighs in, and the demo video shows it end to end over real MCP calls.
 - The same approval works from the web inbox and Telegram, and "Approve + always allow" turns one human decision into a new versioned mandate.
 - A judge can try it with no keys: fake PayPal mode, mock auditor, seeded data, or point their own Claude at the hosted MCP server.
-- 238 passing tests, clean typecheck and lint.
+- 239 passing tests, clean typecheck and lint.
 
 ## What we learned
 
