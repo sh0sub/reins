@@ -391,6 +391,8 @@ table.rules thead th { overflow-wrap: normal; }
 .key-mask { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--semantic-radius-pill); }
 .nowrap { white-space: nowrap; }
 @media (max-width: 1149px) { .empty-side { display: none; } }
+/* A shared link that points at a decided or unknown request: shown above the queue on narrow screens so it is the first thing read. */
+@media (max-width: 1149px) { .linked-note { order: -1; } }
 
 /* ---- shell additions: sandbox badge, workspace, agents list, user block ---- */
 .brand small { display: none; }

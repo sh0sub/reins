@@ -85,3 +85,27 @@ export function isUnknownRequest(rows: Array<Pick<LedgerRow, "display_id" | "req
 
 /** "Nov 4, 17:42": short enough for a 128 px ledger column (or a phone card line) without an ellipsis. */
 export const shortTime = (v: string | number | Date | null | undefined): string => (v ? new Date(v).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "");
+
+/** Korean audit text is kept in the data but shown only for a Korean locale (<html lang="ko"> or ?lang=ko). The product UI is English. */
+export function showKo(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.lang.toLowerCase().startsWith("ko") || new URLSearchParams(window.location.search).get("lang") === "ko";
+}
+
+/**
+ * What a shared link (?r=R-0143 or an internal id) points at. A link never falls back to another request:
+ * "pending" is approvable, "decided" is read-only, "missing" means the id is unknown, "none" means no link.
+ */
+export function linkedRequest<P extends Pick<LedgerRow, "display_id" | "request_id">, D extends Pick<LedgerRow, "display_id" | "request_id">>(
+  pending: P[],
+  decided: D[] | null,
+  id: string | null,
+): { kind: "none" } | { kind: "pending"; row: P } | { kind: "decided"; row: D } | { kind: "missing" } | { kind: "unknown-yet" } {
+  if (!id) return { kind: "none" };
+  const hit = (r: { display_id: string; request_id: string }) => r.request_id === id || r.display_id.toLowerCase() === id.toLowerCase();
+  const p = pending.find(hit);
+  if (p) return { kind: "pending", row: p };
+  if (decided === null) return { kind: "unknown-yet" };
+  const d = decided.find(hit);
+  return d ? { kind: "decided", row: d } : { kind: "missing" };
+}

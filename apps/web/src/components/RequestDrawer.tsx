@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { RequestDetail, TimelineStep } from "@reins/core";
 import { api } from "@/lib/api";
-import { statusChip } from "@/lib/format";
+import { showKo, statusChip } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 
 /** "13:58:02.104" (local), with "Nov 10 " in front when the step is on another day than the request. */
@@ -297,7 +297,7 @@ export function RequestDrawer({ requestId, onClose, onChanged }: { requestId: st
                     ) : (
                       <>
                         <p>{detail.auditor?.reason_en ?? row.reason ?? "No auditor reason."}</p>
-                        {detail.auditor?.reason_ko && (
+                        {showKo() && detail.auditor?.reason_ko && (
                           <p className="caption" lang="ko">
                             {detail.auditor.reason_ko}
                           </p>

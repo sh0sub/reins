@@ -8,7 +8,7 @@ Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, A
 
 Note: the ledger uses AG Grid Enterprise in trial mode (no licence key; set `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` to remove the trial watermark). A public deploy may show the watermark.
 
-- Demo video: _YouTube link (to add after upload)_. Under 3 minutes; recorded locally on a scratch database with the fake PayPal client, the offline stand-in for the Claude auditor and Telegram off (the Telegram card in the video is the real bot's card text, shown as a panel). Re-record with `node scripts/demo/record-video.mjs` (script and narration: `scripts/demo/`).
+- Demo video: _YouTube link (to add after upload)_. Under 3 minutes; the main run was recorded locally on a scratch database with the simulated PayPal client, the offline stand-in for the Claude auditor and Telegram off (the Telegram card is the real bot's card text, shown as a panel); one segment badged "REAL RUN" is a separate recording on the real PayPal sandbox with real Claude audits. Re-record with `node scripts/demo/record-video.mjs` (script and narration: `scripts/demo/`).
 - Live demo: https://reins-web.onrender.com _(to confirm after deploy; free instances sleep, first load takes about a minute)_
 - Devpost text: [docs/submission/devpost.md](docs/submission/devpost.md)
 
@@ -65,7 +65,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 231 tests
+pnpm test                   # 238 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
@@ -162,8 +162,23 @@ Skyfire and card-network agent tokens address agent payments too. Reins differs 
 | AI audit with a written explanation | Yes, Claude, advisory on top of the rules | No | No |
 | Human one-tap approval (Telegram / web) | Yes | Varies | No |
 | Open source, MCP, PayPal-native | Yes, MIT-style repo, MCP server | Mostly closed, separate wallet or rails | Open source, PayPal-native |
+| Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (fake-Toolkit unit tests) | n/a | This is the layer being gated |
 
-**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal Orders v2: an agent asks Reins, and Reins decides, then creates the sandbox order itself. Composing Reins with the Agent Toolkit's own tools (letting the Toolkit call Reins before it pays) is not implemented; today agents connect through Reins' MCP server instead of the Toolkit.
+**Works with the PayPal Agent Toolkit (opt-in, unit-tested with a fake Toolkit).** By default Reins creates the sandbox order itself. With the adapter in `packages/core/src/pay/toolkit.ts`, an approved request is created and captured through the Toolkit's `create_order` and `capture_order`; a denied or held request never reaches the Toolkit. It has not been run against the real `@paypal/agent-toolkit` package, and it supports approval-link (supervised) orders only, because the Toolkit's `create_order` has no `vault_id` option.
+
+```ts
+import { reinsGate } from "@reins/core";
+
+// `toolkit` is any object with run(method, args), such as the Agent Toolkit's PayPalAPI (shape assumed from its docs).
+// The agent wants the Toolkit to create an order; Reins checks its mandate first.
+const view = await reinsGate(ctx, agent, toolkit, {
+  tool: "create_order",
+  args: { currencyCode: "USD", items: [{ name: "Market report", quantity: "1", itemCost: "20.00" }] },
+  merchant: "statista.com",
+  reason: "User asked for a market research report",
+});
+// view.status: "awaiting_buyer" (Toolkit order created) | "denied" | "pending_human" (Toolkit never called)
+```
 
 ## Develop
 

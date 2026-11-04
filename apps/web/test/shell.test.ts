@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentsKpi, capPct, searchPalette, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
-import { isUnknownRequest, resolveRequestId } from "../src/lib/format.ts";
+import { isUnknownRequest, linkedRequest, resolveRequestId, showKo } from "../src/lib/format.ts";
 
 const agents: ShellAgent[] = [
   { id: "a1", name: "Claude Code – DevOps", status: "active", month_spent_cents: 1998, monthly_limit_cents: 15000 },
@@ -56,5 +56,20 @@ describe("isUnknownRequest (/ledger/R-9999 notice)", () => {
     expect(isUnknownRequest(null, "R-9999")).toBe(false);
     expect(isUnknownRequest(rows, "req_zzz")).toBe(false);
     expect(isUnknownRequest(rows, null)).toBe(false);
+  });
+});
+
+describe("shared approval links (M5)", () => {
+  const pending = [{ request_id: "rq2", display_id: "R-0142" }];
+  const decided = [{ request_id: "rq1", display_id: "R-0143" }];
+  it("never falls back to another request", () => {
+    expect(linkedRequest(pending, decided, null)).toEqual({ kind: "none" });
+    expect(linkedRequest(pending, decided, "r-0142")).toEqual({ kind: "pending", row: pending[0] });
+    expect(linkedRequest(pending, decided, "R-0143")).toEqual({ kind: "decided", row: decided[0] });
+    expect(linkedRequest(pending, decided, "R-9999")).toEqual({ kind: "missing" });
+    expect(linkedRequest(pending, null, "R-0143")).toEqual({ kind: "unknown-yet" });
+  });
+  it("Korean audit text is hidden outside a Korean locale", () => {
+    expect(showKo()).toBe(false); // node: no document
   });
 });

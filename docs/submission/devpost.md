@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 231 tests in 34 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 238 tests in 35 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
@@ -15,17 +15,17 @@ On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 sm
 - Every decision, denials included, lands in a ledger with PayPal order and capture IDs reconciled against Transaction Search, so finance can see what each agent bought and why.
 - It is the spending-controls layer that PayPal's supervised/automatic split implies, built only on public sandbox APIs. See "Who it is for and why now" below.
 
-Honest limits (fake client in the video, Agent Toolkit not integrated, not on npm yet) are in "Limits" at the end of this description, directly above "Try it out". The 2-minute judge path ("For judges") follows "Try it out".
+Sandbox only; the video's main run is simulated and one badged segment is a real sandbox run (details in "Limits", above "Try it out"). The 2-minute judge path ("For judges") follows "Try it out".
 
 ### PayPal APIs used (all called from `packages/core`)
 
-| PayPal API | What Reins uses it for | Status |
-|---|---|---|
-| Orders v2 (`/v2/checkout/orders`, capture, `PayPal-Request-Id`) | Pay an approved request | Real sandbox: spike `docs/spikes/d2-payment.md`, COMPLETED captures. The demo video uses the fake client |
-| Vault (`store_in_vault = ON_SUCCESS`, reorder with `vault_id`) | Save the buyer's PayPal once, then pay unattended | Real sandbox: VAULTED, reorder without the buyer. Video: fake client |
-| Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Real sandbox: $1.00 batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`) |
-| Webhooks (`verify-webhook-signature`) | Verify every PayPal event before storing it | Real sandbox: real and simulated events verified, forged request returns 401 (needs a public URL, so not exercised in the video) |
-| Transaction Search (`/v1/reporting/transactions`) | Reconcile every capture against PayPal's records | Implemented and unit/integration tested; the sandbox app needs the Transaction Search feature enabled, and the video reconcile uses the fake client |
+| PayPal API | What Reins uses it for | Verified in real sandbox | Notes |
+|---|---|---|---|
+| Orders v2 (`/v2/checkout/orders`, capture, `PayPal-Request-Id`) + Vault (`store_in_vault = ON_SUCCESS`, reorder with `vault_id`) | Pay an approved request; save the buyer's PayPal once, then pay unattended | Yes | COMPLETED captures and a vault reorder without the buyer: `docs/spikes/d2-payment.md`. The video's main run uses the simulated client |
+| Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Yes | $1.00 batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`); the badged real-run segment shows a sandbox payout |
+| Webhooks (`verify-webhook-signature`) | Verify every PayPal event before storing it | Yes | Real and simulated events verified, forged request returns 401; needs a public URL, so not in the video |
+| Transaction Search (`/v1/reporting/transactions`) | Reconcile every capture against PayPal's records | No | Unit and integration tested; the sandbox app needs the Transaction Search feature enabled |
+| Agent Toolkit tools `create_order`, `capture_order` (opt-in `reinsGate`) | Run a Toolkit order only after the mandate, rules and audit pass | No | Unit-tested with a fake Toolkit; not run against the real `@paypal/agent-toolkit` package |
 
 ---
 
@@ -55,7 +55,7 @@ Existing "agent wallet" products (Skyfire, card-network agent tokens) solve part
 
 **How PayPal could adopt it.** The mandate (cap, auto-approve limit, allowed merchants, versioned) is a small, API-shaped object, so PayPal could offer it as a native spending-controls primitive on agent credentials, with Reins as the open reference implementation.
 
-**Roadmap.** (1) Publish `@reins/mcp` to npm so a one-line `npx` config works. (2) Production PayPal onboarding beyond sandbox. (3) Gate agent payments behind the PayPal Agent Toolkit: let the Toolkit call Reins before it pays. The Toolkit is not integrated today; Reins connects agents through its own MCP server.
+**Roadmap.** (1) Publish `@reins/mcp` to npm so a one-line `npx` config works. (2) Production PayPal onboarding beyond sandbox. (3) Run the opt-in Agent Toolkit gate (`reinsGate`) against the real `@paypal/agent-toolkit` package in the sandbox; today it is unit-tested with a fake Toolkit.
 
 ## How it compares
 
@@ -66,8 +66,9 @@ Existing "agent wallet" products (Skyfire, card-network agent tokens) solve part
 | AI audit with a written explanation | Yes, Claude, advisory on top of the rules | No | No |
 | Human one-tap approval (Telegram / web) | Yes | Varies | No |
 | Open source, MCP, PayPal-native | Yes, MIT-style repo, MCP server | Mostly closed, separate wallet or rails | Open source, PayPal-native |
+| Compose: gate the Toolkit | Yes, opt-in: `reinsGate` runs the Toolkit's `create_order` only after mandate, rules and audit pass (fake-Toolkit unit tests) | n/a | This is the layer being gated |
 
-**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal Orders v2: an agent asks Reins, and Reins decides, then creates the sandbox order itself. Composing Reins with the Agent Toolkit's own tools (letting the Toolkit call Reins before it pays) is not implemented; today agents connect through Reins' MCP server instead of the Toolkit.
+**Works with the PayPal Agent Toolkit.** Reins is the policy and approval layer in front of PayPal payments. By default Reins creates the sandbox order itself; with the opt-in adapter (`packages/core/src/pay/toolkit.ts`, example in the README) an approved request is created and captured through the Toolkit's `create_order` and `capture_order`, and a denied or held request never reaches the Toolkit. Covered by unit tests with a fake Toolkit; not yet run against the real Toolkit package, and only approval-link (supervised) orders are supported.
 
 ## What it does
 
@@ -75,11 +76,11 @@ Each agent gets its own API key and a versioned mandate: monthly cap, auto-appro
 
 - **Auto-approve**: hard rules pass, the Claude auditor scores risk low, and the amount is under the auto-approve limit. Reins pays right away through PayPal.
 - **Ask a human**: over the limit, or the auditor is unsure. The agent gets `pending_human`. The request appears in the web inbox in real time and as a Telegram card with Approve, Approve + always allow this merchant (saves a new mandate version), and Reject. The agent polls `get_request_status` and gets its receipt.
-- **Deny**: a hard rule fails (cap, block list, merchant not allowed) or the auditor sees manipulation. Nothing is charged, and the reason is explained in English and Korean.
+- **Deny**: a hard rule fails (cap, block list, merchant not allowed) or the auditor sees manipulation. Nothing is charged, and the reason is explained in plain English (a Korean version is stored and shown for a Korean locale).
 
 Around that: an AG Grid ledger of every decision with grouping and drill-down, a month overview (spend vs caps, decision mix, category donut, weekly summary), receipts, unusual-pattern flags (4th request to one merchant in 24 h, quiet hours, category outside the mandate), a one-click "Tighten mandate" from a blocked request, and a demo DevOps cron agent that pays infra bills through the same MCP server.
 
-The dashboard is built to be driven fast: a sidebar agents list with live cap use (paused agents are marked), a Cmd/Ctrl+K palette that jumps to any page, agent or request, a request drawer with the decision timeline, a hard-rule table (which rules failed and by how much), the auditor's risk and reason in English and Korean, and the raw MCP request with the key redacted, plus pause/resume and key regeneration per agent, a mandate version dropdown (every version kept, open an old one to restore it), approval cards that show the mandate check and the budget left after approving, shareable deep links (`/ledger/R-0143`, `/approvals/R-0143`, `/agents/research-scout`) and a phone-width layout down to 390 px (the AG Grid ledger turns into one card per request there).
+The dashboard is built to be driven fast: a sidebar agents list with live cap use (paused agents are marked), a Cmd/Ctrl+K palette that jumps to any page, agent or request, a request drawer with the decision timeline, a hard-rule table (which rules failed and by how much), the auditor's risk and reason, and the raw MCP request with the key redacted, plus pause/resume and key regeneration per agent, a mandate version dropdown (every version kept, open an old one to restore it), approval cards that show the mandate check and the budget left after approving, shareable deep links (`/ledger/R-0143`, `/approvals/R-0143`, `/agents/research-scout`) and a phone-width layout down to 390 px (the AG Grid ledger turns into one card per request there).
 
 ## How we built it
 
@@ -97,13 +98,13 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 
 **MCP server, 4 tools** (Streamable HTTP and stdio): `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`. Works from Claude Desktop, Claude Code or any MCP client. The package `@reins/mcp` is in the repo but not published to npm. `request_purchase` is idempotent per agent and `client_request_id`, so retries never pay twice.
 
-**Claude.** Claude (Anthropic SDK structured outputs) is used for: purchase audit, category suggestions for a mandate, the weekly spend summary, and the English/Korean rejection reason, plus a summary of long agent answers on the Telegram card. Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs, so the whole app works with no credentials.
+**Claude.** Claude (Anthropic SDK structured outputs) is used for: purchase audit, category suggestions for a mandate, the weekly spend summary, and the rejection reason, plus a summary of long agent answers on the Telegram card. Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs, so the whole app works with no credentials.
 
 **AG Grid.** The ledger uses AG Grid Enterprise row grouping (toggle "group by agent" with paid-only subtotals) and master-detail (expand a row for the mandate check, auditor verdict and reason, budget left, PayPal order and capture, receipt link), with Set filters, a PayPal ID column and a reconciliation status column. AG Charts draws paid spend per agent on the ledger and the category donut on the overview.
 
 **Render.** A Blueprint (`render.yaml`) deploys two free web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and demo data is re-seeded on every boot, so the demo always starts clean (free instances sleep after about 15 minutes and reset).
 
-**Testing.** 231 Vitest tests across 34 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
+**Testing.** 238 Vitest tests across 35 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
 
 ## Challenges we ran into
 
@@ -118,7 +119,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 - The $450 prompt-injection purchase is blocked by three independent hard rules before the AI even weighs in, and the demo video shows it end to end over real MCP calls.
 - The same approval works from the web inbox and Telegram, and "Approve + always allow" turns one human decision into a new versioned mandate.
 - A judge can try it with no keys: fake PayPal mode, mock auditor, seeded data, or point their own Claude at the hosted MCP server.
-- 231 passing tests, clean typecheck and lint.
+- 238 passing tests, clean typecheck and lint.
 
 ## What we learned
 
@@ -141,7 +142,8 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 
 ## Limits (read before judging)
 
-- The demo video was recorded locally on a scratch database with the fake PayPal client (no money moves) and the offline stand-in for the Claude auditor. The real sandbox calls are in the spikes above.
+- The demo video's main run was recorded locally on a scratch database with the simulated PayPal client (no money moves) and the offline stand-in for the Claude auditor. One segment, badged "REAL RUN" on screen (about 10 s, exact seconds in `docs/submission/checklist.md`), is a separate recording on the real PayPal sandbox with real Claude audits. The other real sandbox calls are in the spikes above.
+- The Agent Toolkit adapter is tested with a fake Toolkit only.
 - `@reins/mcp` is not published to npm; use the clone-based stdio config or the hosted HTTP endpoint.
 - Free Render instances sleep after about 15 minutes and reset; open the live URL once and wait about a minute.
 - AG Grid Enterprise runs in trial mode (no licence key), so the public deploy may show the trial watermark and a console notice.
@@ -186,12 +188,12 @@ Run it locally with zero credentials: `pnpm install && cp .env.example .env && p
 
 ### Best Use of Agentic Commerce (PayPal)
 
-Reins is the control layer PayPal's supervised/automatic split implies: per-agent mandates, hard rules, an AI auditor, one-tap approval over web or Telegram, and an audit trail. It uses Orders v2 with vaulted payment for unattended purchases, Payouts for a treasury mode, signed webhooks and Transaction Search reconciliation, and exposes it all as an open MCP server so Claude Desktop, Claude Code and cron agents can spend within limits.
+Reins is the control layer PayPal's supervised/automatic split implies: per-agent mandates, hard rules, an AI auditor, one-tap approval over web or Telegram, and an audit trail. It uses Orders v2 with vaulted payment for unattended purchases, Payouts for a treasury mode, signed webhooks and Transaction Search reconciliation, exposes it as an open MCP server, and can gate the PayPal Agent Toolkit's `create_order` behind the same checks (fake-Toolkit tests).
 
 ### AG Grid
 
-The ledger is the product's audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows showing the full decision record (mandate check, auditor verdict and reason, budget left, PayPal order and capture), and Set filters, with AG Charts for spend per agent and the overview category donut. A blocked request deep-links into its expanded ledger row and offers one-click "Tighten mandate". The demo video shows grouping, drill-down and the chart.
+The ledger is the audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows with the full decision record (mandate check, auditor verdict, budget left, PayPal order and capture), Set filters, and AG Charts for spend per agent and the category donut. A blocked request deep-links into its expanded row and offers "Tighten mandate".
 
 ### Render
 
-Reins deploys from a single `render.yaml` Blueprint on the free plan: `reins-web` (Next.js dashboard, REST API, PayPal and Telegram webhooks) and `reins-mcp` (MCP Streamable HTTP so any agent connects with one URL). Costs nothing, no disk and no cron, with SQLite in `/tmp` re-seeded on boot so every judge sees a clean demo. Health endpoints and a smoke-check script are documented in docs/deploy.md.
+A single `render.yaml` Blueprint deploys two free services, `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP), with SQLite in `/tmp` re-seeded on boot so every judge sees a clean demo. Health endpoints and a smoke-check script are in docs/deploy.md.

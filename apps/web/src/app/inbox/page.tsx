@@ -6,12 +6,14 @@ import type { InboxItem, LedgerRow, Overview } from "@reins/core";
 import { api, ApiError } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { Icon } from "@/components/Icon";
-import { ago, hardRules, riskClass, statusChip, usd } from "@/lib/format";
+import { ago, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, statusChip, usd } from "@/lib/format";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
 /** A request waiting longer than this counts as overdue in the queue header. */
 const OVERDUE_MS = 24 * 3_600_000;
 const DENY_REASONS = ["Not needed", "Wrong item", "Too expensive"];
+
+const outcomeLabel = (row: LedgerRow) => ({ auto: "Auto", human: "Human", blocked: "Blocked", other: row.status })[outcomeBucket(row)];
 
 function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: boolean; onSelect: () => void }) {
   return (
@@ -268,7 +270,7 @@ function Detail({
             {llm?.actor === "mock" ? <span className="status status-info" title="No ANTHROPIC_API_KEY: a deterministic stand-in scores this request">Demo auditor (offline stand-in)</span> : <span className="caption">Claude</span>}
           </p>
           <p>{llm?.reasonEn ?? row.reason ?? "No auditor reason"}</p>
-          {llm?.reasonKo && <p className="caption" lang="ko">{llm.reasonKo}</p>}
+          {showKo() && llm?.reasonKo && <p className="caption" lang="ko">{llm.reasonKo}</p>}
           {after != null && (
             <div className="stack-s">
               <span className="label">
@@ -537,11 +539,32 @@ function InboxScreen() {
     return () => clearTimeout(t);
   }, [notice]);
 
-  const selected = useMemo(() => rows?.find((r) => r.request_id === selectedId || r.display_id === selectedId) ?? rows?.[0] ?? null, [rows, selectedId]);
+  // A shared link must never land on a different purchase: with ?r= set, only that request may be shown.
+  const selected = useMemo(() => {
+    if (!rows) return null;
+    if (!selectedId) return rows[0] ?? null;
+    const hit = linkedRequest(rows, null, selectedId);
+    return hit.kind === "pending" ? hit.row : null;
+  }, [rows, selectedId]);
+  const linkMiss = tab === "pending" && rows !== null && !!selectedId && !selected;
+  const decidedHit = useMemo(() => {
+    const hit = linkedRequest([], recent, selectedId);
+    return hit.kind === "decided" ? hit.row : null;
+  }, [recent, selectedId]);
+  const [fetchedHit, setFetchedHit] = useState<LedgerRow | null>(null);
+  useEffect(() => {
+    setFetchedHit(null);
+    if (!linkMiss || decidedHit || recent === null || !selectedId || /^R-\d+$/i.test(selectedId)) return;
+    api<LedgerRow>(`/api/ledger/${encodeURIComponent(selectedId)}`).then(setFetchedHit).catch(() => setFetchedHit(null));
+  }, [linkMiss, decidedHit, recent, selectedId]);
+  const decidedRow = decidedHit ?? fetchedHit;
   // deep links such as /approvals/R-0143 get a tab title that names the request
   useEffect(() => {
-    if (tab === "pending" && selected) document.title = `${selected.display_id} - Reins`;
-  }, [tab, selected]);
+    if (tab !== "pending") return;
+    if (selected) document.title = `${selected.display_id} - Reins`;
+    else if (linkMiss && decidedRow) document.title = `${decidedRow.display_id} decided - Reins`;
+    else if (linkMiss && recent !== null) document.title = "Request not found - Reins";
+  }, [tab, selected, linkMiss, decidedRow, recent]);
 
   async function decide(id: string, action: "approve" | "deny", note?: string, allowMerchant = false) {
     setBusy(id);
@@ -590,7 +613,7 @@ function InboxScreen() {
     load();
   }
 
-  const showDetail = tab === "pending" && rows && rows.length > 0 && selected;
+  const showDetail = tab === "pending" && rows && selected;
 
   return (
     <>
@@ -674,6 +697,37 @@ function InboxScreen() {
               <div className="empty">
                 <h2>Why was it decided?</h2>
                 <p className="muted">Open any decided request for its timeline, hard-rule table, risk score, mandate snapshot and the raw MCP request.</p>
+              </div>
+            </section>
+          )}
+          {linkMiss && recent !== null && (
+            <section className="panel linked-note" aria-label="Linked request" aria-live="polite">
+              <div className="empty">
+                {decidedRow ? (
+                  <>
+                    <h2>
+                      {decidedRow.display_id} is already decided ({outcomeLabel(decidedRow)})
+                    </h2>
+                    <p className="muted">
+                      {decidedRow.agent_name} · {decidedRow.merchant} · ${decidedRow.amount}. Nothing here needs your approval.
+                    </p>
+                    <p>
+                      <button type="button" className="btn" onClick={() => setDrawerId(decidedRow.request_id)}>
+                        Open decision trail
+                      </button>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h2>Request not found</h2>
+                    <p className="muted">{selectedId} is not in this workspace. Pick a pending request from the queue.</p>
+                  </>
+                )}
+                <p>
+                  <button type="button" className="btn" onClick={() => setSelectedId(null)}>
+                    Show the queue
+                  </button>
+                </p>
               </div>
             </section>
           )}

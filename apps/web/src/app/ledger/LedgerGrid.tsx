@@ -16,7 +16,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { decisionLabel, hardRules, shortTime, statusChip } from "@/lib/format";
+import { decisionLabel, hardRules, shortTime, showKo, statusChip } from "@/lib/format";
 
 // Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -175,8 +175,12 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         <dd>{rules.length ? (failed.length ? failed.map((r) => r.detail).join("; ") : `All ${rules.length} passed`) : "—"}</dd>
         <dt>Audit · EN</dt>
         <dd>{llm?.reasonEn ?? "—"}</dd>
-        <dt>Audit · KO</dt>
-        <dd lang="ko">{llm?.reasonKo ?? "—"}</dd>
+        {showKo() && (
+          <>
+            <dt>Audit · KO</dt>
+            <dd lang="ko">{llm?.reasonKo ?? "—"}</dd>
+          </>
+        )}
         <dt>Decided by</dt>
         <dd>{human ? `${human.actor} (${human.decision})` : llm ? `${llm.actor === "mock" ? "demo auditor (offline stand-in)" : "Claude"} · risk ${llm.risk ?? "?"}/10` : "hard rules"}</dd>
       </dl>

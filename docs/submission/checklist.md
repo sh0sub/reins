@@ -33,7 +33,7 @@
 | README 첫 화면 스크린샷·GIF | 완료 | `docs/img/` 개요·승인 카드·요청 드로어·원장 1440/390 PNG 8장 + $450 거절 GIF, README "See it" 섹션 |
 | README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
 | `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
-| 테스트·린트 | 완료 | 231 tests / 34 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
+| 테스트·린트 | 완료 | 238 tests / 35 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 완료 | 2026-11-01 영상 스크립트·문서 갱신 커밋 |
 | `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫도 클론 기반 stdio(`npx -y tsx <경로>/apps/mcp/src/stdio.ts`)로 변경 |
@@ -57,7 +57,10 @@
 | 영상 대본·촬영 스크립트(`scripts/demo/video-shots.mjs`) | 완료 | 2026-11-01 재녹화: 사이드바 에이전트 목록, Cmd+K로 차단 요청 이동, 요청 드로어(하드 룰 표·위험도), 새 승인 카드(체크박스+Approve), 월 합계 $176.97 반영. 이전 영상은 `.local/video/reins-demo-prev.mp4` |
 | 3분 미만, 상표·저작권 음악 없음 확인 | 완료 | 2:34(153.9초; 오프닝은 결제 완료+$450 거절 페이오프, 훅 3.4초, 엔드 카드 6초), macOS 음성 해설만, 음악 없음, 프레임 컨택트 시트로 깨진/멈춘 화면 없음 확인. 영상 파일은 커밋하지 않음(`.local/`) |
 | 월 한도 문구 단위 통일 재녹화(C2 UI-1) | 남음 | 하드 룰 문구가 "Spent $9.00 + this $450.00 = $459.00 > $100.00 monthly cap"으로 바뀜. 영상의 R-0143 드로어 프레임이 옛 문구("$91.00 of $100.00 left")라 재녹화 필요 |
-| Devpost·README 비교 표(C2 DEV-1) | 완료 | Skyfire/카드 토큰/PayPal Agent Toolkit 4행 표 + Toolkit 조합은 미구현이라고 명시 |
+| Devpost·README 비교 표(C2 DEV-1) | 완료 | Skyfire/카드 토큰/PayPal Agent Toolkit 표. C3 M4: "Compose: gate the Toolkit" 행 추가, 옵트인 어댑터(`packages/core/src/pay/toolkit.ts`)는 가짜 Toolkit 단위 테스트까지만 검증, 실제 `@paypal/agent-toolkit` 실행은 안 함이라고 명시 |
+| 영상 설명 정합(C3 M6) | 남음-재녹화 후 | Devpost "Limits"·README가 "본편은 가짜 PayPal 클라이언트, 'REAL RUN' 배지 구간(약 10초)만 실제 샌드박스"라고 적음. 재녹화 뒤 해당 구간의 정확한 초(mm:ss-mm:ss)를 여기와 Devpost Limits에 채울 것 |
+| 영어 전용 화면(C3 M5) | 완료 | 승인·위험 카드·원장·드로어에서 한국어 reasonKo는 `<html lang="ko">` 또는 `?lang=ko`일 때만 표시(데이터는 유지). docs/img 4장 재촬영. 영상은 재녹화 필요 |
+| 공유 링크 안전(C3 M5) | 완료 | `/approvals/R-0143`(이미 결정됨)은 "already decided (Blocked)"+결정 기록 링크, 없는 id는 "Request not found", 승인 바 숨김, 탭 제목 반영 |
 | 선행 제품 차이 3줄 영상 반영(이슈 #44) | 완료 | 마지막 카드 해설에 반영 |
 | 갤럭시 실기기 텔레그램 장면(계획서) | 남음-사용자 계정 필요 | 대본은 봇 카드 텍스트 패널 사용. 실기기 장면이 필요하면 직접 촬영 |
 | YouTube 공개 업로드 | 남음-사용자 계정 필요 | 공개(Public) 설정 |
