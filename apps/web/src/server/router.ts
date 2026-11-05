@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { webhookCallback, type Bot } from "grammy";
-import { getActiveMandate, getWorkspace, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
+import { getActiveMandate, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
 import {
   HttpPayPalClient,
   ReinsError,
@@ -25,6 +25,8 @@ import {
   getLedgerRow,
   getOverview,
   parsePeriod,
+  playgroundEnabled,
+  runPlayground,
   getReceipt,
   getWeeklySummary,
   getRequestForAgent,
@@ -52,8 +54,7 @@ interface Route {
   handler: Handler;
 }
 
-/** Shown for the offline fake PayPal (sandbox merchant lookalike, not a real account). */
-const DEMO_MERCHANT_EMAIL = "sb-merchant-demo@business.example.com";
+import { DEMO_MERCHANT_EMAIL, workspaceView } from "./workspace.ts";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
@@ -194,6 +195,13 @@ const routes: Route[] = [
     });
     return json({ request_id: view.request_id, status: view.status }, 201);
   }),
+  // /try playground: a judge raises requests as a demo agent (no MCP client needed). Off unless REINS_TRY=1 or the public demo.
+  toRoute("GET", "/api/try", "admin", async () => json({ enabled: playgroundEnabled() })),
+  toRoute("POST", "/api/try", "admin", async (req, ctx) => {
+    if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The playground is off here. Run `pnpm judge` or set REINS_TRY=1.");
+    const { fooled_auditor, ...purchase } = (await readJson(req)) as Record<string, unknown>;
+    return json(await runPlayground(ctx, purchase, { fooled: fooled_auditor === true }), 201);
+  }),
   toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p) => {
     const { action, note, allow_merchant } = (await readJson(req)) as { action?: string; note?: unknown; allow_merchant?: unknown };
     if (action !== "approve" && action !== "deny") throw new ReinsError(400, "invalid_input", "action must be approve or deny");
@@ -228,22 +236,7 @@ const routes: Route[] = [
   toRoute("POST", "/api/requests/:id/mark-expected", "admin", async (_r, ctx, p) => json(await markPatternExpected(ctx, p.id!, "web"))),
   toRoute("GET", "/api/ledger/:id", "admin", async (_r, ctx, p) => json(await getLedgerRow(ctx, p.id!))),
   toRoute("GET", "/api/receipts/:id", "admin", async (_r, ctx, p) => json(await getReceipt(ctx, p.id!))),
-  toRoute("GET", "/api/workspace", "admin", async (_r, ctx) => {
-    const ws = await getWorkspace(ctx.db);
-    // vault id and link token never leave the server
-    return json({
-      name: ws.name,
-      paypal_env: ws.paypalEnv,
-      // offline fake PayPal has no real merchant; show the demo sandbox address so the badge reads like the live one
-      merchant_email: ws.merchantEmail ?? (ws.connectedAt && ws.paypalEnv === "fake" ? DEMO_MERCHANT_EMAIL : null),
-      payment_mode: ws.paymentMode,
-      has_vault: Boolean(ws.vaultId),
-      telegram_linked: Boolean(ws.telegramChatId),
-      public_demo: process.env.REINS_PUBLIC_DEMO === "1",
-      telegram_bot: process.env.TELEGRAM_BOT_USERNAME ?? "ReinsApproveBot",
-      connected_at: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : null,
-    });
-  }),
+  toRoute("GET", "/api/workspace", "admin", async (_r, ctx) => json(await workspaceView(ctx))),
   toRoute("POST", "/api/workspace/mode", "admin", async (req, ctx) => {
     const { mode } = (await readJson(req)) as { mode?: string };
     if (mode !== "vaulted" && mode !== "supervised" && mode !== "treasury") throw new ReinsError(400, "invalid_input", "mode must be vaulted, supervised or treasury");

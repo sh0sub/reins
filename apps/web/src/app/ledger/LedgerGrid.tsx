@@ -16,7 +16,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { decisionLabel, hardRules, shortTime, showKo, statusChip } from "@/lib/format";
+import { decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip } from "@/lib/format";
 
 // Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -61,14 +61,14 @@ function PayPalIdCell(p: CustomCellRendererProps<LedgerRow>) {
       type="button"
       className="btn-link mono"
       style={{ minHeight: 32, padding: 0 }}
-      title="Copy PayPal capture id"
+      title={isSimId(id) ? "Simulated id (offline demo data), click to copy" : "Copy PayPal capture id"}
       aria-label={`Copy PayPal id ${id}`}
       onClick={(e) => {
         e.stopPropagation();
         void navigator.clipboard?.writeText(id).catch(() => undefined);
       }}
     >
-      {id.slice(0, 5)}…{id.slice(-1)}
+      {shortPayId(id)}
     </button>
   );
 }
@@ -157,6 +157,7 @@ function ReconCell(p: CustomCellRendererProps<LedgerRow>) {
 }
 
 /** Row expansion (S4/S6 lite): rules, auditor reason EN/KO, mandate version, capture id, reconciliation. */
+const showId = (id: string | null) => (id ? simId(id) : "—");
 function Detail(p: ICellRendererParams<LedgerRow>) {
   const row = p.data;
   if (!row) return null;
@@ -189,7 +190,8 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         <dd>v{row.mandate_version ?? "—"}</dd>
         <dt>PayPal</dt>
         <dd className="mono">
-          {row.payment ? `${row.payment.strategy} · order ${row.payment.order_id ?? "—"} · capture ${row.payment.capture_id ?? row.payment.payout_batch_id ?? "—"}` : "not charged"}
+          {row.payment ? `${row.payment.strategy} · order ${showId(row.payment.order_id)} · capture ${showId(row.payment.capture_id ?? row.payment.payout_batch_id)}` : "not charged"}
+          {row.payment && isSimId(row.payment.capture_id ?? row.payment.order_id) && <span className="status status-info" style={{ marginLeft: 8 }}>simulated</span>}
         </dd>
         <dt>Txn Search</dt>
         <dd>

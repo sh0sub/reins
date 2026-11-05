@@ -109,3 +109,9 @@ export function linkedRequest<P extends Pick<LedgerRow, "display_id" | "request_
   const d = decided.find(hit);
   return d ? { kind: "decided", row: d } : { kind: "missing" };
 }
+
+/** Offline demo ids (seed "FAKE-…", fake PayPal "SIM-…") are shown as SIM-… with a "simulated" chip so they never pass for sandbox ids. */
+export const isSimId = (id: string | null | undefined): boolean => Boolean(id && /^(FAKE|SIM)-/.test(id));
+export const simId = (id: string): string => id.replace(/^FAKE-/, "SIM-");
+/** Short form for narrow cells: SIM-0143 stays readable, a real id is cut to 5 chars + last. */
+export const shortPayId = (id: string): string => (isSimId(id) ? simId(id).replace(/^SIM-(CAPTURE|ORDER)-/, "SIM-").slice(0, 12) : `${id.slice(0, 5)}…${id.slice(-1)}`);

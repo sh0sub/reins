@@ -41,11 +41,18 @@ describe("S1 overview aggregation (seeded demo)", () => {
       ["Desk Restock Bot", "$14.02", "$160.00"],
     ]);
     expect(o.agents.map((a) => a.pct)).toEqual([63, 9, 9]);
-    expect(o.status).toEqual({ level: "ok", message: "All agents within caps" });
+    // the seed pauses one agent: the headline must say so instead of claiming everything is fine
+    expect(o.status.level).toBe("warn");
+    expect(o.status.message).toMatch(/is paused$/);
 
     // plan flow C: 24 requests this month, Auto 19 (incl. the declined card) · Human 4 (1 pending) · Blocked 1
     expect(o.decisions).toEqual({ total: 24, auto: 19, human: 4, blocked: 1, pending: 1 });
     expect(o.approvals_saved).toBe(20);
+
+    // S2 "Money protected": every figure derives from the ledger above, the only assumption is 30 s per approval
+    expect(o.protection).toMatchObject({ exposure_cents: 41000, exposure_agents: 3, blocked_cents: 45000, blocked_count: 1, auto_paid: 19, requests: 24, minutes_saved: 10, seconds_per_approval: 30, demo_data: true });
+    expect(o.protection.blocked_top).toMatchObject({ display_id: "R-0143", merchant: "fiverr.com", amount_cents: 45000 });
+    expect(o.protection.blocked_top!.rules_failed).toBe(3);
 
     expect(o.categories).toEqual([
       { category: "infrastructure", cents: 9495 },

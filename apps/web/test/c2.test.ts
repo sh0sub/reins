@@ -18,7 +18,7 @@ describe("C2-8 page titles and truthful labels", () => {
     expect(inbox).toContain("Demo auditor (offline stand-in)");
   });
   it("fake PayPal is never shown as a PayPal environment name", () => {
-    const src = readFileSync(new URL("../src/app/overview/page.tsx", import.meta.url), "utf8");
+    const src = readFileSync(new URL("../src/app/overview/OverviewClient.tsx", import.meta.url), "utf8");
     expect(src).toContain("Sandbox demo data");
     expect(src).not.toContain("Fake PayPal (offline)");
   });

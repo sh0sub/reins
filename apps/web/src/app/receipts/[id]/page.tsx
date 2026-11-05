@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Receipt } from "@reins/core";
 import { api } from "@/lib/api";
+import { isSimId, simId } from "@/lib/format";
 
 const MODE: Record<Receipt["payment"]["strategy"], string> = {
   vaulted: "Automatic (saved PayPal)",
@@ -68,7 +69,10 @@ export default function ReceiptPage() {
         <dt>Payment</dt>
         <dd>{MODE[receipt.payment.strategy]}</dd>
         <dt>PayPal ID</dt>
-        <dd className="mono">{paypalId}</dd>
+        <dd className="mono">
+          {simId(paypalId)}
+          {isSimId(paypalId) && <span className="status status-info" style={{ marginLeft: 8 }}>simulated</span>}
+        </dd>
         <dt>Reconciled</dt>
         <dd>{receipt.payment.reconciled === "matched" ? "Matched in PayPal Transaction Search" : receipt.payment.reconciled === "mismatch" ? "Mismatch, check the ledger" : "Not checked yet"}</dd>
         <dt>Requested</dt>

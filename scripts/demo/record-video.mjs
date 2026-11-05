@@ -14,7 +14,7 @@
  * What it runs (all offline, nothing real is called):
  *  - a fresh scratch DB at <work>/reins-video.db: `pnpm seed -- --db`, then scripts/demo/prep-db.mjs (removes the three
  *    seeded requests the video re-creates live, fake vault, fresh agent keys kept in memory only)
- *  - `next dev` for apps/web with PAYPAL_ENV=fake, ANTHROPIC_API_KEY="" (offline mock auditor), TELEGRAM_MODE=off,
+ *  - `next build` + `next start` (production, dist dir .next-video) for apps/web with PAYPAL_ENV=fake, ANTHROPIC_API_KEY="" (offline mock auditor), TELEGRAM_MODE=off,
  *    REINS_QUIET_HOURS=off. The root .env is NOT loaded (next is started without --env-file), and the PayPal/Telegram/
  *    Anthropic variables are blanked on the command line anyway.
  *  - the MCP Streamable HTTP server (apps/mcp/src/http.ts) pointed at that web server; the recorder calls it with
@@ -319,8 +319,11 @@ async function startServers() {
     REINS_API_URL: BASE,
     NEXT_TELEMETRY_DISABLED: "1",
   };
-  // no --env-file: the root .env is never read by this run
-  const webLog = spawnServer("web", process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", String(PORT)], path.join(ROOT, "apps/web"), env);
+  // no --env-file: the root .env is never read by this run.
+  // Production build + `next start`: no dev overlay, no first-visit compile pauses, and what the video shows is what ships.
+  const webEnv = { ...env, NODE_ENV: "production", REINS_NEXT_DIST_DIR: ".next-video" };
+  execFileSync(process.execPath, ["node_modules/next/dist/bin/next", "build"], { cwd: path.join(ROOT, "apps/web"), env: webEnv, stdio: "ignore" });
+  const webLog = spawnServer("web", process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(PORT)], path.join(ROOT, "apps/web"), webEnv);
   const mcpLog = spawnServer("mcp", path.join(ROOT, "node_modules/.bin/tsx"), ["apps/mcp/src/http.ts"], ROOT, { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(MCP_PORT), REINS_API_URL: BASE });
   for (let i = 0; i < 180; i++) {
     try {
@@ -420,10 +423,9 @@ async function setupPage(cdp) {
   await cdp.send("Emulation.setLocaleOverride", { locale: "en-US" }).catch(() => null);
   await cdp.send("Emulation.setTimezoneOverride", { timezoneId: TZ }).catch(() => null);
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
-    // recording-only: hide the Korean audit line (the product shows it), and label the sidebar's Telegram line "demo"
+    // recording-only: label the sidebar's Telegram line "demo"
     // (the bot is off for the recording; the card text in the video comes from the real bot code)
-    source: `document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');
-      s.textContent='nextjs-portal{display:none!important}[lang="ko"]{display:none!important}dt:has(+ dd[lang="ko"]){display:none!important}';document.head.appendChild(s);
+    source: `document.addEventListener('DOMContentLoaded',()=>{
       setInterval(()=>{document.querySelectorAll('.side-foot .caption').forEach((e)=>{const t=e.lastChild;
         if(/^Telegram/.test((e.textContent||'').trim())&&t&&t.nodeType===3&&t.textContent!=='demo'){e.firstElementChild?.classList.add('dot-ok');e.childNodes[1].textContent='Telegram: ';t.textContent='demo'}})},200)});`,
   });

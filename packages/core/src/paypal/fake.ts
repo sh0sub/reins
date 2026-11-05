@@ -14,6 +14,8 @@ import {
 } from "./types.ts";
 
 const pid = (n = 17) => randomBytes(16).toString("hex").toUpperCase().slice(0, n);
+/** Ids of simulated orders, captures and payouts: the UI shows them as SIM-… so they never pass for sandbox ids. */
+const sim = (n = 13) => `SIM-${pid(n)}`;
 
 /**
  * In-memory PayPal used by tests and PAYPAL_ENV=fake. Behaves like the sandbox for the flows Reins uses:
@@ -45,7 +47,7 @@ export class FakePayPalClient implements PayPalClient {
     }
     const prior = this.idempotency.get(`create:${requestId}`);
     if (prior) return structuredClone(prior);
-    const id = pid();
+    const id = sim();
     const unit = body.purchase_units[0]!;
     const vaultId = body.payment_source?.paypal.vault_id;
     const order: Order & { body: CreateOrderBody } = vaultId
@@ -53,7 +55,7 @@ export class FakePayPalClient implements PayPalClient {
           id,
           status: "COMPLETED",
           body,
-          purchase_units: [{ ...unit, payments: { captures: [{ id: pid(), status: "COMPLETED", amount: unit.amount }] } }],
+          purchase_units: [{ ...unit, payments: { captures: [{ id: sim(), status: "COMPLETED", amount: unit.amount }] } }],
           links: [{ rel: "self", href: `https://api-m.sandbox.paypal.com/v2/checkout/orders/${id}` }],
         }
       : {
@@ -95,7 +97,7 @@ export class FakePayPalClient implements PayPalClient {
     if (o.status !== "APPROVED") throw new Error("ORDER_NOT_APPROVED");
     o.status = "COMPLETED";
     const unit = o.purchase_units![0]!;
-    unit.payments = { captures: [{ id: pid(), status: "COMPLETED", amount: unit.amount }] };
+    unit.payments = { captures: [{ id: sim(), status: "COMPLETED", amount: unit.amount }] };
     if (o.body.payment_source?.paypal.attributes?.vault) {
       o.payment_source = {
         paypal: { email_address: "buyer@personal.example.com", attributes: { vault: { id: `VAULT-${pid(10)}`, status: "VAULTED" } } },
@@ -107,7 +109,7 @@ export class FakePayPalClient implements PayPalClient {
 
   async createPayout(body: CreatePayoutBody): Promise<PayoutBatch> {
     this.calls.push("createPayout");
-    const id = pid(13);
+    const id = sim();
     this.payouts.set(id, body);
     return { batch_header: { payout_batch_id: id, batch_status: "PENDING", sender_batch_header: body.sender_batch_header } };
   }

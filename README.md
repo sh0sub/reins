@@ -4,6 +4,26 @@
 
 Agents can pay, but it is all or nothing. Reins gives each agent its own key and a versioned mandate (monthly cap, auto-approve limit, per-purchase cap, allowed merchants). Agents connect over MCP and call `request_purchase`. Hard rules run first, then a Claude auditor reviews purpose fit and risk and returns AUTO_APPROVE, ASK_HUMAN or DENY. Small, in-policy purchases are paid at once through PayPal Orders v2; bigger ones wait for one tap on a web inbox or Telegram card; manipulated ones (say, a web page telling the agent to buy a $450 logo) are blocked before any money moves. Every decision lands in an AG Grid ledger with a full audit trail.
 
+## Try it (60 seconds, no keys)
+
+```bash
+git clone https://github.com/sh0sub/reins && cd reins && pnpm install
+pnpm judge        # throwaway database, simulated PayPal, opens http://localhost:3100/try
+```
+
+Send the $450 prompt-injected order: denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
+
+**Real vs simulated**
+
+| | Real | Simulated |
+|---|---|---|
+| PayPal Orders v2, vault, Payouts, webhooks | Real sandbox runs, ids in `docs/spikes/` | `pnpm judge`, the seed and the video main run use an in-memory fake PayPal (ids shown as `SIM-…`) |
+| Hard rules, policy engine, ledger, MCP server | Real code, same in every mode | none |
+| Claude auditor | Real with `ANTHROPIC_API_KEY` | Offline stand-in without a key (and the "fooled auditor" toggle) |
+| Telegram approval | Real bot with a token | Off in `pnpm judge`; web inbox approves instead |
+
+**Money protected (seeded demo month, computed from the ledger):** $410 combined worst-case exposure instead of one unlimited key; $450 blocked (1 request, 3 hard rules failed); 19 of 24 requests paid without a tap; about 10 minutes of approvals saved at an assumed 30 s each.
+
 Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, Render. (APIMatic is not claimed: the Context Plugin has not been used on this repo yet.)
 
 Note: the ledger uses AG Grid Enterprise in trial mode (no licence key; set `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` to remove the trial watermark). A public deploy may show the watermark.
@@ -65,7 +85,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 241 tests
+pnpm test                   # 246 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.

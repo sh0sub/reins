@@ -48,6 +48,8 @@ export interface HardRuleInput {
   monthSpentCents: number;
   /** Requests by this agent inside VELOCITY_WINDOW_MS, excluding this request. */
   recentRequestCount: number;
+  /** Override of VELOCITY_MAX (the /try playground relaxes it so a judge can click freely). */
+  velocityMax?: number;
 }
 
 export interface HardRuleOutcome {
@@ -133,15 +135,16 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
     add("allowlist", allowed, allowed ? `${request.merchant} is allowed` : `${request.merchant} is not on the allow list`, request.merchant, mandate.allowedMerchants.join(", "));
   }
 
-  const velocityOk = input.recentRequestCount < VELOCITY_MAX;
+  const velocityMax = input.velocityMax ?? VELOCITY_MAX;
+  const velocityOk = input.recentRequestCount < velocityMax;
   add(
     "velocity",
     velocityOk,
     velocityOk
       ? `${input.recentRequestCount} request(s) in the last 10 minutes`
-      : `${input.recentRequestCount} requests in the last 10 minutes (max ${VELOCITY_MAX})`,
+      : `${input.recentRequestCount} requests in the last 10 minutes (max ${velocityMax})`,
     `${input.recentRequestCount} earlier`,
-    `< ${VELOCITY_MAX} per 10 min`,
+    `< ${velocityMax} per 10 min`,
   );
 
   return finish(results);

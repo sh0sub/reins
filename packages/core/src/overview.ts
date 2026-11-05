@@ -76,6 +76,26 @@ export interface FeedItem {
   created_at: string;
 }
 
+/** S2 "Money protected": everything is computed from the ledger. The only assumption is the stated seconds per approval. */
+export const SECONDS_PER_APPROVAL = 30;
+export interface Protection {
+  /** Sum of the agents' monthly caps: the most they can spend in a month. A shared unlimited key has no such bound. */
+  exposure_cents: number;
+  exposure_agents: number;
+  /** Requests stopped by hard rules or the auditor in the period, and the dollars they asked for. */
+  blocked_cents: number;
+  blocked_count: number;
+  /** Largest blocked request, with how many hard rules it failed. */
+  blocked_top: { request_id: string; display_id: string; merchant: string; amount_cents: number; rules_failed: number } | null;
+  auto_paid: number;
+  requests: number;
+  /** (auto + blocked) x SECONDS_PER_APPROVAL, in minutes (1 decimal). */
+  minutes_saved: number;
+  seconds_per_approval: number;
+  /** True for the seeded sandbox demo data, so the card says it is not live traffic. */
+  demo_data: boolean;
+}
+
 export interface Overview {
   generated_at: string;
   paypal_env: string;
@@ -88,6 +108,7 @@ export interface Overview {
   /** Requests settled without a tap (auto + blocked) vs. an all-manual flow. */
   approvals_saved: number;
   agents: AgentBudget[];
+  protection: Protection;
   categories: Array<{ category: string; cents: number }>;
   recent: FeedItem[];
 }
@@ -132,11 +153,29 @@ export async function getOverview(ctx: ReinsContext, period: OverviewPeriod = "m
   const limit = budgets.reduce((s, a) => s + (a.limit_cents ?? 0), 0);
   const over = budgets.filter((a) => a.limit_cents && a.pct >= 100);
   const near = budgets.filter((a) => a.limit_cents && a.pct >= CAP_WARN_PCT && a.pct < 100);
+  const paused = allAgents.filter((a) => a.pausedAt && !a.revokedAt);
   const status: Overview["status"] = over.length
     ? { level: "bad", message: `${over[0]!.name} reached its monthly cap` }
     : near.length
       ? { level: "warn", message: `${near[0]!.name} used ${near[0]!.pct}% of its cap` }
-      : { level: "ok", message: budgets.length ? "All agents within caps" : "No agents yet" };
+      : paused.length
+        ? { level: "warn", message: paused.length === 1 ? `${paused[0]!.name} is paused` : `${paused.length} agents are paused` }
+        : { level: "ok", message: budgets.length ? "All agents within caps" : "No agents yet" };
+
+  let blockedCents = 0;
+  let blockedCount = 0;
+  let top: Protection["blocked_top"] = null;
+  for (const r of monthRequests) {
+    const ds = byRequest.get(r.id) ?? [];
+    if (outcomeOf(r, ds) !== "blocked") continue;
+    blockedCents += r.amountCents;
+    blockedCount++;
+    if (!top || r.amountCents > top.amount_cents) {
+      const results = (ds.find((d) => d.stage === "hard_rules")?.details as { results?: Array<{ ok: boolean }> } | null)?.results ?? [];
+      top = { request_id: r.id, display_id: displayId(r.seq), merchant: r.merchant, amount_cents: r.amountCents, rules_failed: results.filter((x) => !x.ok).length };
+    }
+  }
+  const savedMinutes = Math.round(((counts.auto + counts.blocked) * SECONDS_PER_APPROVAL) / 6) / 10;
 
   const recent = monthRequests
     .filter((r) => r.status !== "reviewing")
@@ -167,6 +206,18 @@ export async function getOverview(ctx: ReinsContext, period: OverviewPeriod = "m
     decisions: counts,
     approvals_saved: counts.auto + counts.blocked,
     agents: budgets,
+    protection: {
+      exposure_cents: limit,
+      exposure_agents: budgets.length,
+      blocked_cents: blockedCents,
+      blocked_count: blockedCount,
+      blocked_top: top,
+      auto_paid: counts.auto,
+      requests: counts.total,
+      minutes_saved: savedMinutes,
+      seconds_per_approval: SECONDS_PER_APPROVAL,
+      demo_data: ws.paypalEnv === "fake" || allAgents.some((a) => a.keyPrefix.startsWith("rk_demo_")),
+    },
     categories: [...categories.entries()].map(([category, cents]) => ({ category, cents })).sort((a, b) => b.cents - a.cents),
     recent,
   };

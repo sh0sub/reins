@@ -33,7 +33,7 @@
 | README 첫 화면 스크린샷·GIF | 완료 | `docs/img/` 개요·승인 카드·요청 드로어·원장 1440/390 PNG 8장 + $450 거절 GIF, README "See it" 섹션 |
 | README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
 | `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
-| 테스트·린트 | 완료 | 241 tests / 36 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
+| 테스트·린트 | 완료 | 246 tests / 37 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 완료 | 2026-11-01 영상 스크립트·문서 갱신 커밋 |
 | `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫도 클론 기반 stdio(`npx -y tsx <경로>/apps/mcp/src/stdio.ts`)로 변경 |
@@ -57,6 +57,9 @@
 | 영상 대본·촬영 스크립트(`scripts/demo/video-shots.mjs`) | 완료 | 2026-11-01 재녹화: 사이드바 에이전트 목록, Cmd+K로 차단 요청 이동, 요청 드로어(하드 룰 표·위험도), 새 승인 카드(체크박스+Approve), 월 합계 $176.97 반영. 이전 영상은 `.local/video/reins-demo-prev.mp4` |
 | 3분 미만, 상표·저작권 음악 없음 확인 | 완료 | 2:34(153.9초; 오프닝은 결제 완료+$450 거절 페이오프, 훅 3.4초, 엔드 카드 6초), macOS 음성 해설만, 음악 없음, 프레임 컨택트 시트로 깨진/멈춘 화면 없음 확인. 영상 파일은 커밋하지 않음(`.local/`) |
 | 월 한도 문구 단위 통일 재녹화(C2 UI-1) | 남음 | 하드 룰 문구가 "Spent $9.00 + this $450.00 = $459.00 > $100.00 monthly cap"으로 바뀜. 영상의 R-0143 드로어 프레임이 옛 문구("$91.00 of $100.00 left")라 재녹화 필요 |
+| 사이클 7: /try 놀이터·`pnpm judge`·Money protected 카드 (S1/S2) | 완료 | `/try`(프리셋 3개+자유 입력+"Simulate a fooled auditor"), `pnpm judge`(임시 DB, 가짜 PayPal, 3100 포트), 개요 "Money protected" 카드, /setup·/overview 서버 렌더. 영상에는 아직 없음: 카드와 /try는 재녹화 때 넣을지 결정 |
+| 사이클 7: 영상 재녹화 필요 구간 (S3) | 남음-재녹화 | 개요 구간(새 Money protected 카드, 상태 칩 "is paused"), /setup 구간(제목이 단계에 맞게 바뀜), 원장 PayPal ID(`SIM-…`+simulated 칩), 영수증 구간. 녹화기는 이제 `next build`+`next start`(개발 오버레이 없음). 재녹화 때 길이 3:00 미만 유지 확인 |
+| 사이클 7: Devpost TL;DR·README 정리 (S4) | 완료 | TL;DR 5줄, Limits 이동·축약, Agentic Commerce/AG Grid 블록, README 상단 Try it + 실제/모의 표 |
 | 데스크톱 승인 바(C4 P1) | 완료 | 1440x900에서 Approve/Deny가 접힘 아래에 있던 문제 수정: 720px 이상에서도 상세 패널 하단에 sticky 바(A/D 힌트). `docs/img/approval-1440.png`·`ledger-1440.png` 재촬영(KPI 타일 보이게 맨 위). 영상의 승인 구간(1440)은 옛 레이아웃이라 재녹화 시 반영됨 |
 | Devpost·README 비교 표(C2 DEV-1) | 완료 | Skyfire/카드 토큰/PayPal Agent Toolkit 표. C3 M4: "Compose: gate the Toolkit" 행 추가, 옵트인 어댑터(`packages/core/src/pay/toolkit.ts`). C4 K1: 실제 `@paypal/agent-toolkit` 1.11.0으로 샌드박스에서 `create_order` 승인 1건 성공·거절 1건 Toolkit 호출 0회 확인(`docs/spikes/d5-toolkit-gate.md`). 캡처(`pay_order`)는 구매자 승인 필요로 PayPal이 422 거절 — 미완료라고 명시. Devpost 표·README 갱신 |
 | 영상 실제/모의 구분표(C5 M4) | 남음-최종 컷 후 | 최종 컷이 나오면 mm:ss 구간을 채울 것. 지금 확정된 구분: 모의(가짜 PayPal 클라이언트·오프라인 감사기) = 훅, 자동 결제, 한도 초과 승인, $450 거절, 원장, 엔드 카드 / 실제(PayPal 샌드박스 + 실제 Claude) = 'REAL RUN' 배지 구간 하나(약 10초, 별도 녹화) / Telegram 카드 = 실제 봇의 카드 텍스트를 패널로 표시. 실제 구간 mm:ss: __:__–__:__ |

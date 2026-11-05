@@ -6,7 +6,7 @@ import type { InboxItem, LedgerRow, Overview } from "@reins/core";
 import { api, ApiError } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { Icon } from "@/components/Icon";
-import { ago, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, statusChip, usd } from "@/lib/format";
+import { ago, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, simId, statusChip, usd } from "@/lib/format";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
 /** A request waiting longer than this counts as overdue in the queue header. */
@@ -578,7 +578,7 @@ function InboxScreen() {
       const rule = row.rule ? ` Rule saved: ${row.rule.sentence}` : "";
       setNotice(
         (row.status === "paid"
-          ? `Paid $${row.amount} · capture ${row.receipt?.capture_id?.slice(0, 6) ?? ""}…`
+          ? `Paid $${row.amount} · capture ${simId(row.receipt?.capture_id ?? "").slice(0, 10)}…`
           : row.status === "awaiting_buyer"
             ? "Approved. Finish checkout on PayPal (opened in a new tab)."
             : row.status === "denied"

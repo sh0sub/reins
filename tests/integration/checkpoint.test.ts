@@ -103,7 +103,7 @@ describe("#37 D10 checkpoint: flow B three endings end to end", () => {
     // ---- Act 1: AUTO ----
     const a1 = await devops("request_purchase", { merchant: "namecheap.com", amount: "12.98", items: "reins.dev domain renewal (1 year)", reason: "Domain expires Nov 30", category: "domains", client_request_id: "renew-reins-dev" });
     expect(a1.data).toMatchObject({ status: "paid", decision: "AUTO_APPROVE", risk: 1 });
-    expect(a1.text).toMatch(/^Paid \$12\.98 to namecheap\.com \(R-0001, capture [A-Z0-9]+\)\./);
+    expect(a1.text).toMatch(/^Paid \$12\.98 to namecheap\.com \(R-0001, capture [A-Z0-9-]+\)\./);
     expect(tg.sent).toHaveLength(0); // no phone interruption for AUTO
 
     // ---- Act 2: ASK_HUMAN ----
@@ -127,7 +127,7 @@ describe("#37 D10 checkpoint: flow B three endings end to end", () => {
     const approved = await web("POST", `/api/requests/${a2.data.request_id}/decision`, { action: "approve" });
     expect(approved.body).toMatchObject({ status: "paid", decision: "ASK_HUMAN" });
     expect((await web("GET", "/api/inbox")).body.items).toEqual([]); // flow B-6: inbox empties
-    expect(tg.edits.at(-1)!.text).toMatch(/^Paid \$59\.00 · Capture [A-Z0-9]{6}…/); // same state on Telegram
+    expect(tg.edits.at(-1)!.text).toMatch(/^Paid \$59\.00 · Capture [A-Z0-9-]{6}…/); // same state on Telegram
     expect((await scout("get_request_status", { request_id: a2.data.request_id })).text).toMatch(/^Paid \$59\.00 to statista\.com/);
 
     // ---- Act 3: DENY ----

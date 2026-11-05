@@ -56,6 +56,8 @@ export interface ReinsConfig {
   auditTimeoutMs?: number;
   /** S3 late-night check. Unset = off (tests); the web context sets it from REINS_TIMEZONE / REINS_QUIET_HOURS. */
   quietHours?: QuietHours | null;
+  /** Overrides the velocity rule's max requests per 10 minutes (only the /try playground sets this). */
+  velocityMax?: number;
 }
 
 export interface ReinsContext {
@@ -299,6 +301,7 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     now,
     monthSpentCents: monthSpent,
     recentRequestCount: recentCount,
+    velocityMax: ctx.config.velocityMax,
   });
   const failedText = hard.failed.map((f) => f.detail).join("; ");
   await insertDecision(ctx.db, {

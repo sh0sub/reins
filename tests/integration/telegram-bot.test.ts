@@ -78,7 +78,7 @@ describe("integration: grammY bot callback -> payment -> message edits", () => {
     expect(methods.indexOf("answerCallbackQuery")).toBeLessThan(methods.indexOf("editMessageText"));
     const edits = texts(h.calls, "editMessageText");
     expect(edits[0]).toBe("Approved by you · Paying via PayPal…");
-    expect(edits.at(-1)).toMatch(/^Paid \$59\.00 · Capture [A-Z0-9]{6}…\nR-0001 · statista\.com$/);
+    expect(edits.at(-1)).toMatch(/^Paid \$59\.00 · Capture [A-Z0-9-]{6}…\nR-0001 · statista\.com$/);
     expect(edits.some((t) => /failed/i.test(t))).toBe(false);
     expect((await getLedgerRow(h.ctx, v.request_id)).status).toBe("paid");
   });
