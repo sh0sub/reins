@@ -11,9 +11,9 @@ git clone https://github.com/sh0sub/reins && cd reins && pnpm install
 pnpm judge        # throwaway database, simulated PayPal, opens http://localhost:3100/try
 ```
 
-Send the $450 prompt-injected order: denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
+A shared PayPal credential would have paid the $450. Reins did not: send the $450 prompt-injected order and it is denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
 
-A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
+A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. A fourth preset, "Five $29 orders", splits one purchase at one merchant: three are paid, then the same-merchant 24-hour total passes the $100 per-purchase cap and the fourth and fifth are denied in code (3 unit tests and a playground test; it does not cover splitting across different merchants, and orders you approved by hand do not count). Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
 
 **Real vs simulated**
 
@@ -73,7 +73,7 @@ flowchart LR
 
 Decision flow for `request_purchase`:
 
-1. Hard rules in code: monthly cap, per-purchase cap, allow and block lists. A failure is DENY, no model involved.
+1. Hard rules in code: monthly cap, per-purchase cap, allow and block lists, velocity, and a split-purchase guard (what the agent was paid at one merchant in 24 hours plus this order must stay within the per-purchase cap). A failure is DENY, no model involved.
 2. Claude audits purpose fit and risk (structured verdict). Code bounds it: DENY on a model DENY or risk >= 8; AUTO_APPROVE only if risk <= 3 and the amount is within the auto-approve limit. Auditor timeout or error means ASK_HUMAN, never auto-pay. Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs.
 3. AUTO_APPROVE pays now. ASK_HUMAN returns `pending_human` and sends a web inbox item and a Telegram card (Approve, Approve + always allow this merchant, Reject). The agent polls `get_request_status` and gets the receipt.
 
@@ -87,7 +87,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 250 tests
+pnpm test                   # 260 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
@@ -148,6 +148,7 @@ REST endpoints used by the dashboard (admin routes need `REINS_ADMIN_TOKEN` only
 | Inbox | `GET /api/inbox`, `POST /api/requests/:id/decision`, `POST /api/requests/:id/ask`, `GET /api/events` (SSE) | admin |
 | Ledger | `GET /api/ledger`, `GET /api/ledger/:id`, `GET /api/ledger/:id/detail`, `POST /api/requests/:id/pause-agent`, `.../mark-expected`, `GET /api/receipts/:id` | admin |
 | Setup | `GET /api/workspace`, `POST /api/workspace/mode`, `POST /api/paypal/connect`, `POST /api/paypal/vault/start`, `.../vault/complete`, `POST /api/telegram/link` | admin |
+| Playground | `POST /api/try`, `POST /api/try/reset` (only with `REINS_TRY=1`); page `/try`, and `/proof` for the recorded real sandbox ids | admin |
 | Reconcile | `POST /api/reconcile`, `POST /api/cron/reconcile` | admin, cron secret |
 | Webhooks | `POST /api/webhooks/paypal` (signature verified), `POST /api/telegram/webhook` (secret token), `GET /api/health` | public |
 

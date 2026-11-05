@@ -86,3 +86,27 @@ describe("M5 hard rules (stage 1)", () => {
     expect(new Date(monthStartUtc(NOW)).toISOString()).toBe("2026-11-01T00:00:00.000Z");
   });
 });
+
+describe("split-purchase rule (merchant_total)", () => {
+  const roomy = { ...mandate, monthlyLimitCents: 100000, perTxCapCents: 10000 };
+  const split = (prior: number, amountCents = 2900) => base({ mandate: roomy, merchantSpent24hCents: prior }, { merchant: "namecheap.com", amountCents });
+  it("S1. five $29 orders under a $100 cap: the first three pass, the fourth is denied by merchant_total only", () => {
+    const outcomes = [0, 1, 2, 3, 4].map((n) => failedRules(split(Math.min(n, 3) * 2900)));
+    expect(outcomes).toEqual([[], [], [], ["merchant_total"], ["merchant_total"]]);
+    const fail = evaluateHardRules(split(8700)).results.find((r) => r.rule === "merchant_total");
+    expect(fail?.detail).toBe("Split purchase: $87.00 already paid to namecheap.com in 24 hours + this $29.00 = $116.00 > per-purchase cap $100.00");
+    expect(fail).toMatchObject({ value: "$116.00", limit: "≤ $100.00 per merchant per 24 h" });
+  });
+  it("S2. exactly at the cap passes; a first order is never held back by this rule", () => {
+    expect(failedRules(split(7100))).toEqual([]); // $71 + $29 = $100.00
+    expect(failedRules(split(7101))).toEqual(["merchant_total"]);
+    expect(failedRules(split(0, 10000))).toEqual([]);
+    expect(evaluateHardRules(split(0)).results.find((r) => r.rule === "merchant_total")).toMatchObject({ ok: true, value: "none earlier" });
+  });
+  it("S3. is skipped without a per-purchase cap or without the aggregate input, and other merchants do not count", () => {
+    const noCap = { ...roomy, perTxCapCents: null };
+    expect(evaluateHardRules(base({ mandate: noCap, merchantSpent24hCents: 99000 }, { merchant: "namecheap.com", amountCents: 2900 })).results.some((r) => r.rule === "merchant_total")).toBe(false);
+    expect(evaluateHardRules(base({ mandate: roomy }, { merchant: "namecheap.com" })).results.some((r) => r.rule === "merchant_total")).toBe(false);
+    expect(failedRules(split(0))).toEqual([]);
+  });
+});

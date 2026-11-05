@@ -10,13 +10,13 @@ import type { LedgerRow } from "./views.ts";
  * calls), with a demo agent key that is held in server memory only.
  */
 export const PLAYGROUND_AGENT = "Playground Agent";
-/** The playground relaxes only the velocity rule (3 requests / 10 min) so the three presets can be clicked repeatedly. */
+/** The playground relaxes only the velocity rule (3 requests / 10 min) so the presets can be clicked repeatedly. */
 export const PLAYGROUND_VELOCITY_MAX = 100;
 export const PLAYGROUND_MANDATE = {
   monthly_limit: "300.00",
   auto_approve_limit: "30.00",
   per_purchase_cap: "100.00",
-  allowed_merchants: ["namecheap.com", "statista.com"],
+  allowed_merchants: ["namecheap.com", "statista.com", "vercel.com"],
   categories: ["infrastructure", "research"],
   purpose: "Buy a domain and market research reports for a small team",
 };

@@ -37,6 +37,7 @@ const RULE_LABEL: Record<string, string> = {
   amount_valid: "Amount valid",
   currency: "Currency",
   per_tx_cap: "Per-purchase cap",
+  merchant_total: "Same merchant, 24 h",
   monthly_limit: "Monthly limit",
   blocked_merchant: "Merchant not blocked",
   allowlist: "Merchant allow list",
@@ -80,16 +81,19 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
     if (sentId && window.innerWidth < 1000) resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [sentId]);
 
-  async function send(label: string, purchase: Record<string, string>, key: string, fooledNow = fooled) {
+  async function send(label: string, purchase: Record<string, string>, key: string, fooledNow = fooled, repeat = 1) {
     setBusy(key);
     setError(null);
     setDecided(null);
     setNote(null);
     try {
-      const r = await api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooledNow } });
-      setResult(r);
-      setTour((t) => tourAfter(t, r));
-      setHistory((h) => [{ id: r.row.request_id, label: `${label} ${usd(Math.round(Number(r.row.amount) * 100))} · ${statusChip(r.row).label}` }, ...h].slice(0, 6));
+      for (let i = 1; i <= repeat; i++) {
+        const r = await api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooledNow } });
+        setResult(r);
+        setTour((t) => tourAfter(t, r));
+        const tag = repeat > 1 ? ` ${i}/${repeat}` : "";
+        setHistory((h) => [{ id: r.row.request_id, label: `${label}${tag} ${usd(Math.round(Number(r.row.amount) * 100))} · ${statusChip(r.row).label}` }, ...h].slice(0, 6));
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -198,7 +202,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
               </h2>
               <ul className="try-presets">
                 {PRESETS.map((p) => (
-                  <PresetCard key={p.id} preset={p} busy={busy === p.id} disabled={busy !== null} start={p.id === "injection" && !result && history.length === 0} onSend={() => void send(p.title, p.purchase, p.id)} />
+                  <PresetCard key={p.id} preset={p} busy={busy === p.id} disabled={busy !== null} onSend={() => void send(p.title, p.purchase, p.id, fooled, p.repeat ?? 1)} />
                 ))}
               </ul>
               <label className="try-toggle">
@@ -271,7 +275,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
             )}
             {!result ? (
               <div className="empty try-empty">
-                <p className="muted">Nothing sent yet. Start with the $450 order: it is the one a prompt-injected agent would try.</p>
+                <p className="muted">Nothing sent yet. Press Send $12.98 to start.</p>
               </div>
             ) : (
               <ResultPanel result={result} busy={busy} decided={decided} onDecide={(a) => void decide(result.row.request_id, a)} />
@@ -292,15 +296,14 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
   );
 }
 
-function PresetCard({ preset, busy, disabled, start, onSend }: { preset: Preset; busy: boolean; disabled: boolean; start: boolean; onSend: () => void }) {
+function PresetCard({ preset, busy, disabled, onSend }: { preset: Preset; busy: boolean; disabled: boolean; onSend: () => void }) {
   const p = preset.purchase;
   return (
     <li>
-      <button type="button" className={`${preset.id === "injection" ? "pick try-pick bad" : "pick try-pick"}${start ? " try-start" : ""}`} disabled={disabled} onClick={onSend}>
+      <button type="button" className={preset.id === "injection" ? "pick try-pick bad" : "pick try-pick"} disabled={disabled} onClick={onSend}>
         <span className="row between">
           <span className="label">
             {busy ? "Sending…" : preset.title}
-            {start && !busy && <span className="try-start-tag"> Start here</span>}
           </span>
           <b className="num">${p.amount}</b>
         </span>
@@ -423,6 +426,7 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
 
 const TOUR_KEY = "reins.judgeTour.closed";
 type TourDone = Partial<Record<0 | 1 | 2, string>>;
+const TOUR_SHORT = ["$12.98 pays", "$59 asks you", "$450 is denied"];
 const STEPS: Array<{ title: string; preset: Preset["id"]; fooled?: boolean; button: string; expect: string }> = [
   { title: "Send $12.98", preset: "domain", button: "Send $12.98", expect: "It is small and on the allow list, so it pays with no one asked." },
   { title: "Send $59", preset: "report", button: "Send $59", expect: "It is above the $30 auto-approve limit, so it waits for you." },
@@ -451,6 +455,55 @@ function JudgeTour({ open, done, busy, onOpen, onSend }: { open: boolean; done: 
   }
   const count = ([0, 1, 2] as const).filter((i) => done[i]).length;
   const next = ([0, 1, 2] as const).find((i) => !done[i]);
+  if (count > 0) {
+    // after step 1 the tour shrinks to one row so the decision stays above the fold
+    const nextStep = next === undefined ? null : STEPS[next]!;
+    return (
+      <section className="panel panel-tight tour tour-compact" aria-labelledby="tour-h">
+        <h2 id="tour-h" className="h-card">
+          Judge tour <span className="muted">· {count} of 3 done</span>
+        </h2>
+        <ol className="tour-pills">
+          {STEPS.map((st, i) => (
+            <li key={st.title} className={done[i as 0 | 1 | 2] ? "tour-pill is-done" : i === next ? "tour-pill is-next" : "tour-pill"}>
+              <span className="tour-mark" aria-hidden>
+                {done[i as 0 | 1 | 2] ? <Icon name="check" className="ico-s" /> : i + 1}
+              </span>
+              <span>
+                {TOUR_SHORT[i]}
+                {done[i as 0 | 1 | 2] && <span className="sr-only"> (done)</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <span className="row tour-acts">
+          {nextStep && next !== undefined && (
+            <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => onSend(next)}>
+              {nextStep.button}
+            </button>
+          )}
+          {done[1] && (
+            <Link className="btn" href="/inbox?playground=1">
+              Open Approvals
+            </Link>
+          )}
+          <button type="button" className="btn" onClick={() => onOpen(false)}>
+            Dismiss
+          </button>
+        </span>
+        {nextStep && <p className="caption tour-expect">{nextStep.expect}</p>}
+        {count === 3 && (
+          <p className="alert alert-ok row tour-done" role="status">
+            <Icon name="shield" className="ico" />
+            <span>
+              Done: one paid, one asked a person, one denied by code. See the <Link href={`/ledger?r=${done[2]}`}>ledger row</Link> and its <Link href={`/ledger?r=${done[2]}&drawer=1`}>audit trail</Link>, or the{" "}
+              <Link href="/proof">recorded PayPal sandbox run</Link>.
+            </span>
+          </p>
+        )}
+      </section>
+    );
+  }
   return (
     <section className="panel stack tour" aria-labelledby="tour-h">
       <div className="row between">
@@ -481,7 +534,7 @@ function JudgeTour({ open, done, busy, onOpen, onSend }: { open: boolean; done: 
                     {id ? "Send again" : st.button}
                   </button>
                   {idx === 1 && id && (
-                    <Link className="btn" href="/inbox">
+                    <Link className="btn" href="/inbox?playground=1">
                       Open Approvals
                     </Link>
                   )}

@@ -35,6 +35,19 @@ describe("/try playground", () => {
     expect(ctx.paypal.calls.filter((c) => c === "createOrder")).toHaveLength(1);
   });
 
+  it("the split preset: five $29 orders to vercel.com, three are paid and the rest are denied by the same-merchant rule", async () => {
+    const split = PRESETS.find((p) => p.id === "split")!;
+    expect(split.repeat).toBe(5);
+    // after the tour's two presets, so earlier requests (other merchants) cannot change the outcome
+    await runPlayground(ctx, preset("domain"));
+    await runPlayground(ctx, preset("report"));
+    const out = [];
+    for (let i = 0; i < split.repeat!; i++) out.push(await runPlayground(ctx, split.purchase));
+    expect(out.map((r) => r.row.status)).toEqual(["paid", "paid", "paid", "denied", "denied"]);
+    expect(out[3]!.failed_rules).toEqual(["merchant_total"]);
+    expect(ctx.paypal.calls.filter((c) => c === "createOrder")).toHaveLength(4); // the $12.98 domain + three $29 orders; no money for the denied two
+  });
+
   it("a fooled auditor that always says AUTO_APPROVE cannot get the $450 order or the $59 order paid", async () => {
     const denied = await runPlayground(ctx, preset("injection"), { fooled: true });
     expect(denied.auditor).toBe("fooled");

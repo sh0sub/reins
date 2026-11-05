@@ -19,6 +19,7 @@ import {
   listAgents,
   listDecisions,
   listRequests,
+  spendAtMerchantSinceCents,
   spendSinceCents,
   transitionRequest,
   updateRequest,
@@ -29,7 +30,7 @@ import {
   type RequestStatus,
 } from "@reins/db";
 import { buildAuditInput, runAudit, RECENT_LIMIT, type AuditProvider } from "./policy/audit.ts";
-import { evaluateHardRules, monthStartUtc, VELOCITY_WINDOW_MS } from "./policy/hardRules.ts";
+import { evaluateHardRules, MERCHANT_WINDOW_MS, monthStartUtc, VELOCITY_WINDOW_MS } from "./policy/hardRules.ts";
 import { anomalySummary, applyAnomalies, detectAnomalies, type QuietHours } from "./policy/anomalies.ts";
 import { writeRuleSentence, type RuleWriter } from "./policy/ruleWriter.ts";
 import { summarizeAnswer, type AnswerSummarizer } from "./policy/answerSummary.ts";
@@ -289,9 +290,10 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
 
   // ---- stage 1: hard rules ----
   const monthStart = monthStartUtc(now);
-  const [monthSpent, recentCount] = await Promise.all([
+  const [monthSpent, recentCount, merchantSpent] = await Promise.all([
     spendSinceCents(ctx.db, agent.id, monthStart),
     countRequestsSince(ctx.db, agent.id, now - VELOCITY_WINDOW_MS, request.id),
+    spendAtMerchantSinceCents(ctx.db, agent.id, request.merchant, now - MERCHANT_WINDOW_MS, request.id),
   ]);
   const hard = evaluateHardRules({
     mandate: mandate ?? null,
@@ -301,6 +303,7 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     now,
     monthSpentCents: monthSpent,
     recentRequestCount: recentCount,
+    merchantSpent24hCents: merchantSpent,
     velocityMax: ctx.config.velocityMax,
   });
   const failedText = hard.failed.map((f) => f.detail).join("; ");

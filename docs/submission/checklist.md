@@ -33,7 +33,8 @@
 | README 첫 화면 스크린샷·GIF | 완료 | `docs/img/` 개요·승인 카드·요청 드로어·원장 1440/390 PNG 8장 + $450 거절 GIF, README "See it" 섹션 |
 | README: APIMatic 개발 기록 섹션(이슈 #21) | 남음-Claude | 실제 사용 후 작성 |
 | `.env.example`, 시드 명령, MCP 스니펫 | 완료 | 오래된 디스크/크론 주석 정리함 |
-| 테스트·린트 | 완료 | 246 tests / 37 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-04) |
+| 테스트·린트 | 완료 | 260 tests / 37 files 통과, `pnpm typecheck`·`pnpm lint` 통과 (2026-11-05) |
+| 분할 구매 규칙(S1), /try 첫 화면(S2), 모바일 오버플로·플레이그라운드 배지(S4) | 완료 | 2026-11-05: `merchant_total` 규칙 + 4번째 프리셋, "Offline demo" 서버 렌더, 투어 한 줄 축소, `pnpm check:layout`(8개 경로 390·1440 가로 스크롤 없음). 영상의 /try 장면은 없음, 재촬영 불필요한 부분은 영상 영향 목록 참고 |
 | 영어 검수(README, 설명) | 남음-Claude | 최종 읽기 한 번 더 |
 | 커밋·푸시 | 완료 | 2026-11-01 영상 스크립트·문서 갱신 커밋 |
 | `@reins/mcp` npm 미발행 | 안내 완료 | README·devpost.md에 "짧은 `npx` 설정은 발행 전에는 동작하지 않음, 클론 stdio 또는 HTTP 사용" 명시. Agents 화면 스니펫도 클론 기반 stdio(`npx -y tsx <경로>/apps/mcp/src/stdio.ts`)로 변경 |

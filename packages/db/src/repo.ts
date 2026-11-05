@@ -275,6 +275,28 @@ export async function spendSinceCents(db: ReinsDb, agentId: string, since: numbe
   return Number(row?.total ?? 0);
 }
 
+/**
+ * Committed spend by one agent at one merchant since `since` (split-purchase rule). Orders a person approved by hand are
+ * not counted: the rule is about what the agent got paid on its own. `merchant` must already be normalised (requests
+ * store it that way). Excludes `excludeId`.
+ */
+export async function spendAtMerchantSinceCents(
+  db: ReinsDb,
+  agentId: string,
+  merchant: string,
+  since: number,
+  excludeId?: string,
+): Promise<number> {
+  const conds = [eq(requests.agentId, agentId), gte(requests.createdAt, since), inArray(requests.status, COMMITTED_STATUSES), eq(requests.merchant, merchant),
+    sql`not exists (select 1 from ${decisions} where ${decisions.requestId} = ${requests.id} and ${decisions.stage} = 'human' and ${decisions.decision} = 'APPROVE')`];
+  if (excludeId) conds.push(sql`${requests.id} <> ${excludeId}`);
+  const [row] = await db
+    .select({ total: sql<number>`coalesce(sum(${requests.amountCents}), 0)` })
+    .from(requests)
+    .where(and(...conds));
+  return Number(row?.total ?? 0);
+}
+
 /** Every request created at or after `since`, newest first (overview dashboard: month-to-date, no row limit). */
 export async function listRequestsSince(db: ReinsDb, since: number): Promise<PurchaseRequest[]> {
   return db

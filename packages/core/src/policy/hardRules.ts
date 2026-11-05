@@ -5,6 +5,8 @@ import { merchantInList } from "../merchant.ts";
 /** Velocity rule: at most VELOCITY_MAX requests per VELOCITY_WINDOW_MS; the next one is denied. */
 export const VELOCITY_MAX = 3;
 export const VELOCITY_WINDOW_MS = 10 * 60 * 1000;
+/** Split-purchase rule: committed orders to the same merchant inside this window add up against the per-purchase cap. */
+export const MERCHANT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type HardRuleId =
   | "mandate_present"
@@ -17,7 +19,8 @@ export type HardRuleId =
   | "monthly_limit"
   | "blocked_merchant"
   | "allowlist"
-  | "velocity";
+  | "velocity"
+  | "merchant_total";
 
 export interface HardRuleResult {
   rule: HardRuleId;
@@ -48,6 +51,11 @@ export interface HardRuleInput {
   monthSpentCents: number;
   /** Requests by this agent inside VELOCITY_WINDOW_MS, excluding this request. */
   recentRequestCount: number;
+  /**
+   * Spend the agent got paid on its own (not orders a person approved) at this same merchant inside MERCHANT_WINDOW_MS, excluding this request. When omitted
+   * the split-purchase rule is not evaluated.
+   */
+  merchantSpent24hCents?: number;
   /** Override of VELOCITY_MAX (the /try playground relaxes it so a judge can click freely). */
   velocityMax?: number;
 }
@@ -105,6 +113,22 @@ export function evaluateHardRules(input: HardRuleInput): HardRuleOutcome {
         : `${formatUsd(request.amountCents)} exceeds per-purchase cap ${formatUsd(mandate.perTxCapCents)}`,
       formatUsd(request.amountCents),
       `≤ ${formatUsd(mandate.perTxCapCents)}`,
+    );
+  }
+
+  // Split-purchase guard: five $29 orders to one merchant must not slip under a $100 per-purchase cap one by one.
+  if (mandate.perTxCapCents != null && input.merchantSpent24hCents !== undefined) {
+    const prior = input.merchantSpent24hCents;
+    const total = prior + request.amountCents;
+    const ok = prior === 0 || total <= mandate.perTxCapCents;
+    add(
+      "merchant_total",
+      ok,
+      prior === 0
+        ? `First order to ${request.merchant} in 24 hours`
+        : `${ok ? "" : "Split purchase: "}${formatUsd(prior)} already paid to ${request.merchant} in 24 hours + this ${formatUsd(request.amountCents)} = ${formatUsd(total)} ${ok ? "≤" : ">"} per-purchase cap ${formatUsd(mandate.perTxCapCents)}`,
+      prior === 0 ? "none earlier" : formatUsd(total),
+      `≤ ${formatUsd(mandate.perTxCapCents)} per merchant per 24 h`,
     );
   }
 

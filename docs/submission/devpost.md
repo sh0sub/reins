@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 246 tests in 37 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 260 tests in 37 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
@@ -8,14 +8,16 @@ Test count at time of writing: 246 tests in 37 files (`pnpm test`), `pnpm lint` 
 
 - **Problem:** an agent with a PayPal credential can spend without limit, and a web page can talk it into a bad purchase.
 - **Reins:** a per-agent mandate, hard rules in code, a Claude audit, one-tap approval (web or Telegram), PayPal Orders v2 payment and an audit ledger, served as an open-source MCP server.
-- **Numbers (seeded sandbox demo month, computed from the ledger):** 24 requests, 19 auto-paid, a $450 prompt-injected order blocked by 3 hard rules, $410 combined worst-case exposure, 246 tests.
-- **Verified in the real PayPal sandbox:** order `04X61877K0529583E`, capture `03A015968J4767410`, vault re-order `880199579M655730R`, payouts batch `UALE8USQRMHYW` (all in `docs/spikes/`).
+- **Seeded demo month (made-up data, computed from the ledger):** 24 requests, 19 auto-paid, a $450 prompt-injected order blocked by 3 hard rules, $410 combined worst-case exposure.
+- **Real sandbox ids (recorded run, not live; page `/proof`):** order `04X61877K0529583E`, capture `03A015968J4767410`, vault re-order `880199579M655730R`, payouts batch `UALE8USQRMHYW` (all in `docs/spikes/`).
+- **Tests:** 260 passing (`pnpm test`), `pnpm typecheck` and `pnpm lint` clean.
 - **Try it in 60 seconds, no keys:** `git clone`, `pnpm install`, `pnpm judge` opens `/try`: send the $450 order, tick "Simulate a fooled auditor" and send it again; it is still denied. Or open the live `/try` link below.
 
 ---
 
 ## Pitch (put this first in "What it does" / the opening of the story)
 
+A shared PayPal credential would have paid the $450. Reins did not.
 A web page told my AI agent to buy a $450 logo. Reins blocked it: three hard rules failed in plain code before the AI auditor even weighed in, and nothing was charged.
 Reins gives every agent its own PayPal wallet with a leash (monthly cap, auto-approve limit, allowed merchants), served as an open-source MCP server.
 On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 small, in-policy purchases paid themselves and only the over-limit ones went to a human, with one-tap approval on web or Telegram.
@@ -37,7 +39,7 @@ Sandbox only; the video's main run is simulated and one badged segment is a real
 
 The Overview "Money protected" card is computed from the ledger, not typed in. On the seed: worst-case exposure is $410 a month (sum of three agent caps) where one shared unlimited key has no bound; $450 blocked in 1 request (R-0143, fiverr.com, 3 hard rules failed); 19 of 24 requests paid without a tap; (19 auto + 1 blocked) x 30 s = 10 minutes of approvals saved, where 30 s per approval is a stated assumption, not a measurement. It is labelled seeded sandbox demo data, not live traffic.
 
-### PayPal APIs used (all called from `packages/core`)
+### PayPal APIs used (all called from `packages/core`; the real sandbox ids behind them are listed on the `/proof` page)
 
 | PayPal API | What Reins uses it for | Verified in real sandbox | Notes |
 |---|---|---|---|
@@ -96,7 +98,7 @@ Each agent gets its own API key and a versioned mandate: monthly cap, auto-appro
 
 - **Auto-approve**: hard rules pass, the Claude auditor scores risk low, and the amount is under the auto-approve limit. Reins pays right away through PayPal.
 - **Ask a human**: over the limit, or the auditor is unsure. The agent gets `pending_human`. The request appears in the web inbox in real time and as a Telegram card with Approve, Approve + always allow this merchant (saves a new mandate version), and Reject. The agent polls `get_request_status` and gets its receipt.
-- **Deny**: a hard rule fails (cap, block list, merchant not allowed) or the auditor sees manipulation. Nothing is charged, and the reason is explained in plain English (a Korean version is stored and shown for a Korean locale).
+- **Deny**: a hard rule fails (cap, block list, merchant not allowed, or orders to one merchant adding up past the per-purchase cap within 24 hours) or the auditor sees manipulation. Nothing is charged, and the reason is explained in plain English (a Korean version is stored and shown for a Korean locale).
 
 Around that: an AG Grid ledger of every decision with grouping and drill-down, a month overview (spend vs caps, decision mix, category donut, weekly summary), receipts, unusual-pattern flags (4th request to one merchant in 24 h, quiet hours, category outside the mandate), a one-click "Tighten mandate" from a blocked request, and a demo DevOps cron agent that pays infra bills through the same MCP server.
 
@@ -106,7 +108,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 
 **Monorepo, TypeScript.** `packages/core` (policy engine, PayPal client, payment strategies), `packages/db` (Drizzle on libsql/SQLite), `apps/web` (Next.js 15 dashboard, REST API and webhooks), `apps/mcp` (MCP server), `apps/bot` (grammY Telegram bot).
 
-**Decision flow.** Hard rules run first and are plain code (monthly cap, per-purchase cap, allow/deny lists). Only then does Claude review purpose fit and risk and return a structured verdict (AUTO_APPROVE / ASK_HUMAN / DENY, risk 1 to 10). Code bounds the verdict: DENY on a model DENY or risk >= 8, AUTO_APPROVE only if the model says so, risk <= 3 and the amount is within the auto-approve limit. If the auditor times out or errors, the request goes to a human, never auto-paid. Agent-written fields are treated as untrusted data in the prompt.
+**Decision flow.** Hard rules run first and are plain code (monthly cap, per-purchase cap, a same-merchant 24-hour total against that cap, allow/deny lists, velocity). Only then does Claude review purpose fit and risk and return a structured verdict (AUTO_APPROVE / ASK_HUMAN / DENY, risk 1 to 10). Code bounds the verdict: DENY on a model DENY or risk >= 8, AUTO_APPROVE only if the model says so, risk <= 3 and the amount is within the auto-approve limit. If the auditor times out or errors, the request goes to a human, never auto-paid. Agent-written fields are treated as untrusted data in the prompt.
 
 **PayPal APIs (sandbox), exact endpoints used in `packages/core`:**
 - `POST /v1/oauth2/token` for client-credentials tokens
@@ -124,7 +126,7 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 
 **Render.** A Blueprint (`render.yaml`) deploys two free web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and demo data is re-seeded on every boot, so the demo always starts clean (free instances sleep after about 15 minutes and reset).
 
-**Testing.** 246 Vitest tests across 37 files: policy unit tests, MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
+**Testing.** 260 Vitest tests across 37 files: policy unit tests (including the split-purchase rule), MCP stdio test, Telegram bot handlers, webhook signature handling, reconciliation, and end-to-end integration tests for the three flows (auto-paid, human-approved, denied), merchant rules, receipts, anomalies, the DevOps agent and the AI summary.
 
 ## Challenges we ran into
 
@@ -139,7 +141,8 @@ The dashboard is built to be driven fast: a sidebar agents list with live cap us
 - The $450 prompt-injection purchase is blocked by three independent hard rules before the AI even weighs in, and the demo video shows it end to end over real MCP calls.
 - The same approval works from the web inbox and Telegram, and "Approve + always allow" turns one human decision into a new versioned mandate.
 - A judge can try it with no keys: fake PayPal mode, mock auditor, seeded data, or point their own Claude at the hosted MCP server.
-- 246 passing tests, clean typecheck and lint.
+- 260 passing tests, clean typecheck and lint.
+- A split-purchase guard: five $29 orders to one merchant stay under a $30 auto-approve limit one by one, but the same-merchant 24-hour total hits the $100 per-purchase cap on the fourth, and code denies it. Proven by 3 unit tests and a `/try` preset test; see "Limits" for what it does not cover.
 
 ## What we learned
 
@@ -171,7 +174,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 
 (Also linked from the top of this description; see "Limits" above.) No Telegram, no PayPal account, no keys needed. Free Render instances sleep: open the live URL once and wait about a minute. The Agents screen shows the clone-based stdio config (replace the placeholder path with your checkout); the Claude Code HTTP command below also works.
 
-0. **Fastest:** open `/try` (live) or run `pnpm judge` locally. Three presets ($12.98 domain: paid, $59 report: waits for you, $450 injected order: denied with the failing hard-rule table) plus a free-form request, calling the same code path as the MCP `request_purchase`. Tick "Simulate a fooled auditor (always AUTO_APPROVE)": the $450 order is still denied by code. A three-step Judge tour on the page walks these in order and ends with links to the ledger row and audit trail. Payments in this path are simulated and labelled `SIM-…`; `/proof` shows the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) behind them, labelled as a recorded run, not live. Playground requests stay out of the Overview numbers by default, so they match the video.
+0. **Fastest:** open `/try` (live) or run `pnpm judge` locally. Four presets ($12.98 domain: paid, $59 report: waits for you, $450 injected order: denied with the failing hard-rule table, and "Five $29 orders" to one merchant: three paid, the fourth and fifth denied by the same-merchant total) plus a free-form request, calling the same code path as the MCP `request_purchase`. Tick "Simulate a fooled auditor (always AUTO_APPROVE)": the $450 order is still denied by code. A three-step Judge tour on the page walks these in order and ends with links to the ledger row and audit trail. Payments in this path are simulated and labelled `SIM-…`; `/proof` shows the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) behind them, labelled as a recorded run, not live. Playground requests stay out of the Overview numbers by default, so they match the video.
 1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents on a fresh seed; the video shows $176.97 of $410 after approving the $59 Statista request.
 2. `/setup` then **Use demo merchant (sandbox)** connects the server's sandbox merchant, so the full flow works without your own PayPal keys.
 3. `/agents` then create an agent and copy its `rk_live_...` key (shown once). Seeded `rk_demo_` keys are not usable.
@@ -199,6 +202,7 @@ Run it locally with zero credentials: `pnpm install && cp .env.example .env && p
 ## Limits
 
 - The video's main run is local, on a scratch database, with the simulated PayPal client and the offline stand-in for the Claude auditor; the segment badged "REAL RUN" (about 10 s, see `docs/submission/checklist.md`) used the real sandbox with real Claude audits. Other real sandbox calls: the spikes above.
+- Split-purchase rule: it adds up what the agent was paid on its own at the same merchant name within 24 hours and compares the total with the per-purchase cap. It needs a per-purchase cap on the mandate, does not count orders a person approved by hand, and does not catch splitting across different merchants (the monthly cap and the allow list still apply there).
 - Agent Toolkit: `create_order` ran against the real package in the sandbox; its capture (`pay_order`) was refused with HTTP 422 until a buyer approves, so it is not claimed.
 - `@reins/mcp` is not on npm (clone-based stdio config or the hosted HTTP endpoint). Free Render instances sleep: open the live URL once and wait about a minute. AG Grid Enterprise runs in trial mode (watermark). Sandbox only.
 

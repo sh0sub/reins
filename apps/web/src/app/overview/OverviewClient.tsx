@@ -8,6 +8,7 @@ import type { FeedItem, Overview, OverviewPeriod, WeeklySummary } from "@reins/c
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { statusChip, usd } from "@/lib/format";
+import { playgroundCaption } from "@/lib/shell";
 import { Icon } from "@/components/Icon";
 import { RequestDrawer } from "@/components/RequestDrawer";
 import { sliceHref, toSlices } from "./slices";
@@ -530,7 +531,7 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
                 <b>Include playground requests</b>
                 <span className="caption">
                   {" "}
-                  {shown.playground.requests} from /try {incl ? "are counted below" : "are left out so these numbers match the seeded demo"}
+                  {playgroundCaption(shown.playground.requests, incl)}
                 </span>
               </span>
             </label>

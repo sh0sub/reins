@@ -32,6 +32,7 @@ import {
   purgeAgents,
   setAgentPaused,
   setTimestamps,
+  spendAtMerchantSinceCents,
   spendSinceCents,
   updatePayment,
   updateRequest,
@@ -47,6 +48,7 @@ import {
   evaluateHardRules,
   generateApiKey,
   isoWeekStartUtc,
+  MERCHANT_WINDOW_MS,
   monthStartUtc,
   toCents,
   VELOCITY_WINDOW_MS,
@@ -389,6 +391,7 @@ async function replayItem(db: ReinsDb, agent: Agent, mandate: Mandate, item: Ite
     now: ts,
     monthSpentCents: await spendSinceCents(db, agent.id, monthStartUtc(ts)),
     recentRequestCount: await countRequestsSince(db, agent.id, ts - VELOCITY_WINDOW_MS, request.id),
+    merchantSpent24hCents: await spendAtMerchantSinceCents(db, agent.id, request.merchant, ts - MERCHANT_WINDOW_MS, request.id),
   });
   const expectHard = o.kind !== "hard_denied";
   if (hard.pass !== expectHard) throw new Error(`Seed item ${request.seq} (${item.merchant} ${item.amount}) hard rules ${hard.pass ? "passed" : "failed"} but the script expects the opposite: ${hard.failed.map((f) => f.detail).join("; ")}`);

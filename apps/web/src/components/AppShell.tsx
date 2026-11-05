@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { ShellData, type ShellInitial } from "./ShellData";
 import { EnvBadge, Nav, SideAgents, SideFoot, TopBar, WorkspaceRow } from "./Nav";
 
 /** Routes that render as a focused single column without the app chrome (S1 onboarding). */
 const BARE = ["/setup"];
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, initial }: { children: ReactNode; initial: ShellInitial }) {
   const path = usePathname();
   if (BARE.some((p) => path === p || path.startsWith(`${p}/`))) {
     return (
@@ -18,6 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
   return (
+    <ShellData.Provider value={initial}>
     <div className="shell">
       <aside className="sidebar">
         <Link className="brand" href="/overview" aria-label="Reins overview">
@@ -39,5 +41,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </ShellData.Provider>
   );
 }

@@ -37,8 +37,12 @@ describe("S5 approve + always allow this merchant", () => {
     const row = await getLedgerRow(h.ctx, second.data.request_id);
     expect(row.decisions.find((d) => d.stage === "llm")?.details).toMatchObject({ merchant_auto_limit: "59.00" });
 
-    // above the rule's amount, and other merchants, still ask
+    // a second auto-paid $59 report inside 24 h would total $118 at one merchant, over the $100 per-purchase cap
     h.tick();
+    expect((await scout.call("request_purchase", report(5))).data.status).toBe("denied");
+
+    // a day later: above the rule's amount, and other merchants, still ask
+    h.tick(25 * 60);
     expect((await scout.call("request_purchase", report(3, "59.01"))).data.status).toBe("pending_human");
     h.tick();
     expect((await scout.call("request_purchase", report(4, "59.00", "gartner.com"))).data.status).toBe("pending_human");

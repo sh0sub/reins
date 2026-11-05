@@ -75,3 +75,28 @@ export function searchPalette(query: string, agents: ShellAgent[], requests: She
     }));
   return [...pages.filter((p) => hit(p.label, p.hint)), ...ags.filter((a) => hit(a.label)), ...reqs];
 }
+
+/** Name of the /try demo agent (packages/core playground.ts PLAYGROUND_AGENT; kept in sync by a test). */
+export const PLAYGROUND_AGENT_NAME = "Playground Agent";
+
+/** Sidebar agents: revoked agents never show; the /try Playground Agent only shows when the playground toggle is on. */
+export function sidebarAgents<T extends Pick<ShellAgent, "name" | "status">>(agents: T[], includePlayground: boolean): T[] {
+  return agents.filter((a) => a.status !== "revoked" && (includePlayground || a.name !== PLAYGROUND_AGENT_NAME));
+}
+
+/** Approvals badge and "Pending N": requests raised from /try are not counted unless the playground toggle is on. */
+export function pendingCount(items: Array<{ agent_name: string }>, includePlayground: boolean): number {
+  return includePlayground ? items.length : items.filter((i) => i.agent_name !== PLAYGROUND_AGENT_NAME).length;
+}
+
+/** Keeps `?playground=1` on in-app links while the toggle is on. */
+export function withPlayground(href: string, includePlayground: boolean): string {
+  if (!includePlayground) return href;
+  return href.includes("?") ? `${href}&playground=1` : `${href}?playground=1`;
+}
+
+/** "1 request from /try is" / "3 requests from /try are": the Overview toggle caption. */
+export function playgroundCaption(n: number, included: boolean): string {
+  const subject = `${n} ${n === 1 ? "request" : "requests"} from /try ${n === 1 ? "is" : "are"}`;
+  return included ? `${subject} counted below` : `${subject} left out so these numbers match the seeded demo`;
+}

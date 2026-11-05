@@ -35,6 +35,7 @@ export const HARD_RULE_LABELS: Record<string, string> = {
   amount_valid: "Amount",
   currency: "Currency",
   per_tx_cap: "Per-purchase cap",
+  merchant_total: "Same-merchant total (24 h)",
   monthly_limit: "Monthly cap",
   blocked_merchant: "Block list",
   allowlist: "Merchant allowlist",

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { agentsKpi, capPct, searchPalette, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
+import { PLAYGROUND_AGENT } from "@reins/core";
+import config from "../next.config.ts";
+import { PLAYGROUND_AGENT_NAME, agentsKpi, capPct, pendingCount, playgroundCaption, searchPalette, sidebarAgents, withPlayground, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
 import { isUnknownRequest, linkedRequest, resolveRequestId, showKo } from "../src/lib/format.ts";
 
 const agents: ShellAgent[] = [
@@ -71,5 +73,37 @@ describe("shared approval links (M5)", () => {
   });
   it("Korean audit text is hidden outside a Korean locale", () => {
     expect(showKo()).toBe(false); // node: no document
+  });
+});
+
+describe("playground rows stay out of badges and the sidebar unless the toggle is on", () => {
+  const inbox = [{ agent_name: "Research Scout" }, { agent_name: PLAYGROUND_AGENT_NAME }, { agent_name: PLAYGROUND_AGENT_NAME }];
+  const withPg: ShellAgent[] = [...agents, { id: "pg", name: PLAYGROUND_AGENT_NAME, status: "active", month_spent_cents: 0, monthly_limit_cents: 30000 }];
+  it("the client constant matches the server's playground agent name", () => {
+    expect(PLAYGROUND_AGENT_NAME).toBe(PLAYGROUND_AGENT);
+  });
+  it("Approvals badge and Pending N count only real agents by default, all of them with ?playground=1", () => {
+    expect(pendingCount(inbox, false)).toBe(1);
+    expect(pendingCount(inbox, true)).toBe(3);
+    expect(pendingCount([{ agent_name: PLAYGROUND_AGENT_NAME }], false)).toBe(0);
+  });
+  it("sidebar agents hide the Playground Agent and revoked agents, unless the toggle is on", () => {
+    expect(sidebarAgents(withPg, false).map((a) => a.name)).toEqual(["Claude Code – DevOps", "Research Scout", "Desk Restock Bot"]);
+    expect(sidebarAgents(withPg, true).map((a) => a.name)).toContain(PLAYGROUND_AGENT_NAME);
+  });
+  it("in-app links keep ?playground=1 while it is on", () => {
+    expect(withPlayground("/inbox", true)).toBe("/inbox?playground=1");
+    expect(withPlayground("/ledger?r=x", true)).toBe("/ledger?r=x&playground=1");
+    expect(withPlayground("/inbox", false)).toBe("/inbox");
+  });
+  it("toggle caption agrees in number", () => {
+    expect(playgroundCaption(1, true)).toBe("1 request from /try is counted below");
+    expect(playgroundCaption(3, false)).toBe("3 requests from /try are left out so these numbers match the seeded demo");
+    expect(playgroundCaption(0, false)).toContain("0 requests from /try are");
+  });
+  it("/approvals redirects to /inbox with no fixed query, so Next forwards ?playground=1 untouched", async () => {
+    const [r] = await config.redirects!();
+    expect(r).toMatchObject({ source: "/approvals", destination: "/inbox" });
+    expect(r!.destination).not.toContain("?");
   });
 });

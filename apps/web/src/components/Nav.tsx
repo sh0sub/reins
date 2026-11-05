@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useLive, useLiveStatus } from "@/lib/live";
-import { agentInitials, capPct, type ShellAgent } from "@/lib/shell";
+import { agentInitials, capPct, pendingCount, sidebarAgents, withPlayground, type ShellAgent } from "@/lib/shell";
+import { useIncludePlayground, useShellInitial, type WorkspaceView } from "./ShellData";
 import { CommandPalette } from "./CommandPalette";
 import { Icon, type IconName } from "./Icon";
 
@@ -17,25 +18,29 @@ const ITEMS: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/setup", label: "Settings", icon: "gear" },
 ];
 
+/** Waiting approvals for the badge. Requests raised from /try are left out unless the playground toggle is on. */
 function usePending() {
-  const [pending, setPending] = useState<number | null>(null);
+  const include = useIncludePlayground();
+  const initial = useShellInitial().inbox;
+  const [items, setItems] = useState<Array<{ agent_name: string }> | null>(initial);
   const load = useCallback(() => {
-    api<{ items: unknown[] }>("/api/inbox").then((r) => setPending(r.items.length)).catch(() => setPending(null));
+    api<{ items: Array<{ agent_name: string }> }>("/api/inbox").then((r) => setItems(r.items)).catch(() => setItems(null));
   }, []);
   useEffect(load, [load]);
   useLive((e) => {
     if (e.type === "resync" || e.request?.status === "pending_human" || e.type === "request.updated") load();
   });
-  return pending;
+  return items === null ? null : pendingCount(items, include);
 }
 
 export function Nav() {
   const path = usePathname();
   const pending = usePending();
+  const include = useIncludePlayground();
   return (
     <nav className="nav" aria-label="Main">
       {ITEMS.map((i) => (
-        <Link key={i.href} href={i.href} aria-current={path.startsWith(i.href) ? "page" : undefined}>
+        <Link key={i.href} href={withPlayground(i.href, include)} aria-current={path.startsWith(i.href) ? "page" : undefined}>
           <Icon name={i.icon} />
           <span className="lbl">{i.label}</span>
           {i.href === "/inbox" && pending ? (
@@ -49,17 +54,6 @@ export function Nav() {
   );
 }
 
-interface WorkspaceView {
-  name?: string;
-  paypal_env: string;
-  merchant_email: string | null;
-  payment_mode: string;
-  has_vault: boolean;
-  telegram_linked: boolean;
-  judge_mode?: boolean;
-  connected_at: string | null;
-}
-
 /** Demo identity for the user block (the product has a single workspace owner, no accounts). */
 export const DEMO_USER = { name: "Minji Park", handle: "@minji_builds" };
 /** On a judge instance (REINS_TRY=1) the made-up persona gives way to what the viewer is: a judge on an offline demo. */
@@ -67,7 +61,7 @@ export const JUDGE_USER = { name: "Judge", handle: "offline demo" };
 
 function useWorkspace() {
   const path = usePathname();
-  const [ws, setWs] = useState<WorkspaceView | null>(null);
+  const [ws, setWs] = useState<WorkspaceView | null>(useShellInitial().workspace);
   const load = useCallback(() => {
     api<WorkspaceView>("/api/workspace").then(setWs).catch(() => setWs(null));
   }, []);
@@ -100,10 +94,12 @@ export function WorkspaceRow() {
 
 /** Sidebar agents list: dot (paused = grey), name and the share of the monthly cap used. */
 export function SideAgents() {
-  const [agents, setAgents] = useState<ShellAgent[] | null>(null);
+  const include = useIncludePlayground();
+  const [all, setAll] = useState<ShellAgent[] | null>(useShellInitial().agents);
+  const agents = all === null ? null : sidebarAgents(all, include);
   const path = usePathname();
   const load = useCallback(() => {
-    api<{ agents: ShellAgent[] }>("/api/agents").then((r) => setAgents(r.agents.filter((a) => a.status !== "revoked"))).catch(() => setAgents(null));
+    api<{ agents: ShellAgent[] }>("/api/agents").then((r) => setAll(r.agents)).catch(() => setAll(null));
   }, []);
   useEffect(load, [load, path]);
   useLive((e) => {
@@ -191,10 +187,13 @@ export function TopBar() {
   const path = usePathname();
   const status = useLiveStatus();
   const pending = usePending();
+  const include = useIncludePlayground();
   const ws = useWorkspace();
-  const who = ws?.judge_mode ? JUDGE_USER : DEMO_USER;
+  const judge = useShellInitial().judge || Boolean(ws?.judge_mode);
+  const who = judge ? JUDGE_USER : DEMO_USER;
   const title = Object.entries(TITLES).find(([k]) => path.startsWith(k))?.[1] ?? "Reins";
-  const label = status === "live" ? "Live" : status === "connecting" ? (ws?.judge_mode ? "Offline demo" : "Connecting…") : status === "reconnecting" ? "Reconnecting…" : "Offline · retrying";
+  // a judge instance is an offline demo from the first paint on; the dot still shows the live-update connection
+  const label = judge && (status === "live" || status === "connecting") ? "Offline demo" : status === "live" ? "Live" : status === "connecting" ? "Connecting…" : status === "reconnecting" ? "Reconnecting…" : "Offline · retrying";
   return (
     <header className="topbar">
       <span className="crumb">{title}</span>
@@ -205,11 +204,11 @@ export function TopBar() {
           <span className="live-lbl">{label}</span>
         </span>
         {pending ? (
-          <Link className="btn" href="/inbox">
+          <Link className="btn" href={withPlayground("/inbox", include)}>
             Pending {pending}
           </Link>
         ) : null}
-        <Link className="bell" href="/inbox" aria-label={pending ? `Notifications: ${pending} pending approval${pending === 1 ? "" : "s"}` : "Notifications: nothing pending"}>
+        <Link className="bell" href={withPlayground("/inbox", include)} aria-label={pending ? `Notifications: ${pending} pending approval${pending === 1 ? "" : "s"}` : "Notifications: nothing pending"}>
           <Icon name="bell" />
           {pending ? <i className="bell-dot" aria-hidden /> : null}
         </Link>
