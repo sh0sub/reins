@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { AgCharts } from "ag-charts-react";
 import { BarSeriesModule, CategoryAxisModule, ModuleRegistry, NumberAxisModule, type AgCartesianChartOptions } from "ag-charts-community";
 import type { LedgerRow } from "@reins/core";
+import { usdAmount } from "@/lib/format";
 
 ModuleRegistry.registerModules([BarSeriesModule, CategoryAxisModule, NumberAxisModule]);
 
@@ -37,7 +38,7 @@ export function SpendChart({ rows }: { rows: LedgerRow[] }) {
           yName: "Paid this month",
           fill: "#003087",
           cornerRadius: 4,
-          label: { formatter: ({ value }: { value: number }) => `$${value.toFixed(2)}`, placement: "outside-end", color: "#0b1f4d", fontWeight: "bold" },
+          label: { formatter: ({ value }: { value: number }) => usdAmount(value), placement: "outside-end", color: "#0b1f4d", fontWeight: "bold" },
         },
       ],
       axes: {
@@ -51,7 +52,7 @@ export function SpendChart({ rows }: { rows: LedgerRow[] }) {
 
   if (!data.length) return <p className="caption">No paid purchases this month yet.</p>;
   return (
-    <div role="img" aria-label={`Paid this month by agent: ${data.map((d) => `${d.agent} $${d.paid.toFixed(2)}`).join(", ")}`}>
+    <div role="img" aria-label={`Paid this month by agent: ${data.map((d) => `${d.agent} ${usdAmount(d.paid)}`).join(", ")}`}>
       <AgCharts options={options} />
     </div>
   );

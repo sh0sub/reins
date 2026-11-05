@@ -56,11 +56,14 @@ interface WorkspaceView {
   payment_mode: string;
   has_vault: boolean;
   telegram_linked: boolean;
+  judge_mode?: boolean;
   connected_at: string | null;
 }
 
 /** Demo identity for the user block (the product has a single workspace owner, no accounts). */
 export const DEMO_USER = { name: "Minji Park", handle: "@minji_builds" };
+/** On a judge instance (REINS_TRY=1) the made-up persona gives way to what the viewer is: a judge on an offline demo. */
+export const JUDGE_USER = { name: "Judge", handle: "offline demo" };
 
 function useWorkspace() {
   const path = usePathname();
@@ -84,7 +87,7 @@ export function EnvBadge() {
 
 export function WorkspaceRow() {
   const ws = useWorkspace();
-  const name = ws?.name && ws.name !== "Workspace" ? ws.name : `${DEMO_USER.name.split(" ")[0]}'s workspace`;
+  const name = ws?.name && ws.name !== "Workspace" ? ws.name : ws?.judge_mode ? "Demo workspace" : `${DEMO_USER.name.split(" ")[0]}'s workspace`;
   return (
     <div className="side-ws">
       <span className="avatar avatar-sm" aria-hidden>
@@ -141,14 +144,15 @@ export function SideAgents() {
 /** Sidebar footer: PayPal connection (env, merchant email, Telegram) and the user block. */
 export function SideFoot() {
   const ws = useWorkspace();
+  const who = ws?.judge_mode ? JUDGE_USER : DEMO_USER;
   const user = (
     <div className="side-me">
       <span className="avatar avatar-sm" aria-hidden>
-        {agentInitials(DEMO_USER.name)}
+        {agentInitials(who.name)}
       </span>
       <div>
-        <b>{DEMO_USER.name}</b>
-        <span>{DEMO_USER.handle}</span>
+        <b>{who.name}</b>
+        <span>{who.handle}</span>
       </div>
     </div>
   );
@@ -167,6 +171,9 @@ export function SideFoot() {
           {offline ? "Sandbox demo data · " : ""}
           {ws.payment_mode === "vaulted" ? "Automatic · vault" : ws.payment_mode === "treasury" ? "Treasury payouts" : "Supervised checkout"}
         </span>
+        <Link className="caption" href="/proof">
+          Recorded sandbox run: real ids
+        </Link>
         <span className="row caption">
           <span className={ws.telegram_linked ? "dot dot-ok" : "dot"} />
           Telegram {ws.telegram_linked ? "linked" : "optional, not linked"}
@@ -177,15 +184,17 @@ export function SideFoot() {
   );
 }
 
-const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Settings", "/receipts": "Receipt" };
+const TITLES: Record<string, string> = { "/overview": "Overview", "/inbox": "Approvals", "/agents": "Agents & mandates", "/ledger": "Ledger", "/setup": "Settings", "/receipts": "Receipt", "/try": "Try an agent", "/proof": "Proof" };
 
 /** 56px top bar: page name, live connection state, pending shortcut. */
 export function TopBar() {
   const path = usePathname();
   const status = useLiveStatus();
   const pending = usePending();
+  const ws = useWorkspace();
+  const who = ws?.judge_mode ? JUDGE_USER : DEMO_USER;
   const title = Object.entries(TITLES).find(([k]) => path.startsWith(k))?.[1] ?? "Reins";
-  const label = status === "live" ? "Live" : status === "connecting" ? "Connecting…" : status === "reconnecting" ? "Reconnecting…" : "Offline · retrying";
+  const label = status === "live" ? "Live" : status === "connecting" ? (ws?.judge_mode ? "Offline demo" : "Connecting…") : status === "reconnecting" ? "Reconnecting…" : "Offline · retrying";
   return (
     <header className="topbar">
       <span className="crumb">{title}</span>
@@ -204,8 +213,8 @@ export function TopBar() {
           <Icon name="bell" />
           {pending ? <i className="bell-dot" aria-hidden /> : null}
         </Link>
-        <span className="avatar avatar-sm" role="img" aria-label={DEMO_USER.name} title={DEMO_USER.name}>
-          {agentInitials(DEMO_USER.name)}
+        <span className="avatar avatar-sm" role="img" aria-label={who.name} title={who.name}>
+          {agentInitials(who.name)}
         </span>
       </div>
     </header>

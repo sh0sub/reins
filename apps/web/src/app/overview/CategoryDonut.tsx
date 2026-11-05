@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { AgCharts } from "ag-charts-react";
 import { DonutSeriesModule, ModuleRegistry, type AgPolarChartOptions } from "ag-charts-community";
-import { usd } from "@/lib/format";
+import { usd, usdAmount } from "@/lib/format";
 import type { CategorySlice } from "./slices";
 
 ModuleRegistry.registerModules([DonutSeriesModule]);
@@ -42,7 +42,7 @@ export function CategoryDonut({ slices, totalCents, caption, onSelect }: { slice
           tooltip: {
             renderer: ({ datum }: { datum: { category: string; dollars: number } }) => ({
               heading: datum.category,
-              data: [{ label: "Spent", value: `$${datum.dollars.toFixed(2)}` }, ...(onSelect ? [{ label: "Click", value: "open in ledger" }] : [])],
+              data: [{ label: "Spent", value: usdAmount(datum.dollars) }, ...(onSelect ? [{ label: "Click", value: "open in ledger" }] : [])],
             }),
           },
         },

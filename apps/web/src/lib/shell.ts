@@ -1,4 +1,5 @@
 /** Pure helpers for the app shell: sidebar agents, command palette search, Agents KPI. */
+import { usdAmount } from "./format";
 
 export interface ShellAgent {
   id: string;
@@ -69,7 +70,7 @@ export function searchPalette(query: string, agents: ShellAgent[], requests: She
       kind: "request",
       id: r.request_id,
       label: `${r.display_id} · ${r.merchant}`,
-      hint: `$${Number(r.amount).toFixed(2)} · ${r.agent_name} · ${r.status.replace(/_/g, " ")}`,
+      hint: `${usdAmount(Number(r.amount))} · ${r.agent_name} · ${r.status.replace(/_/g, " ")}`,
       href: `/ledger?r=${encodeURIComponent(r.request_id)}&drawer=1`,
     }));
   return [...pages.filter((p) => hit(p.label, p.hint)), ...ags.filter((a) => hit(a.label)), ...reqs];

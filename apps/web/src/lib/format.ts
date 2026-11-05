@@ -1,6 +1,10 @@
 import type { LedgerRow } from "@reins/core";
 
-export const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+/** Cents as dollars with a thousands separator: 135000 -> "$1,350.00". */
+export const usd = (cents: number) => USD.format(cents / 100);
+/** Same format for an amount already in dollars. */
+export const usdAmount = (dollars: number) => USD.format(dollars);
 
 export function ago(iso: string, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));

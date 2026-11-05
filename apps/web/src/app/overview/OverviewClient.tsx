@@ -429,6 +429,7 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
   const params = useSearchParams();
   const router = useRouter();
   const period: OverviewPeriod = params.get("period") === "30d" ? "30d" : "month";
+  const incl = params.get("playground") === "1";
   const [o, setO] = useState<Overview | null>(initial);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
@@ -437,13 +438,13 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
   const [drawerId, setDrawerId] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api<Overview>(`/api/overview?period=${period}`)
+    api<Overview>(`/api/overview?period=${period}${incl ? "&include_playground=1" : ""}`)
       .then((r) => {
         setO(r);
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-  }, [period]);
+  }, [period, incl]);
   // The summary may call Claude: fetched separately so it never blocks the numbers.
   const loadSummary = useCallback(() => {
     setSummaryError(null);
@@ -465,7 +466,13 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
   // the weekly summary is period-independent; only the numbers reload when the toggle changes
-  const shown = o && o.period.kind === period ? o : null;
+  const shown = o && o.period.kind === period && o.playground.included === incl ? o : null;
+  const href = (p: OverviewPeriod, inc: boolean) => {
+    const q = new URLSearchParams();
+    if (p !== "month") q.set("period", p);
+    if (inc) q.set("playground", "1");
+    return q.size ? `/overview?${q}` : "/overview";
+  };
   const head = shown ? headRange(shown) : null;
   const w = periodWords(period);
 
@@ -489,7 +496,7 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
             </Link>
           )}
           {shown && shown.totals.agents > 0 && <StatusChip status={shown.status} />}
-          <PeriodToggle value={period} onChange={(p) => router.replace(p === "month" ? "/overview" : `/overview?period=${p}`, { scroll: false })} />
+          <PeriodToggle value={period} onChange={(p) => router.replace(href(p, incl), { scroll: false })} />
         </div>
       </div>
 
@@ -516,6 +523,18 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
         </div>
       ) : (
         <div className="stack-l">
+          {(shown.playground.requests > 0 || shown.playground.included) && (
+            <label className="try-toggle ov-play">
+              <input type="checkbox" checked={incl} onChange={(e) => router.replace(href(period, e.target.checked), { scroll: false })} />
+              <span>
+                <b>Include playground requests</b>
+                <span className="caption">
+                  {" "}
+                  {shown.playground.requests} from /try {incl ? "are counted below" : "are left out so these numbers match the seeded demo"}
+                </span>
+              </span>
+            </label>
+          )}
           <Kpis o={shown} />
           <Protected o={shown} />
           <div className="ov-mid">

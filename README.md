@@ -13,6 +13,8 @@ pnpm judge        # throwaway database, simulated PayPal, opens http://localhost
 
 Send the $450 prompt-injected order: denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
 
+A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
+
 **Real vs simulated**
 
 | | Real | Simulated |
@@ -85,7 +87,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 246 tests
+pnpm test                   # 250 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.

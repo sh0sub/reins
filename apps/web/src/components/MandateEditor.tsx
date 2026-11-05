@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import { api } from "@/lib/api";
-import { usd } from "@/lib/format";
+import { usd, usdAmount } from "@/lib/format";
 
 export interface MandateView {
   mandate_id: string;
@@ -289,7 +289,7 @@ export function MandateEditor({
           <i style={{ width: `${usedPct}%` }} />
         </div>
         <p className="caption">
-          This month {usd(monthSpentCents)} of ${monthly.toFixed(2)} used · above ${auto.toFixed(2)}, Reins asks you on Telegram and here.
+          This month {usd(monthSpentCents)} of {usdAmount(monthly)} used · above {usdAmount(auto)}, Reins asks you on Telegram and here.
         </p>
       </div>
 

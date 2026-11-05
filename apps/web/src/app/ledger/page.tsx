@@ -7,7 +7,7 @@ import type { GridApi } from "ag-grid-community";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
-import { bucketTotal, isUnknownRequest, outcomeBucket, resolveRequestId } from "@/lib/format";
+import { bucketTotal, isUnknownRequest, outcomeBucket, resolveRequestId, usdAmount } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
@@ -34,7 +34,7 @@ function periodStart(p: Period, now = new Date()): number {
   return 0;
 }
 const catOf = (r: LedgerRow) => r.category ?? "uncategorized";
-const money = (n: number) => `$${n.toFixed(2)}`;
+const money = usdAmount;
 
 function LedgerScreen() {
   const params = useSearchParams();
@@ -195,14 +195,14 @@ function LedgerScreen() {
           <div className="kpis kpis-4">
               <div className="panel panel-tight stack-s">
                 <span className="caption">Paid</span>
-                <span className="metric">${kpi.paid.toFixed(2)}</span>
+                <span className="metric">{usdAmount(kpi.paid)}</span>
                 <span className="caption">
                   {kpi.matched} of {kpi.paidCount} reconciled with Transaction Search
                 </span>
               </div>
               <div className="panel panel-tight stack-s">
                 <span className="caption">Blocked</span>
-                <span className="metric">${kpi.blocked.toFixed(2)}</span>
+                <span className="metric">{usdAmount(kpi.blocked)}</span>
                 <span className="caption">
                   {kpi.blockedCount} {kpi.blockedCount === 1 ? "request" : "requests"} · nothing charged
                 </span>

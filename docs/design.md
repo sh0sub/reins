@@ -26,6 +26,7 @@
   merchant rules. S5: free-text deny reason, Auto/Approved/Rejected/Blocked labels in recent decisions (blocked rows red), "This month" and
   Telegram cards under the queue, active mandate strip. The mandate date row now wraps (fixes the 28px overflow at 360).
   Checked in headless Chrome at 360/390/720/1440 with seed data: no page-level horizontal overflow.
+- Judge pass (cycle 2): `/try` Judge tour (3 steps, checks, `localStorage` remembers a dismissal), pulsing "Start here" on the $450 preset (static ring under `prefers-reduced-motion`), judge instance shows "Offline demo" / "Judge". `/proof` reuses `.panel` + `dl.receipt`. Money is formatted with `Intl.NumberFormat` (thousands separator). Checked in headless Chrome at 390 and 1440, no horizontal overflow.
 - Gap pass vs the plan mockups (2026-10-31): S6 request-detail drawer (`components/RequestDrawer.tsx`, `role="dialog"`, right 520px,
   full screen under 720px, Esc closes, focus trap, focus returns to the opener). Opened from a ledger ID cell / row expansion
   (deep link `/ledger?r=<id>&drawer=1`), inbox recent/decided rows and "Full decision trail", and overview feed rows (in place; the

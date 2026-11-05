@@ -1,4 +1,4 @@
-import { getWorkspace, listAgents, type ReinsDb } from "@reins/db";
+import { getWorkspace, listAgents, listRequestsSince, purgeAgents, type ReinsDb } from "@reins/db";
 import type { AuditProvider, AuditVerdict } from "./policy/audit.ts";
 import { rotateAgentKey } from "./agentControl.ts";
 import { authenticateAgent, createAgent, getLedgerRow, saveMandate, submitPurchase, type ReinsContext } from "./service.ts";
@@ -39,6 +39,11 @@ const keys = new WeakMap<ReinsDb, string>();
 
 export function playgroundEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.REINS_TRY === "1" || env.REINS_PUBLIC_DEMO === "1";
+}
+
+/** Judge mode = `pnpm judge` / REINS_TRY=1 on a throwaway database. The public demo is not judge mode, so it never offers a reset. */
+export function judgeMode(env: Record<string, string | undefined> = process.env): boolean {
+  return env.REINS_TRY === "1";
 }
 
 async function ensureAgent(ctx: ReinsContext): Promise<string> {
@@ -85,4 +90,18 @@ export async function runPlayground(ctx: ReinsContext, raw: unknown, opts: { foo
     failed_rules: results.filter((r) => !r.ok).map((r) => r.rule),
     paypal: row.payment ? (ws.paypalEnv === "sandbox" ? "sandbox" : "simulated") : "none",
   };
+}
+
+/**
+ * "Reset demo data" on /try (judge mode only): deletes the Playground Agent with all of its requests, decisions, payments
+ * and messages. The seeded agents and their ledger are never touched. Returns how many requests were removed.
+ */
+export async function resetPlayground(ctx: ReinsContext): Promise<{ removed_requests: number }> {
+  const ids = (await listAgents(ctx.db)).filter((a) => a.name === PLAYGROUND_AGENT).map((a) => a.id);
+  if (!ids.length) return { removed_requests: 0 };
+  const rows = await listRequestsSince(ctx.db, 0);
+  const removed = rows.filter((r) => ids.includes(r.agentId)).length;
+  await purgeAgents(ctx.db, ids);
+  keys.delete(ctx.db);
+  return { removed_requests: removed };
 }

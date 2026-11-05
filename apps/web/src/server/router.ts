@@ -25,7 +25,9 @@ import {
   getLedgerRow,
   getOverview,
   parsePeriod,
+  judgeMode,
   playgroundEnabled,
+  resetPlayground,
   runPlayground,
   getReceipt,
   getWeeklySummary,
@@ -155,7 +157,7 @@ const routes: Route[] = [
   }),
 
   // ---- dashboard / admin ----
-  toRoute("GET", "/api/overview", "admin", async (_r, ctx, _p, url) => json(await getOverview(ctx, parsePeriod(url.searchParams.get("period"))))),
+  toRoute("GET", "/api/overview", "admin", async (_r, ctx, _p, url) => json(await getOverview(ctx, parsePeriod(url.searchParams.get("period")), { includePlayground: url.searchParams.get("include_playground") === "1" }))),
   toRoute("GET", "/api/overview/summary", "admin", async (_r, ctx) => json(await getWeeklySummary(ctx))),
   toRoute("GET", "/api/agents", "admin", async (_r, ctx) => json({ agents: await listAgentSummaries(ctx) })),
   toRoute("POST", "/api/agents", "admin", async (req, ctx) => {
@@ -201,6 +203,10 @@ const routes: Route[] = [
     if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The playground is off here. Run `pnpm judge` or set REINS_TRY=1.");
     const { fooled_auditor, ...purchase } = (await readJson(req)) as Record<string, unknown>;
     return json(await runPlayground(ctx, purchase, { fooled: fooled_auditor === true }), 201);
+  }),
+  toRoute("POST", "/api/try/reset", "admin", async (_req, ctx) => {
+    if (!judgeMode()) throw new ReinsError(403, "try_disabled", "Reset is only available in judge mode (pnpm judge or REINS_TRY=1).");
+    return json(await resetPlayground(ctx));
   }),
   toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p) => {
     const { action, note, allow_merchant } = (await readJson(req)) as { action?: string; note?: unknown; allow_merchant?: unknown };

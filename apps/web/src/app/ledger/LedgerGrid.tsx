@@ -16,7 +16,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip } from "@/lib/format";
+import { decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
 // Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -239,7 +239,7 @@ function GroupRowLabel(p: { value?: string; node: { allChildrenCount: number | n
       <strong>{p.value}</strong>
       <span>
         {p.node.allChildrenCount} {p.node.allChildrenCount === 1 ? "request" : "requests"}
-        {typeof paid === "number" ? ` · $${paid.toFixed(2)} paid` : ""}
+        {typeof paid === "number" ? ` · ${usdAmount(paid)} paid` : ""}
       </span>
     </span>
   );
@@ -257,7 +257,7 @@ function paidSum(p: IAggFuncParams<LedgerRow>): number {
   return Math.round(total * 100) / 100;
 }
 
-const money = (p: ValueFormatterParams) => (typeof p.value === "number" ? `$${p.value.toFixed(2)}` : "");
+const money = (p: ValueFormatterParams) => (typeof p.value === "number" ? usdAmount(p.value) : "");
 
 export function LedgerGrid({
   rows,

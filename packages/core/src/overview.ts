@@ -13,6 +13,7 @@ import {
 import { monthStartUtc } from "./policy/hardRules.ts";
 import { displayId } from "./pay/strategies.ts";
 import type { ReinsContext } from "./service.ts";
+import { PLAYGROUND_AGENT } from "./playground.ts";
 
 /**
  * Feature S1 / screen S7 "Overview": every number the dashboard shows, computed from the same repositories and
@@ -111,6 +112,8 @@ export interface Overview {
   protection: Protection;
   categories: Array<{ category: string; cents: number }>;
   recent: FeedItem[];
+  /** /try requests (the Playground Agent) are left out of every number above unless `included`; `requests` counts them in the period. */
+  playground: { included: boolean; requests: number };
 }
 
 const hasRule = (d: Decision) => d.stage === "hard_rules" && d.decision === "DENY";
@@ -125,12 +128,20 @@ function viaOf(r: PurchaseRequest, outcome: Outcome, decisions: Decision[]): str
   return "in review";
 }
 
-export async function getOverview(ctx: ReinsContext, period: OverviewPeriod = "month"): Promise<Overview> {
+export async function getOverview(ctx: ReinsContext, period: OverviewPeriod = "month", opts: { includePlayground?: boolean } = {}): Promise<Overview> {
   const { db } = ctx;
+  const includePlayground = opts.includePlayground === true;
   const now = ctx.now();
   const monthStart = monthStartUtc(now);
   const since = period === "30d" ? now - ROLLING_DAYS * 86_400_000 : monthStart;
-  const [ws, budgets, allAgents, monthRequests] = await Promise.all([getWorkspace(db), agentBudgets(db, now), listAgents(db), listRequestsSince(db, since)]);
+  const [ws, allBudgets, everyAgent, periodRequests] = await Promise.all([getWorkspace(db), agentBudgets(db, now), listAgents(db), listRequestsSince(db, since)]);
+  // The /try playground writes into the same ledger; keep it out of the headline numbers so they match the README and the video.
+  const playgroundIds = new Set(everyAgent.filter((a) => a.name === PLAYGROUND_AGENT).map((a) => a.id));
+  const skip = (id: string) => !includePlayground && playgroundIds.has(id);
+  const budgets = allBudgets.filter((b) => !skip(b.id));
+  const allAgents = everyAgent.filter((a) => !skip(a.id));
+  const monthRequests = periodRequests.filter((r) => !skip(r.agentId));
+  const playgroundRequests = periodRequests.filter((r) => playgroundIds.has(r.agentId)).length;
   const names = new Map(allAgents.map((a) => [a.id, a.name]));
   const decisions = await listDecisionsFor(db, monthRequests.map((r) => r.id));
   const byRequest = new Map<string, Decision[]>();
@@ -220,5 +231,6 @@ export async function getOverview(ctx: ReinsContext, period: OverviewPeriod = "m
     },
     categories: [...categories.entries()].map(([category, cents]) => ({ category, cents })).sort((a, b) => b.cents - a.cents),
     recent,
+    playground: { included: includePlayground, requests: playgroundRequests },
   };
 }

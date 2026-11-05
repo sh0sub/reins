@@ -1,0 +1,50 @@
+{
+  "note": "Recorded PayPal sandbox run (spike logs in docs/spikes). Ids are copied from those logs; this page does not call PayPal.",
+  "repo_blob": "https://github.com/sh0sub/reins/blob/main/",
+  "items": [
+    {
+      "id": "order-capture",
+      "title": "Order, approve, capture",
+      "what": "Orders v2 order approved by the sandbox buyer and captured, with the buyer's PayPal saved to the vault (store_in_vault).",
+      "amount": "0.01",
+      "at": "2026-10-27T15:40:28Z",
+      "status": "COMPLETED",
+      "ids": [
+        { "label": "Order", "value": "04X61877K0529583E" },
+        { "label": "Capture", "value": "03A015968J4767410" },
+        { "label": "Vault", "value": "VAULTED" }
+      ],
+      "log": "docs/spikes/d2-payment.md"
+    },
+    {
+      "id": "vault-reorder",
+      "title": "Buyer-absent re-order",
+      "what": "A second order created with only the vault id, no approval click. This is how Reins pays an auto-approved request.",
+      "amount": "1.23",
+      "at": "2026-10-27T15:40:31Z",
+      "status": "COMPLETED",
+      "ids": [{ "label": "Order", "value": "880199579M655730R" }],
+      "log": "docs/spikes/d2-payment.md"
+    },
+    {
+      "id": "payout",
+      "title": "Payout batch (treasury mode)",
+      "what": "Payouts API batch from the sandbox business account to the personal account. Batch and item both ended SUCCESS.",
+      "amount": "1.00",
+      "at": "2026-10-27T15:55:08Z",
+      "status": "SUCCESS",
+      "ids": [{ "label": "Batch", "value": "UALE8USQRMHYW" }],
+      "log": "docs/spikes/d3-payouts-webhooks.md"
+    },
+    {
+      "id": "webhook",
+      "title": "Webhook signature check",
+      "what": "Signed PayPal events passed verify-webhook-signature and were stored once (a resend did not duplicate). A forged request with dummy headers was refused.",
+      "amount": null,
+      "at": "2026-10-28T00:00:00+09:00",
+      "status": "Forged request: HTTP 401",
+      "ids": [{ "label": "Event", "value": "PAYMENT.PAYOUTS-ITEM.SUCCEEDED" }],
+      "log": "docs/spikes/d3-payouts-webhooks.md"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { getWorkspace } from "@reins/db";
-import { playgroundEnabled, type ReinsContext } from "@reins/core";
+import { judgeMode, playgroundEnabled, type ReinsContext } from "@reins/core";
 
 /** Shown for the offline fake PayPal (sandbox merchant lookalike, not a real account). */
 export const DEMO_MERCHANT_EMAIL = "sb-merchant-demo@business.example.com";
@@ -17,6 +17,7 @@ export async function workspaceView(ctx: ReinsContext) {
     has_vault: Boolean(ws.vaultId),
     telegram_linked: Boolean(ws.telegramChatId),
     try_enabled: playgroundEnabled(),
+    judge_mode: judgeMode(),
     public_demo: process.env.REINS_PUBLIC_DEMO === "1",
     telegram_bot: process.env.TELEGRAM_BOT_USERNAME ?? "ReinsApproveBot",
     connected_at: ws.connectedAt ? new Date(ws.connectedAt).toISOString() : null,

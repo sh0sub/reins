@@ -46,7 +46,7 @@ const RULE_LABEL: Record<string, string> = {
 const rulesOf = (row: LedgerRow): RuleRow[] => (row.decisions.find((d) => d.stage === "hard_rules")?.details as { results?: RuleRow[] } | null)?.results ?? [];
 
 /** Screen "Try": send a purchase request as an AI agent and watch the real policy engine decide. */
-export default function TryClient({ enabled, agent, mandate }: { enabled: boolean; agent: string; mandate: Mandate }) {
+export default function TryClient({ enabled, judge, agent, mandate }: { enabled: boolean; judge: boolean; agent: string; mandate: Mandate }) {
   const [fooled, setFooled] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,21 +54,59 @@ export default function TryClient({ enabled, agent, mandate }: { enabled: boolea
   const [history, setHistory] = useState<Array<{ id: string; label: string }>>([]);
   const [form, setForm] = useState(BLANK);
   const [decided, setDecided] = useState<string | null>(null);
+  const [tour, setTour] = useState<TourDone>({});
+  const [tourOpen, setTourOpen] = useState(true);
+  const [note, setNote] = useState<string | null>(null);
   const resultRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(TOUR_KEY) === "1") setTourOpen(false);
+    } catch {
+      /* storage blocked: the tour just stays open */
+    }
+  }, []);
+  function closeTour(open: boolean) {
+    setTourOpen(open);
+    try {
+      if (open) window.localStorage.removeItem(TOUR_KEY);
+      else window.localStorage.setItem(TOUR_KEY, "1");
+    } catch {
+      /* per-viewer convenience only */
+    }
+  }
   // on a phone the decision sits below the presets: bring it into view after each send
   const sentId = result?.row.request_id;
   useEffect(() => {
     if (sentId && window.innerWidth < 1000) resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [sentId]);
 
-  async function send(label: string, purchase: Record<string, string>, key: string) {
+  async function send(label: string, purchase: Record<string, string>, key: string, fooledNow = fooled) {
     setBusy(key);
     setError(null);
     setDecided(null);
+    setNote(null);
     try {
-      const r = await api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooled } });
+      const r = await api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooledNow } });
       setResult(r);
+      setTour((t) => tourAfter(t, r));
       setHistory((h) => [{ id: r.row.request_id, label: `${label} ${usd(Math.round(Number(r.row.amount) * 100))} · ${statusChip(r.row).label}` }, ...h].slice(0, 6));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reset() {
+    setBusy("reset");
+    setError(null);
+    try {
+      const r = await api<{ removed_requests: number }>("/api/try/reset", { method: "POST" });
+      setResult(null);
+      setHistory([]);
+      setTour({});
+      setDecided(null);
+      setNote(`Demo data reset: ${r.removed_requests} playground ${r.removed_requests === 1 ? "request" : "requests"} removed. The seeded ledger is untouched.`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -104,6 +142,21 @@ export default function TryClient({ enabled, agent, mandate }: { enabled: boolea
           <p className="tagline">You are the AI agent. Send a purchase request and watch Reins pay it, ask you, or block it. This calls the same code path as the MCP tool request_purchase.</p>
         </div>
       </div>
+
+      {enabled && (
+        <JudgeTour
+          open={tourOpen}
+          done={tour}
+          busy={busy}
+          onOpen={closeTour}
+          onSend={(step) => {
+            const st = STEPS[step]!;
+            const p = PRESETS.find((x) => x.id === st.preset)!;
+            if (st.fooled) setFooled(true);
+            void send(p.title, p.purchase, p.id, st.fooled ? true : fooled);
+          }}
+        />
+      )}
 
       {!enabled ? (
         <div className="panel stack" role="note">
@@ -145,7 +198,7 @@ export default function TryClient({ enabled, agent, mandate }: { enabled: boolea
               </h2>
               <ul className="try-presets">
                 {PRESETS.map((p) => (
-                  <PresetCard key={p.id} preset={p} busy={busy === p.id} disabled={busy !== null} onSend={() => void send(p.title, p.purchase, p.id)} />
+                  <PresetCard key={p.id} preset={p} busy={busy === p.id} disabled={busy !== null} start={p.id === "injection" && !result && history.length === 0} onSend={() => void send(p.title, p.purchase, p.id)} />
                 ))}
               </ul>
               <label className="try-toggle">
@@ -187,6 +240,22 @@ export default function TryClient({ enabled, agent, mandate }: { enabled: boolea
                   </div>
                 </form>
               </details>
+              {judge && (
+                <div className="row try-reset">
+                  <button type="button" className="btn" disabled={busy !== null} onClick={() => void reset()}>
+                    {busy === "reset" ? "Resetting…" : "Reset demo data"}
+                  </button>
+                  <span className="caption">Removes only what you sent here. The seeded ledger stays.</span>
+                </div>
+              )}
+              {note && (
+                <p className="alert alert-ok" role="status">
+                  {note}
+                </p>
+              )}
+              <p className="caption">
+                Want the real PayPal ids behind the simulated receipts? <Link href="/proof">See the recorded sandbox run</Link>.
+              </p>
               <p className="caption">Playground only: the velocity rule (3 requests per 10 minutes) is relaxed so you can click freely. Every other rule is the real one.</p>
             </section>
           </div>
@@ -223,13 +292,16 @@ export default function TryClient({ enabled, agent, mandate }: { enabled: boolea
   );
 }
 
-function PresetCard({ preset, busy, disabled, onSend }: { preset: Preset; busy: boolean; disabled: boolean; onSend: () => void }) {
+function PresetCard({ preset, busy, disabled, start, onSend }: { preset: Preset; busy: boolean; disabled: boolean; start: boolean; onSend: () => void }) {
   const p = preset.purchase;
   return (
     <li>
-      <button type="button" className={preset.id === "injection" ? "pick try-pick bad" : "pick try-pick"} disabled={disabled} onClick={onSend}>
+      <button type="button" className={`${preset.id === "injection" ? "pick try-pick bad" : "pick try-pick"}${start ? " try-start" : ""}`} disabled={disabled} onClick={onSend}>
         <span className="row between">
-          <span className="label">{busy ? "Sending…" : preset.title}</span>
+          <span className="label">
+            {busy ? "Sending…" : preset.title}
+            {start && !busy && <span className="try-start-tag"> Start here</span>}
+          </span>
           <b className="num">${p.amount}</b>
         </span>
         <span className="caption">
@@ -346,5 +418,88 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
         )}
       </div>
     </div>
+  );
+}
+
+const TOUR_KEY = "reins.judgeTour.closed";
+type TourDone = Partial<Record<0 | 1 | 2, string>>;
+const STEPS: Array<{ title: string; preset: Preset["id"]; fooled?: boolean; button: string; expect: string }> = [
+  { title: "Send $12.98", preset: "domain", button: "Send $12.98", expect: "It is small and on the allow list, so it pays with no one asked." },
+  { title: "Send $59", preset: "report", button: "Send $59", expect: "It is above the $30 auto-approve limit, so it waits for you." },
+  { title: "Send $450 with the fooled-auditor toggle", preset: "injection", fooled: true, button: "Send $450, fooled auditor", expect: "The simulated auditor says yes. The hard rules still deny it, in code." },
+];
+
+/** Which tour step a finished request completes (value = request id, used for the closing links). */
+function tourAfter(t: TourDone, r: Result): TourDone {
+  const amount = Number(r.row.amount);
+  const id = r.row.request_id;
+  if (amount === 12.98 && r.row.status === "paid") return { ...t, 0: id };
+  if (amount === 59 && r.row.status === "pending_human") return { ...t, 1: id };
+  if (amount === 450 && r.auditor === "fooled" && r.row.status === "denied") return { ...t, 2: id };
+  return t;
+}
+
+function JudgeTour({ open, done, busy, onOpen, onSend }: { open: boolean; done: TourDone; busy: string | null; onOpen: (open: boolean) => void; onSend: (step: 0 | 1 | 2) => void }) {
+  if (!open) {
+    return (
+      <p className="caption">
+        <button type="button" className="linklike" onClick={() => onOpen(true)}>
+          Show the judge tour
+        </button>
+      </p>
+    );
+  }
+  const count = ([0, 1, 2] as const).filter((i) => done[i]).length;
+  const next = ([0, 1, 2] as const).find((i) => !done[i]);
+  return (
+    <section className="panel stack tour" aria-labelledby="tour-h">
+      <div className="row between">
+        <h2 id="tour-h" className="h-card">
+          Judge tour <span className="muted">· {count} of 3 done</span>
+        </h2>
+        <button type="button" className="btn" onClick={() => onOpen(false)}>
+          Dismiss
+        </button>
+      </div>
+      <ol className="tour-steps">
+        {STEPS.map((st, i) => {
+          const idx = i as 0 | 1 | 2;
+          const id = done[idx];
+          return (
+            <li key={st.title} className={id ? "tour-step is-done" : idx === next ? "tour-step is-next" : "tour-step"}>
+              <span className="tour-mark" aria-hidden>
+                {id ? <Icon name="check" className="ico-s" /> : i + 1}
+              </span>
+              <div className="stack-s">
+                <b>
+                  {st.title}
+                  {id && <span className="sr-only"> (done)</span>}
+                </b>
+                <span className="caption">{st.expect}</span>
+                <span className="row">
+                  <button type="button" className={idx === next ? "btn btn-primary" : "btn"} disabled={busy !== null} onClick={() => onSend(idx)}>
+                    {id ? "Send again" : st.button}
+                  </button>
+                  {idx === 1 && id && (
+                    <Link className="btn" href="/inbox">
+                      Open Approvals
+                    </Link>
+                  )}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {count === 3 && (
+        <p className="alert alert-ok row" role="status">
+          <Icon name="shield" className="ico" />
+          <span>
+            Done: one paid, one asked a person, one denied by code. See the{" "}
+            <Link href={`/ledger?r=${done[2]}`}>ledger row</Link> and its <Link href={`/ledger?r=${done[2]}&drawer=1`}>audit trail</Link>, or the <Link href="/proof">recorded PayPal sandbox run</Link>.
+          </span>
+        </p>
+      )}
+    </section>
   );
 }
