@@ -602,3 +602,27 @@ select.select-version { width: auto; min-width: 150px; font-weight: 700; color: 
 .linklike { background: none; border: 0; padding: 0; color: var(--semantic-color-action-primary); text-decoration: underline; cursor: pointer; font: inherit; min-height: 32px; }
 @media (min-width: 1000px) { .tour-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-6); } }
 .proof-lead { margin-bottom: var(--sp-4); }
+
+/* ---- R4: attack suite, connect card ---- */
+.try-extra { margin-top: var(--sp-8); }
+.attacks-total { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+.attacks-total > div { display: grid; gap: 2px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-radius: var(--semantic-radius-control); background: var(--canvas); }
+.attacks-total b { font-size: 24px; line-height: 1.2; }
+.ok-text { color: var(--semantic-color-status-success-text, var(--component-status-success-text)); font-weight: 700; }
+.attacks-scroll { overflow-x: auto; }
+.attacks-table th.r, .attacks-table td.r { text-align: right; white-space: nowrap; }
+.attacks-story { display: block; font-weight: 400; margin-top: 2px; }
+.connect-pre { overflow-x: auto; white-space: pre; font-size: 12px; max-width: 100%; }
+@media (max-width: 559px) {
+  .attacks-total { grid-template-columns: minmax(0, 1fr); }
+  .attacks-total > div { grid-template-columns: 1fr auto; align-items: baseline; }
+  .attacks-table thead { display: none; }
+  .attacks-table, .attacks-table tbody, .attacks-table tr, .attacks-table th, .attacks-table td { display: block; }
+  .attacks-table tr { padding: var(--sp-3) 0; border-top: 1px solid var(--line); }
+  .attacks-table th, .attacks-table td { border: 0; padding: 2px 8px; text-align: left !important; white-space: normal !important; }
+  .attacks-table td::before { content: attr(data-label) ": "; color: var(--muted); font-weight: 600; }
+  .attacks-table td .attacks-story { display: inline; margin-left: 6px; }
+}
+.ledger-status { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: 13px; }
+.ledger-status span { white-space: nowrap; }
+@media (max-width: 719px) { .ledger-status { gap: 0 var(--sp-3); font-size: 12px; } }

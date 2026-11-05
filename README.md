@@ -2,7 +2,22 @@
 
 **Give every AI agent a PayPal wallet with a leash.**
 
-Agents can pay, but it is all or nothing. Reins gives each agent its own key and a versioned mandate (monthly cap, auto-approve limit, per-purchase cap, allowed merchants). Agents connect over MCP and call `request_purchase`. Hard rules run first, then a Claude auditor reviews purpose fit and risk and returns AUTO_APPROVE, ASK_HUMAN or DENY. Small, in-policy purchases are paid at once through PayPal Orders v2; bigger ones wait for one tap on a web inbox or Telegram card; manipulated ones (say, a web page telling the agent to buy a $450 logo) are blocked before any money moves. Every decision lands in an AG Grid ledger with a full audit trail.
+A web page told an AI agent to buy a $450 logo. A shared PayPal credential would have paid it. Reins blocked it in code before any money moved: per-agent mandates, hard rules, a Claude audit, one-tap approval on web or Telegram, PayPal Orders v2 payment and an AG Grid audit ledger, served to agents as an MCP server.
+
+| 19 of 24 | $450 | 10 min |
+|---|---|---|
+| requests auto-paid | prompt-injected order blocked (3 hard rules) | of approvals saved (assumes 30 s each) |
+
+_Seeded demo month, made-up data computed from the ledger. Simulated benchmark: 9 scripted attacks, an ungated agent paid $813.96, the same attacks through Reins paid $99.98 (`pnpm attacks`)._
+
+**Try in 60 s:** `pnpm judge`
+
+## Integrate in 5 minutes
+
+1. `pnpm judge` prints an MCP config pre-filled with the demo key (also on `/try` and in Settings). Paste it into Claude Desktop or any MCP client, replacing `/ABSOLUTE/PATH/TO/reins`.
+2. The agent now has four tools: `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`. No PayPal credentials ever reach it.
+3. No MCP client at hand? `pnpm judge:agent` in a second terminal runs a small agent over MCP: PAID, PENDING, DENIED.
+4. Real agents get their own key on the Agents screen. `@reins/mcp` is not on npm yet (roadmap), so the config points at a clone.
 
 ## Try it (60 seconds, no keys)
 
@@ -27,6 +42,10 @@ A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, 
 **Money protected (seeded demo month, computed from the ledger):** $410 combined worst-case exposure instead of one unlimited key; $450 blocked (1 request, 3 hard rules failed); 19 of 24 requests paid without a tap; about 10 minutes of approvals saved at an assumed 30 s each.
 
 Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, Render. (APIMatic is not claimed: the Context Plugin has not been used on this repo yet.)
+
+**AG Grid features used** (ledger): row grouping with paid-only subtotals, master-detail rows, Set filters, a status bar (row count, selected rows, Paid $ / Denied $ / selected-row sum), row selection, CSV export for accounting (filtered or ticked rows), saved views (Blocked, Needs human, Paid this week, kept in the URL as `?view=`), card layout at 390 px, AG Charts.
+
+**Attack benchmark:** `/try` shows "Without Reins / With Reins" and `pnpm attacks` prints it: 9 scripted attacks (poisoned $450, split orders, off-list and look-alike merchants, currency swap, paused agent, replayed id, monthly spike, over-limit order) through the real rule engine with a fooled auditor vs. a model of an ungated shared credential. Simulated PayPal, no LLM. It proves these attacks, not all attacks.
 
 Note: the ledger uses AG Grid Enterprise in trial mode (no licence key; set `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` to remove the trial watermark). A public deploy may show the watermark.
 

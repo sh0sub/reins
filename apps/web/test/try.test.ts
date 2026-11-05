@@ -148,4 +148,31 @@ describe("/try playground", () => {
       else process.env.REINS_PUBLIC_DEMO = prev.demo;
     }
   });
+
+  it("connect card: the demo key is only served on a demo instance and it really authenticates request_purchase", async () => {
+    const handle = createRouter(async () => ctx);
+    const get = () => handle(new Request("http://localhost/api/try/connect"));
+    const prev = { try: process.env.REINS_TRY, demo: process.env.REINS_PUBLIC_DEMO };
+    try {
+      delete process.env.REINS_TRY;
+      delete process.env.REINS_PUBLIC_DEMO;
+      expect((await get()).status).toBe(403);
+      process.env.REINS_TRY = "1";
+      const res = await get();
+      expect(res.status).toBe(200);
+      const c = (await res.json()) as { api_key: string; mcp_config: { mcpServers: { reins: { env: { REINS_API_KEY: string } } } } };
+      expect(c.api_key).toMatch(/^rk_live_/);
+      expect(c.mcp_config.mcpServers.reins.env.REINS_API_KEY).toBe(c.api_key);
+      const paid = await handle(
+        new Request("http://localhost/api/requests", { method: "POST", headers: { authorization: `Bearer ${c.api_key}`, "content-type": "application/json" }, body: JSON.stringify(preset("domain")) }),
+      );
+      expect(paid.status).toBe(201);
+      expect(((await paid.json()) as { status: string }).status).toBe("paid");
+    } finally {
+      if (prev.try === undefined) delete process.env.REINS_TRY;
+      else process.env.REINS_TRY = prev.try;
+      if (prev.demo === undefined) delete process.env.REINS_PUBLIC_DEMO;
+      else process.env.REINS_PUBLIC_DEMO = prev.demo;
+    }
+  });
 });

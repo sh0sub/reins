@@ -158,20 +158,19 @@ export function SideFoot() {
     <div className="side-foot">
       <div className="stack-s">
         <span className="side-pp">
-          <span className={ws.connected_at ? "dot dot-ok" : "dot"} />
-          <b className="label">{ws.paypal_env === "live" ? "PayPal Live" : "PayPal Sandbox"}</b>
-          <span className={ws.connected_at ? "status status-ok" : "status"}>{ws.connected_at ? "Connected" : "Not connected"}</span>
+          <span className={!offline && ws.connected_at ? "dot dot-ok" : "dot"} aria-hidden />
+          <b className="label">{offline ? "Simulated PayPal" : ws.paypal_env === "live" ? "PayPal Live" : "PayPal Sandbox"}</b>
+          <span className={!offline && ws.connected_at ? "status status-ok" : "status"}>{offline ? "SIM ids" : ws.connected_at ? "Connected" : "Not connected"}</span>
         </span>
-        {ws.merchant_email && <span className="mono side-email" title={ws.merchant_email}>{ws.merchant_email}</span>}
+        {!offline && ws.merchant_email && <span className="mono side-email" title={ws.merchant_email}>{ws.merchant_email}</span>}
         <span className="caption">
-          {offline ? "Sandbox demo data · " : ""}
+          {offline ? "No money moves here · " : ""}
           {ws.payment_mode === "vaulted" ? "Automatic · vault" : ws.payment_mode === "treasury" ? "Treasury payouts" : "Supervised checkout"}
         </span>
         <Link className="caption" href="/proof">
-          Recorded sandbox run: real ids
+          {offline ? "Real sandbox proof: recorded ids" : "Recorded sandbox run: real ids"}
         </Link>
-        <span className="row caption">
-          <span className={ws.telegram_linked ? "dot dot-ok" : "dot"} />
+        <span className="caption">
           Telegram {ws.telegram_linked ? "linked" : "optional, not linked"}
         </span>
       </div>

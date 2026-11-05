@@ -26,6 +26,7 @@ import {
   getOverview,
   parsePeriod,
   judgeMode,
+  playgroundConnect,
   playgroundEnabled,
   resetPlayground,
   runPlayground,
@@ -203,6 +204,10 @@ const routes: Route[] = [
     if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The playground is off here. Run `pnpm judge` or set REINS_TRY=1.");
     const { fooled_auditor, ...purchase } = (await readJson(req)) as Record<string, unknown>;
     return json(await runPlayground(ctx, purchase, { fooled: fooled_auditor === true }), 201);
+  }),
+  toRoute("GET", "/api/try/connect", "admin", async (_req, ctx) => {
+    if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The demo key is only available on a demo instance (pnpm judge or REINS_TRY=1).");
+    return json(await playgroundConnect(ctx));
   }),
   toRoute("POST", "/api/try/reset", "admin", async (_req, ctx) => {
     if (!judgeMode()) throw new ReinsError(403, "try_disabled", "Reset is only available in judge mode (pnpm judge or REINS_TRY=1).");

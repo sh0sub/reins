@@ -1,17 +1,18 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 260 tests in 37 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 262 tests in 38 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
 ## Judge TL;DR (paste first)
 
-- **Problem:** an agent with a PayPal credential can spend without limit, and a web page can talk it into a bad purchase.
-- **Reins:** a per-agent mandate, hard rules in code, a Claude audit, one-tap approval (web or Telegram), PayPal Orders v2 payment and an audit ledger, served as an open-source MCP server.
-- **Seeded demo month (made-up data, computed from the ledger):** 24 requests, 19 auto-paid, a $450 prompt-injected order blocked by 3 hard rules, $410 combined worst-case exposure.
-- **Real sandbox ids (recorded run, not live; page `/proof`):** order `04X61877K0529583E`, capture `03A015968J4767410`, vault re-order `880199579M655730R`, payouts batch `UALE8USQRMHYW` (all in `docs/spikes/`).
-- **Tests:** 260 passing (`pnpm test`), `pnpm typecheck` and `pnpm lint` clean.
-- **Try it in 60 seconds, no keys:** `git clone`, `pnpm install`, `pnpm judge` opens `/try`: send the $450 order, tick "Simulate a fooled auditor" and send it again; it is still denied. Or open the live `/try` link below.
+1. **A web page told my AI agent to buy a $450 logo. A shared PayPal credential would have paid it. Reins blocked it in code, before any money moved.** Reins gives every agent its own mandate, hard rules, a Claude audit, one-tap approval and an audit ledger, served as an open-source MCP server on PayPal.
+2. **19 of 24 auto-paid / $450 blocked / 10 min saved** (seeded demo month, made-up data computed from the ledger; the 10 minutes assume 30 s per approval). In a simulated benchmark of 9 scripted attacks (`pnpm attacks`, auditor set to approve everything) an ungated agent paid $813.96 and the same attacks through Reins paid $99.98, the part that was inside the mandate.
+3. **Try in 60 s, no keys:** `pnpm judge` (opens `/try`; real vs simulated PayPal is badged everywhere; real sandbox ids are on `/proof` and in the API table below). Then `pnpm judge:agent` to watch an agent use it over MCP.
+
+Tests: 262 passing, `pnpm typecheck` and `pnpm lint` clean.
+
+**Agentic Commerce fit:** the agent is the buyer; it asks over MCP, code decides first, Claude second, and PayPal moves money only after both pass. **AG Grid features used:** row grouping with paid-only subtotals, master-detail, Set filters, a status bar with money totals and selected-row sum, row selection, CSV export for accounting, saved views, and AG Charts (details under Sponsor prizes).
 
 ---
 
@@ -22,11 +23,11 @@ A web page told my AI agent to buy a $450 logo. Reins blocked it: three hard rul
 Reins gives every agent its own PayPal wallet with a leash (monthly cap, auto-approve limit, allowed merchants), served as an open-source MCP server.
 On the seeded demo month the Overview card reads "Saved you 20 approvals": 19 small, in-policy purchases paid themselves and only the over-limit ones went to a human, with one-tap approval on web or Telegram.
 
-**Verified in the real PayPal sandbox** (ids from `docs/spikes/`):
-- Orders v2 order `04X61877K0529583E` COMPLETED, capture `03A015968J4767410`, buyer's PayPal vaulted.
-- Buyer-absent re-order with only a `vault_id`: order `880199579M655730R` COMPLETED.
-- Payouts batch `UALE8USQRMHYW`: batch and item SUCCESS; the signed `PAYMENT.PAYOUTS-ITEM.SUCCEEDED` webhook was verified, a forged one got 401.
-- Agent Toolkit 1.11.0: `create_order` made sandbox order `3KE34883913235318` after Reins approved it; a $450 request made 0 Toolkit calls. Toolkit capture (`pay_order`) was refused with HTTP 422 until a buyer approves, so it is not shown as completed.
+**Verified in the real PayPal sandbox** (ids are in the API table below and on `/proof`):
+- Orders v2 order COMPLETED and captured, buyer's PayPal vaulted.
+- Buyer-absent re-order with only a `vault_id`: COMPLETED.
+- Payouts batch and item SUCCESS; the signed `PAYMENT.PAYOUTS-ITEM.SUCCEEDED` webhook was verified, a forged one got 401.
+- Agent Toolkit 1.11.0: `create_order` made a sandbox order after Reins approved it; a $450 request made 0 Toolkit calls. Toolkit capture (`pay_order`) was refused with HTTP 422 until a buyer approves, so it is not shown as completed.
 
 **Why it matters for PayPal merchants**
 - A business that lets an agent pay from its PayPal account today hands over one credential with no per-agent limit; Reins puts a per-agent mandate and a human approval in front of every Orders v2 call.
@@ -43,8 +44,8 @@ The Overview "Money protected" card is computed from the ledger, not typed in. O
 
 | PayPal API | What Reins uses it for | Verified in real sandbox | Notes |
 |---|---|---|---|
-| Orders v2 (`/v2/checkout/orders`, capture, `PayPal-Request-Id`) + Vault (`store_in_vault = ON_SUCCESS`, reorder with `vault_id`) | Pay an approved request; save the buyer's PayPal once, then pay unattended | Yes | COMPLETED captures and a vault reorder without the buyer: `docs/spikes/d2-payment.md`. The video's main run uses the simulated client |
-| Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Yes | $1.00 batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`); the badged real-run segment shows a sandbox payout |
+| Orders v2 (`/v2/checkout/orders`, capture, `PayPal-Request-Id`) + Vault (`store_in_vault = ON_SUCCESS`, reorder with `vault_id`) | Pay an approved request; save the buyer's PayPal once, then pay unattended | Yes | Order `04X61877K0529583E`, capture `03A015968J4767410`, vault re-order `880199579M655730R` (COMPLETED, without the buyer): `docs/spikes/d2-payment.md`. The video's main run uses the simulated client |
+| Payouts (`/v1/payments/payouts`) | Prefunded "treasury" payment mode | Yes | Batch `UALE8USQRMHYW`, $1.00, batch and item SUCCESS (`docs/spikes/d3-payouts-webhooks.md`); the badged real-run segment shows a sandbox payout |
 | Webhooks (`verify-webhook-signature`) | Verify every PayPal event before storing it | Yes | Real and simulated events verified, forged request returns 401; needs a public URL, so not in the video |
 | Transaction Search (`/v1/reporting/transactions`) | Reconcile every capture against PayPal's records | No | Unit and integration tested; the sandbox app needs the Transaction Search feature enabled |
 | Agent Toolkit tools `create_order`, `pay_order` (capture) (opt-in `reinsGate`) | Run a Toolkit order only after the mandate and rules pass | Yes for `create_order`; capture not completed | Real `@paypal/agent-toolkit` 1.11.0: an approved request created a sandbox order through the Toolkit, a denied one made 0 Toolkit calls. Its `pay_order` capture was refused by PayPal (HTTP 422) because the buyer had not approved; that approval needs a sandbox buyer login. Run log and the four fixes it forced: `docs/spikes/d5-toolkit-gate.md` (mock auditor in that run) |
@@ -202,6 +203,7 @@ Run it locally with zero credentials: `pnpm install && cp .env.example .env && p
 ## Limits
 
 - The video's main run is local, on a scratch database, with the simulated PayPal client and the offline stand-in for the Claude auditor; the segment badged "REAL RUN" (about 10 s, see `docs/submission/checklist.md`) used the real sandbox with real Claude audits. Other real sandbox calls: the spikes above.
+- Attack benchmark (`/try` panel, `pnpm attacks`): a simulated benchmark. The ungated side is a model that pays every request through the same simulated PayPal, not a measurement of any product; the Reins side runs the real rule engine with a fooled auditor. It proves these 9 scripted attacks, not every attack. What Reins paid ($99.98) is the in-mandate part, for example the first three of five $29 orders.
 - Split-purchase rule: it adds up what the agent was paid on its own at the same merchant name within 24 hours and compares the total with the per-purchase cap. It needs a per-purchase cap on the mandate, does not count orders a person approved by hand, and does not catch splitting across different merchants (the monthly cap and the allow list still apply there).
 - Agent Toolkit: `create_order` ran against the real package in the sandbox; its capture (`pay_order`) was refused with HTTP 422 until a buyer approves, so it is not claimed.
 - `@reins/mcp` is not on npm (clone-based stdio config or the hosted HTTP endpoint). Free Render instances sleep: open the live URL once and wait about a minute. AG Grid Enterprise runs in trial mode (watermark). Sandbox only.
@@ -210,13 +212,21 @@ Run it locally with zero credentials: `pnpm install && cp .env.example .env && p
 
 ### Best Use of Agentic Commerce (PayPal)
 
-**Agentic Commerce fit:** the agent is the buyer. It asks over MCP (`request_purchase`), Reins decides in code first and with Claude second, and PayPal moves the money only after both pass (Orders v2 + vault for unattended pay, Payouts for treasury mode, signed webhooks, Transaction Search reconciliation, opt-in gate for the Agent Toolkit `create_order`). Defense in depth is demonstrable in `/try`: even an auditor that always says AUTO_APPROVE cannot get the $450 order or an over-limit order paid.
+**Agentic Commerce fit:** the agent is the buyer. It asks over MCP (`request_purchase`), Reins decides in code first and with Claude second, and PayPal moves the money only after both pass (Orders v2 + vault for unattended pay, Payouts for treasury mode, signed webhooks, Transaction Search reconciliation, opt-in gate for the Agent Toolkit `create_order`). Defense in depth is demonstrable in `/try`: even an auditor that always says AUTO_APPROVE cannot get the $450 order or an over-limit order paid. An agent can connect for real: `/try` and Settings show a copy-paste MCP config and a curl pre-filled with the demo key, and `pnpm judge:agent` runs a small agent over MCP (PAID, PENDING, DENIED). The `/try` panel "Without Reins / With Reins" replays 9 scripted attacks both ways (simulated benchmark).
 
 Reins is the control layer PayPal's supervised/automatic split implies: per-agent mandates, hard rules, an AI auditor, one-tap approval over web or Telegram, and an audit trail. It uses Orders v2 with vaulted payment for unattended purchases, Payouts for a treasury mode, signed webhooks and Transaction Search reconciliation, exposes it as an open MCP server, and can gate the PayPal Agent Toolkit's `create_order` behind the same checks (run against the real Toolkit in the sandbox for `create_order`; capture not completed).
 
 ### AG Grid
 
-**AG Grid features used:** Enterprise row grouping by agent with paid-only subtotals, master-detail rows (full decision record), Set filters, status/side bars, a card layout at 390 px, and AG Charts (spend per agent, category donut). Deep links open a blocked request's expanded row.
+**AG Grid features used:**
+- Row grouping by agent with paid-only subtotals and a pinned grand total (Enterprise)
+- Master-detail rows with the full decision record (Enterprise)
+- Set filters on agent, merchant, decision, status and reconciliation (Enterprise)
+- **Status bar** (Enterprise): row count of the filtered grid, selected-row count, and a custom panel with Paid $, Denied $ and the sum of the ticked rows
+- **Row selection** with checkboxes and a header checkbox: tick rows to sum them in the status bar
+- **CSV export** ("Download CSV for accounting"): the grid's own export, filtered rows or only the ticked ones, ISO timestamps, plain numbers, columns that are hidden on a phone included
+- **Saved views** (Blocked, Needs human, Paid this week) kept in the URL as `?view=`
+- Card layout at 390 px, deep links into an expanded row, and AG Charts (spend per agent, category donut)
 
 The ledger is the audit trail, built on AG Grid Enterprise: row grouping by agent with paid-only subtotals, master-detail rows with the full decision record (mandate check, auditor verdict, budget left, PayPal order and capture), Set filters, and AG Charts for spend per agent and the category donut. A blocked request deep-links into its expanded row and offers "Tighten mandate".
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { ConnectAgent } from "@/components/ConnectAgent";
 import { Icon } from "@/components/Icon";
 
 export interface WorkspaceView {
@@ -278,7 +279,7 @@ export default function SetupClient({ initial = null }: { initial?: WorkspaceVie
                 </div>
               </div>
               <p className="alert alert-ok">
-                Connected · {ws.merchant_email ?? "sandbox merchant"} · {ws.paypal_env === "fake" ? "sandbox demo data" : "Sandbox"} · oauth2/token 200
+                {ws.paypal_env === "fake" ? "Simulated PayPal (SIM ids) · no money moves · the recorded real sandbox run is on /proof" : `Connected · ${ws.merchant_email ?? "sandbox merchant"} · Sandbox · oauth2/token 200`}
               </p>
             </>
           ) : (
@@ -355,6 +356,8 @@ export default function SetupClient({ initial = null }: { initial?: WorkspaceVie
           {note(3)}
         </li>
       </ol>
+
+      {ws.try_enabled && <ConnectAgent />}
 
       <div className="row">
         {ws.try_enabled && (

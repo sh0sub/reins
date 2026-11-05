@@ -10,17 +10,18 @@ import {
   type GetRowIdParams,
   type GridApi,
   type IAggFuncParams,
+  type IStatusPanelParams,
   type ICellRendererParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
-import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule } from "ag-grid-enterprise";
+import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule, StatusBarModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
+import { bucketTotal, decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
-// Community for filter/sort/CSV; Enterprise only for row grouping (agent) and master/detail (row expansion).
+// Community for filter/sort/CSV/row selection; Enterprise for row grouping (agent), master/detail (row expansion), set filters and the status bar.
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
-ModuleRegistry.registerModules([AllCommunityModule, RowGroupingModule, MasterDetailModule, SetFilterModule]);
+ModuleRegistry.registerModules([AllCommunityModule, RowGroupingModule, MasterDetailModule, SetFilterModule, StatusBarModule]);
 // AG Grid license keys are meant to ship in the client bundle; without one, Enterprise shows a trial watermark off localhost
 if (process.env.NEXT_PUBLIC_AG_GRID_LICENSE_KEY) LicenseManager.setLicenseKey(process.env.NEXT_PUBLIC_AG_GRID_LICENSE_KEY);
 
@@ -257,6 +258,65 @@ function paidSum(p: IAggFuncParams<LedgerRow>): number {
   return Math.round(total * 100) / 100;
 }
 
+/** Columns of the accounting CSV, in order. Some are hidden in the grid (Agent when grouped, most columns on a phone) and are still exported. */
+const CSV_COLUMNS = ["created_at", "id", "agent_name", "items", "merchant", "amount", "decision", "status", "paypal", "recon", "risk"];
+
+/**
+ * "Download CSV for accounting": the grid's own export. Ticked rows only when any are ticked, otherwise every row the filters leave;
+ * no group or total rows; ISO timestamps and plain numbers so a spreadsheet can sum the Amount column.
+ */
+export function exportAccountingCsv(api: GridApi<LedgerRow>): void {
+  api.exportDataAsCsv({
+    fileName: `reins-ledger-${new Date().toISOString().slice(0, 10)}.csv`,
+    columnKeys: CSV_COLUMNS,
+    onlySelected: api.getSelectedNodes().length > 0,
+    skipRowGroups: true,
+    skipPinnedBottom: true,
+    processCellCallback: (p) => {
+      if (p.column.getColId() === "created_at") return p.node?.data?.created_at ?? "";
+      if (p.column.getColId() === "amount") return p.node?.data?.amount ?? "";
+      return p.value == null ? "" : String(p.value);
+    },
+  });
+}
+
+/** Status bar panel: dollars of what the grid is showing, and of the ticked rows. Recomputed on filter, sort, data and selection changes. */
+function LedgerStatus({ api }: IStatusPanelParams<LedgerRow>) {
+  const [t, setT] = useState({ paid: 0, denied: 0, selected: 0, selectedCount: 0 });
+  useEffect(() => {
+    const calc = () => {
+      const shown: LedgerRow[] = [];
+      api.forEachNodeAfterFilter((n) => {
+        if (n.data && !n.group) shown.push(n.data);
+      });
+      const picked = api.getSelectedNodes().flatMap((n) => (n.data ? [n.data] : []));
+      setT({
+        paid: shown.filter((r) => r.status === "paid").reduce((s, r) => s + Number(r.amount), 0),
+        denied: bucketTotal(shown, "blocked"),
+        selected: picked.reduce((s, r) => s + Number(r.amount), 0),
+        selectedCount: picked.length,
+      });
+    };
+    calc();
+    const events = ["modelUpdated", "filterChanged", "selectionChanged", "rowDataUpdated"] as const;
+    events.forEach((e) => api.addEventListener(e, calc));
+    return () => events.forEach((e) => api.removeEventListener(e, calc));
+  }, [api]);
+  return (
+    <span className="ledger-status num" role="status" aria-live="polite">
+      <span>
+        Paid <b>{usdAmount(t.paid)}</b>
+      </span>
+      <span>
+        Denied <b className="bad-text">{usdAmount(t.denied)}</b>
+      </span>
+      <span>
+        Selected <b>{t.selectedCount ? `${usdAmount(t.selected)} (${t.selectedCount})` : "none"}</b>
+      </span>
+    </span>
+  );
+}
+
 const money = (p: ValueFormatterParams) => (typeof p.value === "number" ? usdAmount(p.value) : "");
 
 export function LedgerGrid({
@@ -322,6 +382,17 @@ export function LedgerGrid({
         agent,
         { headerName: "Request", colId: "card", flex: 1, minWidth: 190, autoHeight: true, sortable: false, filter: false, resizable: false, valueGetter: (p) => p.data?.items ?? null, cellRendererSelector: (p) => (p.node.footer ? { component: TotalCell } : { component: CardCell, params: { showAgent: !group } }), cellClass: "ledger-card-cell" },
         amount,
+        // not shown on a phone, still part of the CSV export
+        ...(["id", "items", "merchant", "decision", "status"] as const).map<ColDef<LedgerRow>>((k) => ({
+          colId: k,
+          headerName: k[0]!.toUpperCase() + k.slice(1),
+          hide: true,
+          suppressColumnsToolPanel: true,
+          valueGetter: (p) => (p.data ? (k === "id" ? p.data.display_id : k === "decision" ? decisionLabel(p.data) : p.data[k]) : null),
+        })),
+        { colId: "paypal", headerName: "PayPal ID", hide: true, valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null },
+        { colId: "recon", headerName: "Recon", hide: true, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a") },
+        { colId: "risk", headerName: "Risk", hide: true, field: "risk" },
       ];
     }
     return [
@@ -384,6 +455,16 @@ export function LedgerGrid({
         detailCellRenderer={Detail}
         detailRowAutoHeight
         animateRows
+        // desktop: tick rows to sum them in the status bar and to export only those; a phone gets cards without checkboxes
+        rowSelection={narrow ? undefined : { mode: "multiRow", checkboxes: true, headerCheckbox: true, enableClickSelection: false, groupSelects: "descendants", isRowSelectable: (n) => Boolean(n.data) && !n.group }}
+        selectionColumnDef={{ width: 44, minWidth: 44, maxWidth: 44, pinned: "left", resizable: false, suppressHeaderMenuButton: true }}
+        statusBar={{
+          statusPanels: [
+            { statusPanel: "agTotalAndFilteredRowCountComponent", align: "left" },
+            { statusPanel: "agSelectedRowCountComponent", align: "left" },
+            { statusPanel: LedgerStatus, align: "right" },
+          ],
+        }}
         quickFilterText={quickFilter}
         pagination={rows.length > 50}
         paginationPageSize={50}

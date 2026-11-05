@@ -22,6 +22,8 @@
     "tokens": "tsx scripts/build-tokens.ts",
     "seed": "tsx scripts/seed.ts",
     "judge": "tsx scripts/judge.ts",
+    "judge:agent": "node scripts/example-agent.mjs",
+    "attacks": "tsx scripts/attacks.ts",
     "check:layout": "node scripts/demo/check-layout.mjs",
     "agent:devops": "tsx agents/devops/devops-agent.ts",
     "reconcile": "tsx --env-file-if-exists=.env scripts/reconcile.ts",

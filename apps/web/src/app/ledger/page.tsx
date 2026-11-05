@@ -19,20 +19,30 @@ const STATUS_FILTERS: Array<{ id: string; label: string; match: (r: LedgerRow) =
   { id: "any", label: "Any status", match: () => true },
   { id: "paid", label: "Paid", match: (r) => r.status === "paid" },
   { id: "blocked", label: "Denied", match: (r) => r.status === "denied" },
+  { id: "human", label: "Needs human", match: (r) => r.status === "pending_human" },
   { id: "open", label: "Open", match: (r) => ["pending_human", "awaiting_buyer", "paying", "approved"].includes(r.status) },
 ];
 
-type Period = "month" | "30d" | "all";
+type Period = "week" | "month" | "30d" | "all";
 const PERIODS: Array<{ id: Period; label: string }> = [
+  { id: "week", label: "Last 7 days" },
   { id: "month", label: "This month" },
   { id: "30d", label: "Last 30 days" },
   { id: "all", label: "All time" },
 ];
 function periodStart(p: Period, now = new Date()): number {
+  if (p === "week") return now.getTime() - 7 * 86_400_000;
   if (p === "month") return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
   if (p === "30d") return now.getTime() - 30 * 86_400_000;
   return 0;
 }
+/** Saved views: one pick sets the status and period filters (and clears agent and category). Kept in the URL as ?view=, so a view is a link. */
+const VIEWS: Array<{ id: string; label: string; status: string; period: Period }> = [
+  { id: "all", label: "All activity", status: "any", period: "month" },
+  { id: "blocked", label: "Blocked", status: "blocked", period: "all" },
+  { id: "needs_human", label: "Needs human", status: "human", period: "all" },
+  { id: "paid_week", label: "Paid this week", status: "paid", period: "week" },
+];
 const catOf = (r: LedgerRow) => r.category ?? "uncategorized";
 const money = usdAmount;
 
@@ -41,15 +51,16 @@ function LedgerScreen() {
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [roster, setRoster] = useState<ShellAgent[] | null>(null);
+  const startView = VIEWS.find((v) => v.id === params.get("view"));
   const [agent, setAgent] = useState<string>(() => params.get("agent") ?? "all");
   // month to date like the overview; a deep link to one request (?r=) opens all time so the row is never filtered out
   const [period, setPeriod] = useState<Period>(() => {
     const p = params.get("period");
-    return p === "month" || p === "30d" || p === "all" ? p : params.get("r") ? "all" : "month";
+    return p === "week" || p === "month" || p === "30d" || p === "all" ? p : startView ? startView.period : params.get("r") ? "all" : "month";
   });
   // S7 donut slice -> ?category=research (or several for "Other")
   const [categories, setCategories] = useState<string[]>(() => params.get("category")?.split(",").filter(Boolean) ?? []);
-  const [status, setStatus] = useState("any");
+  const [status, setStatus] = useState(startView?.status ?? "any");
   const [group, setGroup] = useState(true);
   const [q, setQ] = useState("");
   const [sync, setSync] = useState<{ busy: boolean; msg: string | null; bad?: boolean }>({ busy: false, msg: null });
@@ -95,6 +106,28 @@ function LedgerScreen() {
     const t = setTimeout(() => setFlash(null), 4000);
     return () => clearTimeout(t);
   }, [flash]);
+
+  const currentView = categories.length === 0 && agent === "all" ? VIEWS.find((v) => v.status === status && v.period === period)?.id ?? "custom" : "custom";
+  function pickView(id: string) {
+    const v = VIEWS.find((x) => x.id === id);
+    if (!v) return;
+    setStatus(v.status);
+    setPeriod(v.period);
+    setAgent("all");
+    setCategories([]);
+  }
+  // keep ?view= in the address bar in step with the filters (without adding history entries)
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    if (currentView === "all" || currentView === "custom") u.searchParams.delete("view");
+    else u.searchParams.set("view", currentView);
+    if (u.href !== window.location.href) window.history.replaceState(window.history.state, "", u);
+  }, [currentView]);
+
+  async function downloadCsv() {
+    const grid = gridApi.current;
+    if (grid) (await import("./LedgerGrid")).exportAccountingCsv(grid);
+  }
 
   const resolveId = useCallback((id: string | null) => resolveRequestId(rows, id), [rows]);
   const drawerReqId = resolveId(drawerId);
@@ -161,8 +194,8 @@ function LedgerScreen() {
           <button className="btn" onClick={reconcile} disabled={sync.busy}>
             {sync.busy ? "Syncing…" : "Reconcile now"}
           </button>
-          <button className="btn" onClick={() => gridApi.current?.exportDataAsCsv({ fileName: "reins-ledger.csv" })} disabled={!rows?.length}>
-            Export CSV
+          <button className="btn" onClick={() => void downloadCsv()} disabled={!rows?.length} title="Exports the rows the filters leave (or only the ticked rows) with the AG Grid CSV export">
+            Download CSV for accounting
           </button>
         </div>
       </div>
@@ -234,6 +267,15 @@ function LedgerScreen() {
                 ))}
               </div>
               <div className="row ledger-f-ctl">
+                <label className="sr-only" htmlFor="view-f">Saved view</label>
+                <select id="view-f" className="input" style={{ width: "auto" }} value={currentView} onChange={(e) => pickView(e.target.value)}>
+                  {VIEWS.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      View: {v.label}
+                    </option>
+                  ))}
+                  {currentView === "custom" && <option value="custom">View: Custom filters</option>}
+                </select>
                 <label className="sr-only" htmlFor="period-f">Period</label>
                 <select id="period-f" className="input" style={{ width: "auto" }} value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
                   {PERIODS.map((p) => (

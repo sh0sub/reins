@@ -1,7 +1,7 @@
 import { getWorkspace, listAgents, listRequestsSince, purgeAgents, type ReinsDb } from "@reins/db";
 import type { AuditProvider, AuditVerdict } from "./policy/audit.ts";
 import { rotateAgentKey } from "./agentControl.ts";
-import { authenticateAgent, createAgent, getLedgerRow, saveMandate, submitPurchase, type ReinsContext } from "./service.ts";
+import { authenticateAgent, createAgent, getLedgerRow, mcpSnippet, saveMandate, submitPurchase, type ReinsContext } from "./service.ts";
 import type { LedgerRow } from "./views.ts";
 
 /**
@@ -104,4 +104,14 @@ export async function resetPlayground(ctx: ReinsContext): Promise<{ removed_requ
   await purgeAgents(ctx.db, ids);
   keys.delete(ctx.db);
   return { removed_requests: removed };
+}
+
+/**
+ * "Connect your agent" card: the demo key of the Playground Agent (demo instances only, throwaway data), the API base URL and the
+ * ready-made MCP config. Real agents get their own key on the Agents screen; this one only exists so a judge can paste and run.
+ */
+export async function playgroundConnect(ctx: ReinsContext) {
+  const api_key = await ensureAgent(ctx);
+  const api_url = ctx.config.apiBaseUrl ?? ctx.config.publicBaseUrl;
+  return { agent: PLAYGROUND_AGENT, api_key, api_url, mcp_config: mcpSnippet(api_url, api_key) };
 }

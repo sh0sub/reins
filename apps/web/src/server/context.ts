@@ -112,6 +112,8 @@ export async function createContextFromEnv(rawEnv: Env = process.env): Promise<R
       approvalTtlMs: ttlMinutes * 60_000,
       explainDenials: env.REINS_EXPLAIN_DENIALS !== "0",
       quietHours: quietHoursFromEnv(env),
+      // demo instances (pnpm judge) raise the 3-per-10-minutes velocity rule so an example agent can be re-run; unset = the real default
+      velocityMax: Number(env.REINS_VELOCITY_MAX) > 0 ? Number(env.REINS_VELOCITY_MAX) : undefined,
     },
   };
 

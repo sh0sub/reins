@@ -47,6 +47,8 @@ const env: NodeJS.ProcessEnv = {
   REINS_QUIET_HOURS: "off",
   REINS_ADMIN_TOKEN: "",
   REINS_APPROVAL_TTL_MINUTES: "240",
+  // demo only: the 3-requests-per-10-minutes rule would block a second run of `pnpm judge:agent`
+  REINS_VELOCITY_MAX: "30",
   PUBLIC_BASE_URL: base,
   REINS_API_URL: base,
   NEXT_TELEMETRY_DISABLED: "1",
@@ -91,6 +93,15 @@ async function main() {
   const url = `${base}/try`;
   console.log(`\njudge: ready -> ${url}`);
   console.log("judge: send the $450 order, then tick 'Simulate a fooled auditor' and send it again. Ctrl+C stops the server and deletes the database.");
+  // connect a real agent: the MCP config is pre-filled with the demo key (also on /try and in Settings)
+  try {
+    const c = (await (await fetch(`${base}/api/try/connect`)).json()) as { mcp_config: unknown };
+    console.log("\njudge: connect your own agent (Claude Desktop or any MCP client). Replace /ABSOLUTE/PATH/TO/reins with this folder:");
+    console.log(JSON.stringify(c.mcp_config, null, 2));
+    console.log(`judge: no agent at hand? In a second terminal: pnpm judge:agent -- --url ${base}   (also: pnpm attacks)`);
+  } catch {
+    /* the config is also on the page */
+  }
   if (!args.includes("--no-open")) {
     const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
     try {
