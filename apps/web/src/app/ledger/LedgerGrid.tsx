@@ -17,7 +17,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule, StatusBarModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { bucketTotal, decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
+import { bucketTotal, decisionClass, decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
 // Community for filter/sort/CSV/row selection; Enterprise for row grouping (agent), master/detail (row expansion), set filters and the status bar.
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -46,7 +46,7 @@ function Chip({ value, className }: { value: string; className: string }) {
 function DecisionCell(p: CustomCellRendererProps<LedgerRow>) {
   if (!p.data) return null;
   const d = decisionLabel(p.data);
-  return <Chip value={d} className={d === "DENIED" ? "status status-bad" : d === "HUMAN" ? "status status-warn" : d === "AUTO" ? "status status-ok" : "status"} />;
+  return <Chip value={d} className={decisionClass(d)} />;
 }
 function StatusCell(p: CustomCellRendererProps<LedgerRow>) {
   if (!p.data) return null;
@@ -132,9 +132,7 @@ function CardCell(p: CustomCellRendererProps<LedgerRow>) {
           </span>
         </div>
         <div className="ledger-card-chips">
-          {d !== "PENDING" && d.toLowerCase() !== st.label.toLowerCase() && (
-            <Chip value={d} className={d === "DENIED" ? "status status-bad" : d === "HUMAN" ? "status status-warn" : d === "AUTO" ? "status status-ok" : "status"} />
-          )}
+          {d !== "Needs you" && d.toLowerCase() !== st.label.toLowerCase() && <Chip value={d} className={decisionClass(d)} />}
           <Chip value={st.label} className={st.className} />
         </div>
       </div>
@@ -184,7 +182,7 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
           </>
         )}
         <dt>Decided by</dt>
-        <dd>{human ? `${human.actor} (${human.decision})` : llm ? `${llm.actor === "mock" ? "demo auditor (offline stand-in)" : "Claude"} · risk ${llm.risk ?? "?"}/10` : "hard rules"}</dd>
+        <dd>{human ? `${human.actor ?? "you"} (${human.decision === "APPROVE" ? "approved" : "denied"})` : llm ? `${llm.actor === "mock" ? "demo auditor (offline stand-in)" : "Claude"} · risk ${llm.risk ?? "?"}/10` : "hard rules"}</dd>
       </dl>
       <dl>
         <dt>Mandate</dt>
@@ -316,6 +314,9 @@ function LedgerStatus({ api }: IStatusPanelParams<LedgerRow>) {
     </span>
   );
 }
+
+/** Elements inside a row that must not open the drawer when clicked. */
+const ROW_CLICK_IGNORE = "button, a, input, label, .ag-group-contracted, .ag-group-expanded, .ag-selection-checkbox, .ag-checkbox, .ag-row-drag";
 
 const money = (p: ValueFormatterParams) => (typeof p.value === "number" ? usdAmount(p.value) : "");
 
@@ -479,6 +480,14 @@ export function LedgerGrid({
           if (!focusId) e.api.ensureIndexVisible(0, "top");
         }}
         onRowDataUpdated={focusRow}
+        // a click anywhere on a request row opens the drawer; the chevron, checkbox, links and buttons keep their own job
+        onRowClicked={(e) => {
+          const target = e.event?.target as HTMLElement | null | undefined;
+          if (!onOpen || !e.data || e.node.group || e.node.detail || e.node.footer || e.node.rowPinned) return;
+          if (target?.closest(ROW_CLICK_IGNORE)) return;
+          onOpen(e.data.request_id);
+        }}
+        getRowClass={(p) => (p.data && !p.node.group && !p.node.footer && !p.node.rowPinned ? "ledger-row-click" : undefined)}
       />
     </div>
   );

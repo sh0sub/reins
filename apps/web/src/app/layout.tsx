@@ -15,7 +15,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export const dynamic = "force-dynamic";
 
 /**
- * Server-renders what the sidebar and top bar show (PayPal card, agents list, approvals badge, "Offline demo"), so the first
+ * Server-renders what the sidebar and top bar show (PayPal card, agents list, approvals badge, "Simulated PayPal"), so the first
  * paint is never "Connecting…" or "Checking connection…". The client refetches right after; any error here falls back to that.
  */
 async function shellInitial(): Promise<ShellInitial> {

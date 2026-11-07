@@ -25,14 +25,29 @@ export function riskClass(risk: number | null): string {
   return risk <= 3 ? "status status-ok" : risk >= 8 ? "status status-bad" : "status status-warn";
 }
 
-/** AUTO / HUMAN / DENIED label used in the ledger "Decision" column (S4). */
-export function decisionLabel(row: Pick<LedgerRow, "decisions" | "decision" | "status">): "AUTO" | "HUMAN" | "DENIED" | "PENDING" | "EXPIRED" {
-  if (row.status === "expired") return "EXPIRED";
+export type DecisionLabel = "Auto" | "Human" | "Blocked" | "Denied" | "Needs you" | "Expired";
+
+/**
+ * Plain-word "Decision" column of the ledger (S4): Auto (rules + auditor paid it), Human (a person decided), Blocked (rules or
+ * auditor stopped it), Denied (a person rejected it), Needs you (waiting), Expired. Never the raw AUTO_APPROVE / ASK_HUMAN enums.
+ */
+export function decisionLabel(row: Pick<LedgerRow, "decisions" | "decision" | "status">): DecisionLabel {
+  if (row.status === "expired") return "Expired";
   const human = row.decisions.find((d) => d.stage === "human");
-  if (row.status === "denied") return "DENIED";
-  if (human) return "HUMAN";
-  if (row.decision === "AUTO_APPROVE") return "AUTO";
-  return "PENDING";
+  if (row.status === "denied") return human ? "Denied" : "Blocked";
+  if (human) return "Human";
+  if (row.decision === "AUTO_APPROVE") return "Auto";
+  return "Needs you";
+}
+
+/** Chip colour for a decision label (paired with the word, never colour alone). */
+export function decisionClass(d: DecisionLabel): string {
+  return d === "Blocked" || d === "Denied" ? "status status-bad" : d === "Human" || d === "Needs you" ? "status status-warn" : d === "Auto" ? "status status-ok" : "status";
+}
+
+/** Auditor answers in words: AUTO_APPROVE -> "approve", ASK_HUMAN -> "ask a person", DENY -> "deny". */
+export function auditorWord(decision: string | null | undefined): string {
+  return decision === "AUTO_APPROVE" ? "approve" : decision === "ASK_HUMAN" ? "ask a person" : decision === "DENY" ? "deny" : (decision ?? "").toLowerCase().replace(/_/g, " ");
 }
 
 /**
@@ -119,3 +134,16 @@ export const isSimId = (id: string | null | undefined): boolean => Boolean(id &&
 export const simId = (id: string): string => id.replace(/^FAKE-/, "SIM-");
 /** Short form for narrow cells: SIM-0143 stays readable, a real id is cut to 5 chars + last. */
 export const shortPayId = (id: string): string => (isSimId(id) ? simId(id).replace(/^SIM-(CAPTURE|ORDER)-/, "SIM-").slice(0, 12) : `${id.slice(0, 5)}…${id.slice(-1)}`);
+
+/** POST /api/reconcile: the Transaction Search counts, or on a demo instance (fake PayPal + seeded SIM ids) a neutral note and no changes. */
+export type ReconcileResponse =
+  | { mode: "simulated"; note: string }
+  | { mode?: "paypal"; transactions: number; checked: number; matched: number; mismatch: number; pending: number };
+export type BannerTone = "ok" | "warn" | "bad" | "info";
+
+/** Ledger banner after "Reconcile now": green only when nothing is off; any mismatch is a warning; a demo instance gets a neutral note. */
+export function reconcileBanner(r: ReconcileResponse): { tone: BannerTone; msg: string } {
+  if (r.mode === "simulated") return { tone: "info", msg: r.note };
+  const msg = `Transaction Search: ${r.transactions} PayPal transactions · ${r.matched} matched · ${r.mismatch} mismatch · ${r.pending} not listed yet`;
+  return { tone: r.mismatch > 0 ? "warn" : "ok", msg: r.mismatch > 0 ? `${msg}. Expand a row with a red mark for the reason.` : msg };
+}

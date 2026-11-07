@@ -7,7 +7,7 @@ import type { GridApi } from "ag-grid-community";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
-import { bucketTotal, isUnknownRequest, outcomeBucket, resolveRequestId, usdAmount } from "@/lib/format";
+import { bucketTotal, isUnknownRequest, outcomeBucket, reconcileBanner, resolveRequestId, usdAmount, type BannerTone, type ReconcileResponse } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
@@ -63,7 +63,7 @@ function LedgerScreen() {
   const [status, setStatus] = useState(startView?.status ?? "any");
   const [group, setGroup] = useState(true);
   const [q, setQ] = useState("");
-  const [sync, setSync] = useState<{ busy: boolean; msg: string | null; bad?: boolean }>({ busy: false, msg: null });
+  const [sync, setSync] = useState<{ busy: boolean; msg: string | null; tone?: BannerTone }>({ busy: false, msg: null });
   const [flash, setFlash] = useState<string | null>(null);
   const gridApi = useRef<GridApi<LedgerRow> | null>(null);
   // S6 drawer, deep link /ledger?r=<id>&drawer=1
@@ -175,11 +175,11 @@ function LedgerScreen() {
   async function reconcile() {
     setSync({ busy: true, msg: null });
     try {
-      const r = await api<{ transactions: number; checked: number; matched: number; mismatch: number; pending: number }>("/api/reconcile", { method: "POST", body: { days: 31 } });
-      setSync({ busy: false, msg: `Transaction Search: ${r.transactions} PayPal transactions · ${r.matched} matched · ${r.mismatch} mismatch · ${r.pending} not listed yet` });
-      load();
+      const r = await api<ReconcileResponse>("/api/reconcile", { method: "POST", body: { days: 31 } });
+      setSync({ busy: false, ...reconcileBanner(r) });
+      if (r.mode !== "simulated") load();
     } catch (e) {
-      setSync({ busy: false, bad: true, msg: (e as Error).message });
+      setSync({ busy: false, tone: "bad", msg: (e as Error).message });
     }
   }
 
@@ -207,7 +207,7 @@ function LedgerScreen() {
       )}
 
       {sync.msg && (
-        <p className={sync.bad ? "alert alert-bad" : "alert alert-ok"} role="status" style={{ marginBottom: 16 }}>
+        <p className={`alert alert-${sync.tone ?? "info"}`} role="status" style={{ marginBottom: 16 }}>
           {sync.msg}
         </p>
       )}

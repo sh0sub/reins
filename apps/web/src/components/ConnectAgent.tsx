@@ -63,17 +63,27 @@ export function ConnectAgent() {
           <b>MCP config</b>
           {info && <Copy text={mcp} label="Copy MCP config" />}
         </div>
-        <pre className="mono try-code connect-pre">{mcp}</pre>
-        <p className="caption">Replace /ABSOLUTE/PATH/TO/reins with your clone. No clone? The same four tools are also plain HTTP:</p>
+        <p className="row connect-tags" aria-label="About this snippet">
+          <span className="status status-warn">Demo key</span>
+          <span className="caption">Throwaway Playground Agent on this demo database only; it moves no money and dies with the demo.</span>
+        </p>
+        <p className="row connect-tags">
+          <span className="status">Placeholder path</span>
+          <span className="caption">
+            <code>/ABSOLUTE/PATH/TO/reins</code> is not a real path: replace it with your clone.
+          </span>
+        </p>
+        <pre className="mono try-code connect-pre" aria-label="MCP config with the demo key and a placeholder path">{mcp}</pre>
+        <p className="caption">No clone? The same four tools are also plain HTTP:</p>
       </div>
       <div className="stack-s">
         <div className="row between">
           <b>or curl</b>
           {info && <Copy text={curl} label="Copy curl" />}
         </div>
-        <pre className="mono try-code connect-pre">{curl || "…"}</pre>
+        <pre className="mono try-code connect-pre" aria-label="curl command with the demo key">{curl || "…"}</pre>
         <p className="caption">
-          No agent at hand? Run <code>pnpm judge:agent</code> in a second terminal: a small script that reads a poisoned page and shows PAID, PENDING and DENIED. The npm package is still roadmap.
+          No agent at hand? Run <code>pnpm judge:agent</code> in a second terminal: a small script that reads a poisoned page and shows paid, pending and denied. The npm package is still roadmap.
         </p>
       </div>
     </section>

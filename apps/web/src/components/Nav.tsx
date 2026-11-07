@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useLive, useLiveStatus } from "@/lib/live";
-import { agentInitials, capPct, pendingCount, sidebarAgents, withPlayground, type ShellAgent } from "@/lib/shell";
+import { agentInitials, capPct, pendingCount, sidebarAgents, topbarStatus, withPlayground, type ShellAgent } from "@/lib/shell";
 import { useIncludePlayground, useShellInitial, type WorkspaceView } from "./ShellData";
 import { CommandPalette } from "./CommandPalette";
 import { Icon, type IconName } from "./Icon";
@@ -191,22 +191,22 @@ export function TopBar() {
   const judge = useShellInitial().judge || Boolean(ws?.judge_mode);
   const who = judge ? JUDGE_USER : DEMO_USER;
   const title = Object.entries(TITLES).find(([k]) => path.startsWith(k))?.[1] ?? "Reins";
-  // a judge instance is an offline demo from the first paint on; the dot still shows the live-update connection
-  const label = judge && (status === "live" || status === "connecting") ? "Offline demo" : status === "live" ? "Live" : status === "connecting" ? "Connecting…" : status === "reconnecting" ? "Reconnecting…" : "Offline · retrying";
+  // a simulated-PayPal instance (judge, fake env) says so in the same words and grey as the sidebar card; the dot only turns red when the live stream drops
+  const sim = topbarStatus(status, judge || ws?.paypal_env === "fake");
+  const n = pending ?? 0;
   return (
     <header className="topbar">
       <span className="crumb">{title}</span>
       <CommandPalette />
       <div className="row">
-        <span className="live" role="status" aria-live="polite">
-          <span className={status === "live" ? "dot dot-ok" : status === "offline" ? "dot dot-bad" : "dot dot-warn"} />
-          <span className="live-lbl">{label}</span>
+        <span className="live" role="status" aria-live="polite" title={sim.title}>
+          <span className={sim.dot} />
+          <span className="live-lbl">{sim.label}</span>
         </span>
-        {pending ? (
-          <Link className="btn" href={withPlayground("/inbox", include)}>
-            Pending {pending}
-          </Link>
-        ) : null}
+        {/* always present so the header does not jump between pages; quiet when nothing waits */}
+        <Link className={n ? "btn" : "btn btn-quiet"} href={withPlayground("/inbox", include)} aria-label={n ? `Pending ${n}: open Approvals` : "Pending 0: nothing waits for you"}>
+          Pending {n}
+        </Link>
         <Link className="bell" href={withPlayground("/inbox", include)} aria-label={pending ? `Notifications: ${pending} pending approval${pending === 1 ? "" : "s"}` : "Notifications: nothing pending"}>
           <Icon name="bell" />
           {pending ? <i className="bell-dot" aria-hidden /> : null}

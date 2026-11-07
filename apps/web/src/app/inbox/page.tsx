@@ -6,7 +6,7 @@ import type { InboxItem, LedgerRow, Overview } from "@reins/core";
 import { api, ApiError } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { Icon } from "@/components/Icon";
-import { ago, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, simId, statusChip, usd } from "@/lib/format";
+import { ago, auditorWord, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, simId, statusChip, usd } from "@/lib/format";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
 /** A request waiting longer than this counts as overdue in the queue header. */
@@ -27,7 +27,7 @@ function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: bool
           {row.merchant} · {ago(row.created_at)}
         </span>
         <span className="row">
-          <span className="status status-warn">ASK_HUMAN</span>
+          <span className="status status-warn">Needs you</span>
           <span className={riskClass(row.risk)}>Risk {row.risk ?? "?"}</span>
           {row.needs_clarification && <span className="status status-info">Waiting for agent</span>}
           {row.anomalies?.length > 0 && <span className="status status-bad">Unusual pattern</span>}
@@ -79,7 +79,7 @@ function Activity({ row, telegram }: { row: InboxItem; telegram: boolean }) {
       )}
       {llm && (
         <li>
-          <span className="label">Claude review · {llm.decision} · Risk {llm.risk ?? "?"}/10</span>
+          <span className="label">{llm.actor === "mock" ? "Auditor" : "Claude"} review · said {auditorWord(llm.decision)} · Risk {llm.risk ?? "?"}/10</span>
           <span className="caption">{llm.actor === "mock" ? "Demo auditor (offline stand-in)" : llm.actor}</span>
         </li>
       )}
@@ -222,7 +222,7 @@ function Detail({
             </span>
           </div>
           <div className="stack-s" style={{ alignItems: "flex-end" }}>
-            <span className="status status-warn">ASK_HUMAN</span>
+            <span className="status status-warn">Needs you</span>
             <span className="metric">
               ${row.amount} <span className="caption">{row.currency}</span>
             </span>

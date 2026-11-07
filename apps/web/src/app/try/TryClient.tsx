@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import Link from "next/link";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
-import { isSimId, simId, statusChip, usd } from "@/lib/format";
+import { auditorWord, isSimId, simId, statusChip, usd } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { BLANK, PRESETS, type Preset } from "./presets";
+import { runSequence, splitRules, timelineItem, timelineSummary, verdictLine } from "./verdict";
 
 interface Mandate {
   monthly_limit: string;
@@ -52,13 +53,14 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [history, setHistory] = useState<Array<{ id: string; label: string }>>([]);
+  // a multi-order preset (five $29 orders): every result in order, plus how many are still to come
+  const [run, setRun] = useState<{ title: string; total: number; results: Result[] } | null>(null);
   const [form, setForm] = useState(BLANK);
   const [decided, setDecided] = useState<string | null>(null);
   const [tour, setTour] = useState<TourDone>({});
   const [tourOpen, setTourOpen] = useState(true);
   const [note, setNote] = useState<string | null>(null);
-  const resultRef = useRef<HTMLElement>(null);
+  const verdictRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     try {
       if (window.localStorage.getItem(TOUR_KEY) === "1") setTourOpen(false);
@@ -75,25 +77,31 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
       /* per-viewer convenience only */
     }
   }
-  // on a phone the decision sits below the presets: bring it into view after each send
-  const sentId = result?.row.request_id;
+  // after a send the verdict line comes into view (on a phone it sits below the presets; on a desktop the page may be scrolled)
+  const [reveal, setReveal] = useState(0);
   useEffect(() => {
-    if (sentId && window.innerWidth < 1000) resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [sentId]);
+    if (!reveal) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    verdictRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: window.innerWidth < 1000 ? "start" : "nearest" });
+  }, [reveal]);
 
   async function send(label: string, purchase: Record<string, string>, key: string, fooledNow = fooled, repeat = 1) {
     setBusy(key);
     setError(null);
     setDecided(null);
     setNote(null);
+    setRun(repeat > 1 ? { title: label, total: repeat, results: [] } : null);
     try {
-      for (let i = 1; i <= repeat; i++) {
-        const r = await api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooledNow } });
-        setResult(r);
-        setTour((t) => tourAfter(t, r));
-        const tag = repeat > 1 ? ` ${i}/${repeat}` : "";
-        setHistory((h) => [{ id: r.row.request_id, label: `${label}${tag} ${usd(Math.round(Number(r.row.amount) * 100))} · ${statusChip(r.row).label}` }, ...h].slice(0, 6));
-      }
+      await runSequence(
+        repeat,
+        () => api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooledNow } }),
+        (r, i) => {
+          setResult(r);
+          setTour((t) => tourAfter(t, r));
+          if (repeat > 1) setRun((cur) => (cur ? { ...cur, results: [...cur.results, r] } : cur));
+          if (i === 1) setReveal((n) => n + 1);
+        },
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -107,7 +115,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
     try {
       const r = await api<{ removed_requests: number }>("/api/try/reset", { method: "POST" });
       setResult(null);
-      setHistory([]);
+      setRun(null);
       setTour({});
       setDecided(null);
       setNote(`Demo data reset: ${r.removed_requests} playground ${r.removed_requests === 1 ? "request" : "requests"} removed. The seeded ledger is untouched.`);
@@ -208,7 +216,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
               <label className="try-toggle">
                 <input type="checkbox" checked={fooled} onChange={(e) => setFooled(e.target.checked)} />
                 <span>
-                  <b>Simulate a fooled auditor</b> (always AUTO_APPROVE)
+                  <b>Simulate a fooled auditor</b> (always says approve)
                   <span className="caption"> Try the $450 order again: the model says yes, the code still says no.</span>
                 </span>
               </label>
@@ -264,7 +272,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
             </section>
           </div>
 
-          <section ref={resultRef} className="stack try-decision" aria-labelledby="try-result" aria-live="polite">
+          <section className="stack try-decision" aria-labelledby="try-result" aria-live="polite">
             <h2 id="try-result" className="h-card">
               Decision
             </h2>
@@ -273,21 +281,13 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
                 {error}
               </p>
             )}
+            {run && <RunTimeline innerRef={verdictRef} run={run} busy={busy !== null} current={result?.row.request_id ?? null} onPick={setResult} />}
             {!result ? (
               <div className="empty try-empty">
-                <p className="muted">Nothing sent yet. Press Send $12.98 to start.</p>
+                <p className="muted">{busy ? "Sending…" : "Nothing sent yet. Press Send $12.98 to start."}</p>
               </div>
             ) : (
-              <ResultPanel result={result} busy={busy} decided={decided} onDecide={(a) => void decide(result.row.request_id, a)} />
-            )}
-            {history.length > 1 && (
-              <ul className="caption try-history" aria-label="This session">
-                {history.map((h) => (
-                  <li key={h.id}>
-                    <Link href={`/ledger?r=${h.id}&drawer=1`}>{h.label}</Link>
-                  </li>
-                ))}
-              </ul>
+              <ResultPanel key={result.row.request_id} result={result} busy={busy} decided={decided} verdictRef={run ? undefined : verdictRef} onDecide={(a) => void decide(result.row.request_id, a)} />
             )}
           </section>
         </div>
@@ -305,7 +305,9 @@ function PresetCard({ preset, busy, disabled, onSend }: { preset: Preset; busy: 
           <span className="label">
             {busy ? "Sending…" : preset.title}
           </span>
-          <b className="num">${p.amount}</b>
+          <b className="num">
+            {preset.repeat ? `${preset.repeat} × ` : ""}${p.amount}
+          </b>
         </span>
         <span className="caption">
           {p.merchant} · {preset.hint}
@@ -315,17 +317,36 @@ function PresetCard({ preset, busy, disabled, onSend }: { preset: Preset; busy: 
   );
 }
 
-function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy: string | null; decided: string | null; onDecide: (a: "approve" | "deny") => void }) {
+function ResultPanel({
+  result,
+  busy,
+  decided,
+  verdictRef,
+  onDecide,
+}: {
+  result: Result;
+  busy: string | null;
+  decided: string | null;
+  verdictRef?: RefObject<HTMLDivElement | null>;
+  onDecide: (a: "approve" | "deny") => void;
+}) {
   const { row } = result;
   const chip = statusChip(row);
   const rules = rulesOf(row);
   const failed = rules.filter((r) => !r.ok);
+  const [allRules, setAllRules] = useState(false);
+  const { shown, hidden } = splitRules(rules);
+  const visibleRules = allRules ? rules : shown;
   const llm = row.decisions.find((d) => d.stage === "llm");
   const payId = row.payment?.capture_id ?? row.payment?.payout_batch_id ?? row.payment?.order_id ?? null;
   const advisory = Boolean((llm?.details as { advisory?: boolean } | null)?.advisory);
   const fooledButBlocked = result.auditor === "fooled" && row.status === "denied";
+  const verdict = verdictLine({ status: row.status, llm: llm ? { decision: llm.decision, actor: llm.actor } : null, rules, auditor: result.auditor });
   return (
     <div className="panel stack try-result" data-status={row.status}>
+      <div ref={verdictRef} className={`try-verdict try-verdict-${verdict.tone}`} role="status">
+        <b>{verdict.head}</b> — {verdict.text}
+      </div>
       <div className="row between">
         <div className="row">
           <span className={`${chip.className} status-lg`}>{chip.label}</span>
@@ -340,7 +361,7 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
       {fooledButBlocked && (
         <p className="alert alert-ok row" role="note">
           <Icon name="shield" className="ico" />
-          The simulated auditor said AUTO_APPROVE. The hard rules ran in code and denied it anyway.
+          The simulated auditor said approve. The hard rules ran in code and denied it anyway.
         </p>
       )}
 
@@ -356,7 +377,7 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
             </tr>
           </thead>
           <tbody>
-            {rules.map((r) => (
+            {visibleRules.map((r) => (
               <tr key={r.rule} className={r.ok ? undefined : "fail"}>
                 <th scope="row">{RULE_LABEL[r.rule] ?? r.rule}</th>
                 <td className="num">{r.value ?? ""}</td>
@@ -368,6 +389,14 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
             ))}
           </tbody>
         </table>
+        {hidden > 0 && (
+          <div>
+            <button type="button" className="btn-link" aria-expanded={allRules} onClick={() => setAllRules((v) => !v)}>
+              {allRules ? "Show only the limits" : `Show all ${rules.length} checks`}
+            </button>
+            {!allRules && <span className="caption"> · {hidden} basic checks passed (key, mandate, amount, currency…)</span>}
+          </div>
+        )}
       </div>
 
       <div className="stack-s">
@@ -375,9 +404,9 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
         {llm ? (
           <p>
             <span className="status">{result.auditor === "fooled" ? "simulated fooled auditor" : llm.actor === "mock" ? "demo auditor (offline stand-in)" : "Claude"}</span>{" "}
-            <b>{result.auditor === "fooled" ? "AUTO_APPROVE" : llm.decision}</b>
+            said <b>{result.auditor === "fooled" ? "approve" : auditorWord(llm.decision)}</b>
             {llm.risk != null ? ` · risk ${llm.risk}/10` : ""}
-            {result.auditor === "fooled" && llm.decision !== "AUTO_APPROVE" && <span className="muted"> · code clamped the answer to {llm.decision}</span>}{" "}
+            {result.auditor === "fooled" && llm.decision !== "AUTO_APPROVE" && <span className="muted"> · code clamped the answer to {auditorWord(llm.decision)}</span>}{" "}
             {result.auditor !== "fooled" && <span className="muted">{llm.reasonEn}</span>}
           </p>
         ) : (
@@ -415,11 +444,63 @@ function ResultPanel({ result, busy, decided, onDecide }: { result: Result; busy
           Open in the ledger
         </Link>
         {row.status === "paid" && row.receipt?.receipt_url && (
-          <Link className="btn" href={`/receipts/${row.request_id}`}>
+          <Link className="btn" href={`/receipts/${row.display_id}`}>
             Receipt
           </Link>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Five $29 orders: one row per order as each decision lands (Paid, Paid, Paid, Denied, Denied), with the rule that stopped it. */
+function RunTimeline({
+  run,
+  busy,
+  current,
+  innerRef,
+  onPick,
+}: {
+  run: { title: string; total: number; results: Result[] };
+  busy: boolean;
+  current: string | null;
+  innerRef?: RefObject<HTMLDivElement | null>;
+  onPick: (r: Result) => void;
+}) {
+  const items = run.results.map((r, i) => timelineItem(i + 1, { status: r.row.status, rules: rulesOf(r.row) }));
+  const left = run.total - run.results.length;
+  return (
+    <div ref={innerRef} className="panel panel-tight stack-s try-run" role="status">
+      <div className="row between">
+        <b>
+          {run.title} · {run.results.length} of {run.total} sent
+        </b>
+        {items.length > 0 && <span className="caption">{timelineSummary(items)}</span>}
+      </div>
+      <ol className="try-run-list">
+        {items.map((it, i) => {
+          const r = run.results[i]!;
+          return (
+            <li key={r.row.request_id}>
+              <button type="button" className="try-run-row" aria-current={current === r.row.request_id ? "true" : undefined} onClick={() => onPick(r)}>
+                <span className="try-run-n num">{it.n}</span>
+                <span className="num">{usd(Math.round(Number(r.row.amount) * 100))}</span>
+                <span className={`status status-${it.tone}`}>{it.label}</span>
+                <span className="caption mono">{r.row.display_id}</span>
+                {it.reason && <span className="try-run-why caption">{it.reason}</span>}
+              </button>
+            </li>
+          );
+        })}
+        {busy &&
+          Array.from({ length: left }, (_, k) => (
+            <li key={`wait-${k}`} className="try-run-row is-wait" aria-hidden>
+              <span className="try-run-n num">{run.results.length + k + 1}</span>
+              <span className="caption">{k === 0 ? "Sending…" : "Queued"}</span>
+            </li>
+          ))}
+      </ol>
+      <p className="caption">Select an order to see its decision below.</p>
     </div>
   );
 }
