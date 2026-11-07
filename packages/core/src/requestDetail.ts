@@ -54,6 +54,9 @@ export interface RequestDetail {
   telegram_linked: boolean;
 }
 
+/** Auditor answers in plain words for the timeline (the raw enums stay in the data and the API). */
+const AUDITOR_WORD: Record<string, string> = { AUTO_APPROVE: "approve", ASK_HUMAN: "ask a person", DENY: "deny" };
+
 const usdOf = (cents: number) => `$${centsToValue(cents)}`;
 
 export async function getRequestDetail(ctx: ReinsContext, requestId: string): Promise<RequestDetail> {
@@ -88,7 +91,7 @@ export async function getRequestDetail(ctx: ReinsContext, requestId: string): Pr
     if (d.stage === "llm") {
       const det = (d.details ?? {}) as { provider?: string; advisory?: boolean; failed?: boolean; tokens?: number; latency_ms?: number };
       const who = det.provider === "mock" ? "mock auditor" : det.provider?.startsWith("claude") ? "Claude" : det.provider ?? d.actor ?? "auditor";
-      add(`llm-${d.createdAt}`, `LLM audit · ${who}${det.advisory ? " (explains only)" : ""}`, d.createdAt, d.decision === "DENY" ? "bad" : d.decision === "ASK_HUMAN" ? "wait" : "ok", `${d.decision} · risk ${d.risk ?? "?"}/10`);
+      add(`llm-${d.createdAt}`, `LLM audit · ${who}${det.advisory ? " (explains only)" : ""}`, d.createdAt, d.decision === "DENY" ? "bad" : d.decision === "ASK_HUMAN" ? "wait" : "ok", `Said ${AUDITOR_WORD[d.decision] ?? d.decision} · risk ${d.risk ?? "?"}/10`);
       auditor = { provider: det.provider ?? d.actor, advisory: Boolean(det.advisory), tokens: det.tokens ?? null, latency_ms: det.latency_ms ?? null, risk: d.risk, reason_en: d.reasonEn, reason_ko: d.reasonKo, skipped: null };
     } else if (d.stage === "system" && d.decision !== "EXPIRE") {
       add(`patterns-${d.createdAt}`, "Unusual pattern check", d.createdAt, "wait", d.reasonEn);
