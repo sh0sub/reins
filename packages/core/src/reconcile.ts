@@ -1,6 +1,7 @@
-import { listPaymentsForReconcile, updatePayment, type Payment } from "@reins/db";
+import { getWorkspace, listPaymentsForReconcile, updatePayment, type Payment } from "@reins/db";
 import { centsToValue, toCents } from "./money.ts";
 import type { TransactionDetail } from "./paypal/types.ts";
+import { playgroundEnabled } from "./playground.ts";
 import type { ReinsContext } from "./service.ts";
 
 /**
@@ -21,6 +22,29 @@ export interface ReconcileResult {
   mismatch: number;
   pending: number;
   pages: number;
+}
+
+/** Real = PayPal Transaction Search was queried; simulated = a demo instance where nothing was queried and nothing changed. */
+export type ReconcileMode = "paypal" | "simulated";
+
+export const SIMULATED_RECONCILE_NOTE = "Reconciliation runs against real PayPal Transaction Search; simulated here. The seeded match states are left as they are.";
+
+/**
+ * Demo instances (`pnpm judge`, REINS_TRY=1, REINS_PUBLIC_DEMO=1) on the in-memory fake PayPal hold seeded SIM ids that were never
+ * sent to PayPal, so a Transaction Search run there would flag every seeded payment as missing. Those instances skip it.
+ */
+export function reconcileMode(paypalEnv: string, env: Record<string, string | undefined> = process.env): ReconcileMode {
+  return paypalEnv === "fake" && playgroundEnabled(env) ? "simulated" : "paypal";
+}
+
+/** "Reconcile now": the real run, or on a demo instance a neutral no-op result that leaves every payment untouched. */
+export async function reconcileNow(
+  ctx: ReinsContext,
+  opts: { start?: number; end?: number; env?: Record<string, string | undefined> } = {},
+): Promise<(ReconcileResult & { mode: "paypal" }) | { mode: "simulated"; note: string }> {
+  const ws = await getWorkspace(ctx.db);
+  if (reconcileMode(ws.paypalEnv, opts.env) === "simulated") return { mode: "simulated", note: SIMULATED_RECONCILE_NOTE };
+  return { mode: "paypal", ...(await reconcilePayments(ctx, { start: opts.start, end: opts.end })) };
 }
 
 const DAY = 86_400_000;

@@ -1,4 +1,4 @@
-import { getAgent, getMandate, getPaymentByRequest, getRequest, listDecisions } from "@reins/db";
+import { getAgent, getMandate, getPaymentByRequest, getRequest, getRequestBySeq, listDecisions, type ReinsDb } from "@reins/db";
 import { centsToValue } from "./money.ts";
 import { displayId } from "./pay/strategies.ts";
 import { ReinsError, type ReinsContext } from "./service.ts";
@@ -28,9 +28,21 @@ export interface Receipt {
   receipt_url: string | null;
 }
 
+/** "R-0143" / "r-143" -> 143; anything else (an internal id) -> null. */
+export function parseDisplayId(id: string): number | null {
+  const m = /^R-(\d{1,9})$/i.exec(id.trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** A request by its internal id or by its display id (R-0143), so /receipts/R-0143 works like /receipts/<id>. */
+export async function findRequest(db: ReinsDb, id: string) {
+  const seq = parseDisplayId(id);
+  return seq !== null ? getRequestBySeq(db, seq) : getRequest(db, id);
+}
+
 /** Receipt for a paid request; 404 for anything that has not been paid (nothing to show yet). */
 export async function getReceipt(ctx: ReinsContext, requestId: string): Promise<Receipt> {
-  const r = await getRequest(ctx.db, requestId);
+  const r = await findRequest(ctx.db, requestId);
   const payment = r ? await getPaymentByRequest(ctx.db, r.id) : undefined;
   if (!r || r.status !== "paid" || !payment) throw new ReinsError(404, "not_found", "No receipt: this request is not paid");
   const [agent, mandate, decisions] = await Promise.all([

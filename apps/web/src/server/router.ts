@@ -38,7 +38,7 @@ import {
   listAgentSummaries,
   listTransactionsForAgent,
   mandateView,
-  reconcilePayments,
+  reconcileNow,
   saveMandate,
   setPaymentMode,
   startVaultSetup,
@@ -112,7 +112,7 @@ async function reconcileResponse(req: Request, ctx: ReinsContext): Promise<Respo
   const { days } = (await readJson(req)) as { days?: number };
   const span = Math.min(Math.max(Number(days ?? 2) || 2, 1), 31) * 86_400_000;
   try {
-    return json(await reconcilePayments(ctx, { start: ctx.now() - span }));
+    return json(await reconcileNow(ctx, { start: ctx.now() - span }));
   } catch (err) {
     const status = (err as { status?: number }).status;
     throw new ReinsError(502, "reconcile_failed", `Couldn't sync with PayPal Transaction Search${status ? ` (HTTP ${status})` : ""}. Showing cached data.`);

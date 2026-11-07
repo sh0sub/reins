@@ -195,6 +195,11 @@ export async function getRequest(db: ReinsDb, id: string): Promise<PurchaseReque
   return db.query.requests.findFirst({ where: eq(requests.id, id) });
 }
 
+/** Lookup by the display number (R-0143 -> 143). */
+export async function getRequestBySeq(db: ReinsDb, seq: number): Promise<PurchaseRequest | undefined> {
+  return db.query.requests.findFirst({ where: eq(requests.seq, seq) });
+}
+
 export async function updateRequest(
   db: ReinsDb,
   id: string,
