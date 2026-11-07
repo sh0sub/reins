@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Test count at time of writing: 262 tests in 38 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
+Test count at time of writing: 275 tests in 39 files (`pnpm test`), `pnpm lint` and `pnpm typecheck` clean.
 
 ---
 
@@ -10,7 +10,7 @@ Test count at time of writing: 262 tests in 38 files (`pnpm test`), `pnpm lint` 
 2. **19 of 24 auto-paid / $450 blocked / 10 min saved** (seeded demo month, made-up data computed from the ledger; the 10 minutes assume 30 s per approval). In a simulated benchmark of 9 scripted attacks (`pnpm attacks`, auditor set to approve everything) an ungated agent paid $813.96 and the same attacks through Reins paid $99.98, the part that was inside the mandate.
 3. **Try in 60 s, no keys:** `pnpm judge` (opens `/try`; real vs simulated PayPal is badged everywhere; real sandbox ids are on `/proof` and in the API table below). Then `pnpm judge:agent` to watch an agent use it over MCP.
 
-Tests: 262 passing, `pnpm typecheck` and `pnpm lint` clean.
+Tests: 275 passing, `pnpm typecheck` and `pnpm lint` clean.
 
 **Agentic Commerce fit:** the agent is the buyer; it asks over MCP, code decides first, Claude second, and PayPal moves money only after both pass. **AG Grid features used:** row grouping with paid-only subtotals, master-detail, Set filters, a status bar with money totals and selected-row sum, row selection, CSV export for accounting, saved views, and AG Charts (details under Sponsor prizes).
 
