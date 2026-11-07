@@ -22,6 +22,8 @@ export interface ReconcileResult {
   mismatch: number;
   pending: number;
   pages: number;
+  /** Seeded demo payments (FAKE-…/SIM-… ids) left out on a real-PayPal workspace: they were never sent to PayPal. */
+  skipped: number;
 }
 
 /** Real = PayPal Transaction Search was queried; simulated = a demo instance where nothing was queried and nothing changed. */
@@ -29,9 +31,19 @@ export type ReconcileMode = "paypal" | "simulated";
 
 export const SIMULATED_RECONCILE_NOTE = "Reconciliation runs against real PayPal Transaction Search; simulated here. The seeded match states are left as they are.";
 
+/** Public demo on the real sandbox where every payment in the window is seeded demo data: nothing to ask PayPal about. */
+export const SEEDED_RECONCILE_NOTE =
+  "Seeded demo payments (FAKE- ids) were never sent to PayPal, so Transaction Search is not run on them; their match states are left as they are. Orders you complete on PayPal from /try are reconciled for real.";
+
+/** Ids that only exist in Reins: the seed's FAKE-… and the in-memory fake PayPal's SIM-…. PayPal can never list them. */
+export const isSimulatedPayPalId = (id: string | null | undefined): boolean => Boolean(id && /^(FAKE|SIM)-/.test(id));
+const isSimulatedPayment = (p: Pick<Payment, "captureId" | "paypalOrderId" | "payoutBatchId">) =>
+  isSimulatedPayPalId(p.captureId ?? p.payoutBatchId ?? p.paypalOrderId);
+
 /**
  * Demo instances (`pnpm judge`, REINS_TRY=1, REINS_PUBLIC_DEMO=1) on the in-memory fake PayPal hold seeded SIM ids that were never
  * sent to PayPal, so a Transaction Search run there would flag every seeded payment as missing. Those instances skip it.
+ * A demo on the real sandbox (public demo with PayPal keys) is "paypal" here; reconcileNow still keeps it neutral for seeded rows.
  */
 export function reconcileMode(paypalEnv: string, env: Record<string, string | undefined> = process.env): ReconcileMode {
   return paypalEnv === "fake" && playgroundEnabled(env) ? "simulated" : "paypal";
@@ -44,7 +56,19 @@ export async function reconcileNow(
 ): Promise<(ReconcileResult & { mode: "paypal" }) | { mode: "simulated"; note: string }> {
   const ws = await getWorkspace(ctx.db);
   if (reconcileMode(ws.paypalEnv, opts.env) === "simulated") return { mode: "simulated", note: SIMULATED_RECONCILE_NOTE };
+  if (playgroundEnabled(opts.env)) {
+    // Public demo on the real sandbox: the seeded history has FAKE ids. With nothing real in the window, say so instead of
+    // querying PayPal; with real /try orders, reconcile those for real (reconcilePayments skips the seeded rows).
+    const { start, end } = reconcileWindow(ctx, opts);
+    const payments = await listPaymentsForReconcile(ctx.db, start, end);
+    if (!payments.some((p) => !isSimulatedPayment(p))) return { mode: "simulated", note: SEEDED_RECONCILE_NOTE };
+  }
   return { mode: "paypal", ...(await reconcilePayments(ctx, { start: opts.start, end: opts.end })) };
+}
+
+function reconcileWindow(ctx: ReinsContext, opts: { start?: number; end?: number }): { start: number; end: number } {
+  const end = opts.end ?? ctx.now();
+  return { start: Math.max(opts.start ?? end - 2 * DAY, end - MAX_WINDOW_MS), end };
 }
 
 const DAY = 86_400_000;
@@ -55,10 +79,12 @@ export async function reconcilePayments(
   ctx: ReinsContext,
   opts: { start?: number; end?: number; missingAfterMs?: number } = {},
 ): Promise<ReconcileResult> {
-  const end = opts.end ?? ctx.now();
-  const start = Math.max(opts.start ?? end - 2 * DAY, end - MAX_WINDOW_MS);
+  const { start, end } = reconcileWindow(ctx, opts);
   const missingAfterMs = opts.missingAfterMs ?? DAY;
-  const payments = await listPaymentsForReconcile(ctx.db, start, end);
+  const all = await listPaymentsForReconcile(ctx.db, start, end);
+  // On a real-PayPal workspace the seeded FAKE-… rows can never be in Transaction Search: leave their seeded state alone.
+  const real = (await getWorkspace(ctx.db)).paypalEnv !== "fake";
+  const payments = real ? all.filter((p) => !isSimulatedPayment(p)) : all;
 
   // Search slightly wider than the payment window: capture time can trail order creation.
   const window = { start: new Date(start - 60 * 60_000).toISOString(), end: new Date(Math.min(end + 60 * 60_000, ctx.now())).toISOString() };
@@ -80,7 +106,7 @@ export async function reconcilePayments(
     if (info.custom_field) byCustom.set(info.custom_field, t);
   }
 
-  const result: ReconcileResult = { window, transactions: txns.length, checked: payments.length, matched: 0, mismatch: 0, pending: 0, pages };
+  const result: ReconcileResult = { window, transactions: txns.length, checked: payments.length, matched: 0, mismatch: 0, pending: 0, pages, skipped: all.length - payments.length };
   for (const p of payments) {
     const t = (p.captureId ? byId.get(p.captureId) : undefined) ?? byCustom.get(p.requestId);
     const verdict = judge(p, t, ctx.now() - p.createdAt > missingAfterMs);

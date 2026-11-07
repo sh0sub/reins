@@ -99,6 +99,9 @@ curl -sS -o /dev/null -w "%{http_code}\n" -X POST $WEB/api/cron/reconcile   # 40
 그 밖에:
 
 - 브라우저로 `$WEB/overview`, `$WEB/setup`을 연다. Setup 1단계 **Use demo merchant (sandbox)** 를 누르면 서버의 샌드박스 자격증명으로 연결된다. 심사위원은 자기 PayPal 키 없이 전체 흐름을 볼 수 있다.
+- **공개 데모의 PayPal 표시** (PayPal 키가 있을 때): 부팅 시드가 워크스페이스를 `paypal_env=sandbox`로 연결한다(판매자 이메일은 `PAYPAL_SANDBOX_MERCHANT_EMAIL`, 없으면 데모 주소). 서버가 실제로 쓰는 클라이언트(`HttpPayPalClient`, 샌드박스)와 같게 사이드바·헤더는 **PayPal Sandbox**, `/api/try` 응답은 `"paypal":"sandbox"`. 키가 없거나 `PAYPAL_ENV=fake`면 지금처럼 **Simulated PayPal**(`pnpm judge`는 항상 fake). 시드된 이력은 그대로 `FAKE-…` id(화면에는 SIM-… + "simulated" 칩)이고 Overview에 "Seeded sandbox demo data" 문구가 남는다.
+- **/try 결과 (supervised)**: 승인된 요청은 실제 샌드박스 주문이 만들어지고 `awaiting_buyer`에서 멈춘다. 실패가 아니라 "Approved by Reins — real PayPal sandbox order … created. Buyer approval on PayPal is the last step"으로 보이고, 주문 id와 PayPal 샌드박스 승인 링크가 나온다. "Five $29 orders"는 3 approved, 2 denied(awaiting_buyer도 지출로 잡힘).
+- **Ledger "Reconcile now" (공개 데모 + 샌드박스)**: 창 안의 완료 결제가 모두 시드(`FAKE-`/`SIM-` id)면 Transaction Search를 부르지 않고 중립 안내만 보인다(mismatch 배너 없음, 아무 행도 안 바뀜). /try 주문을 PayPal에서 승인·캡처한 진짜 결제가 있으면 그것만 실제로 대사하고, 시드 행은 건너뛴다(배너에 "N seeded demo payments left as seeded"). 크론 `/api/cron/reconcile`도 실제 PayPal 워크스페이스에서는 시드 행을 건너뛴다.
 - 아래 [수동 실행](#수동-실행)의 두 명령을 한 번씩 돌려 본다. devops는 "Infra cost check: ..."를, reconcile은 `{"window":...,"checked":...}`(건수만)를 찍는다.
 - Claude Code에서 HTTP MCP로 붙이기: `claude mcp add --transport http reins $MCP/mcp --header "Authorization: Bearer rk_live_..."`.
 

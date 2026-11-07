@@ -59,7 +59,7 @@ async function main() {
   console.log("judge: seeding a throwaway database (your .local/reins.db is not touched)");
   const db = createDb(`file:${dbFile}`);
   await migrateDb(db, join(ROOT, "packages/db/drizzle"));
-  const r = await seedDemo(db, { connectDemoMerchant: true });
+  const r = await seedDemo(db, { connectDemoMerchant: true, env: { PAYPAL_ENV: "fake" } });
   // automatic payment path: a fake vault id makes AUTO_APPROVE pay immediately through the simulated PayPal
   await updateWorkspace(db, { paypalEnv: "fake", paymentMode: "vaulted", vaultId: "VAULT-SIM-JUDGE" });
   console.log(`judge: ${r.requests} requests across ${r.agents} agents seeded`);

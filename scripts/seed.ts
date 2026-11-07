@@ -240,8 +240,21 @@ export interface SeedOptions {
   /** Wipe seed rows even when the DB also contains non-seed data. */
   force?: boolean;
   now?: number;
-  /** Mark the workspace as connected to the offline demo merchant (public demo: every screen shows the sandbox badge). */
+  /** Mark the workspace as connected to the demo merchant (public demo: every screen shows the PayPal badge). */
   connectDemoMerchant?: boolean;
+  /** Environment that decides which PayPal the demo merchant is on (default process.env); see seedPayPal. */
+  env?: Record<string, string | undefined>;
+}
+
+/**
+ * Which PayPal the seeded workspace is connected to: the same test as the server's paypalFromEnv, so the labels match the
+ * client that really runs. With PayPal credentials (and not PAYPAL_ENV=fake) the server talks to the real sandbox, so the
+ * workspace says "sandbox"; otherwise the in-memory fake ("Simulated PayPal"). The seeded history keeps its FAKE-… ids
+ * either way: it was never sent to PayPal and every screen marks it as seeded / simulated.
+ */
+export function seedPayPal(env: Record<string, string | undefined> = process.env): { paypalEnv: "sandbox" | "fake"; merchantEmail: string } {
+  const real = env.PAYPAL_ENV !== "fake" && Boolean(env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET);
+  return real ? { paypalEnv: "sandbox", merchantEmail: env.PAYPAL_SANDBOX_MERCHANT_EMAIL || DEMO_MERCHANT_EMAIL } : { paypalEnv: "fake", merchantEmail: DEMO_MERCHANT_EMAIL };
 }
 
 export interface SeedResult {
@@ -352,7 +365,7 @@ export async function seedDemo(db: ReinsDb, opts: SeedOptions = {}): Promise<See
   await createMandateVersion(db, agents.get("scout")!.id, mandateInput("scout", { allowed: SCOUT_V2_ALLOWED, blocked: ["fiverr.com"] }));
 
   if (opts.connectDemoMerchant) {
-    await updateWorkspace(db, { paypalEnv: "fake", merchantEmail: DEMO_MERCHANT_EMAIL, connectedAt: now });
+    await updateWorkspace(db, { ...seedPayPal(opts.env), connectedAt: now });
   }
 
   const totals = await dashboardTotals(db, now);
@@ -509,7 +522,7 @@ async function replayItem(db: ReinsDb, agent: Agent, mandate: Mandate, item: Ite
  */
 export async function seedIfEmpty(db: ReinsDb, opts: Omit<SeedOptions, "force"> = {}): Promise<SeedResult | null> {
   if ((await listAgents(db)).length > 0) return null;
-  return seedDemo(db, { now: opts.now, connectDemoMerchant: opts.connectDemoMerchant });
+  return seedDemo(db, { now: opts.now, connectDemoMerchant: opts.connectDemoMerchant, env: opts.env });
 }
 
 // ---------------- CLI ----------------

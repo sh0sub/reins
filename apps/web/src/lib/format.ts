@@ -142,12 +142,13 @@ export const shortPayId = (id: string): string => (isSimId(id) ? simId(id).repla
 /** POST /api/reconcile: the Transaction Search counts, or on a demo instance (fake PayPal + seeded SIM ids) a neutral note and no changes. */
 export type ReconcileResponse =
   | { mode: "simulated"; note: string }
-  | { mode?: "paypal"; transactions: number; checked: number; matched: number; mismatch: number; pending: number };
+  | { mode?: "paypal"; transactions: number; checked: number; matched: number; mismatch: number; pending: number; skipped?: number };
 export type BannerTone = "ok" | "warn" | "bad" | "info";
 
 /** Ledger banner after "Reconcile now": green only when nothing is off; any mismatch is a warning; a demo instance gets a neutral note. */
 export function reconcileBanner(r: ReconcileResponse): { tone: BannerTone; msg: string } {
   if (r.mode === "simulated") return { tone: "info", msg: r.note };
-  const msg = `Transaction Search: ${r.transactions} PayPal transactions · ${r.matched} matched · ${r.mismatch} mismatch · ${r.pending} not listed yet`;
+  const seeded = r.skipped ? ` · ${r.skipped} seeded demo ${r.skipped === 1 ? "payment" : "payments"} left as seeded` : "";
+  const msg = `Transaction Search: ${r.transactions} PayPal transactions · ${r.matched} matched · ${r.mismatch} mismatch · ${r.pending} not listed yet${seeded}`;
   return { tone: r.mismatch > 0 ? "warn" : "ok", msg: r.mismatch > 0 ? `${msg}. Expand a row with a red mark for the reason.` : msg };
 }

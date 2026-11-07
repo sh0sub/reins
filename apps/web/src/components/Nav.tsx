@@ -191,8 +191,8 @@ export function TopBar() {
   const judge = useShellInitial().judge || Boolean(ws?.judge_mode);
   const who = judge ? JUDGE_USER : DEMO_USER;
   const title = Object.entries(TITLES).find(([k]) => path.startsWith(k))?.[1] ?? "Reins";
-  // a simulated-PayPal instance (judge, fake env) says so in the same words and grey as the sidebar card; the dot only turns red when the live stream drops
-  const sim = topbarStatus(status, judge || ws?.paypal_env === "fake");
+  // the same words as the sidebar card: "Simulated PayPal" (judge, fake env, grey) or "PayPal Sandbox" (real client); the dot only turns red when the live stream drops
+  const sim = topbarStatus(status, judge || ws?.paypal_env === "fake", ws?.paypal_env);
   const n = pending ?? 0;
   return (
     <header className="topbar">

@@ -101,10 +101,16 @@ export function playgroundCaption(n: number, included: boolean): string {
   return included ? `${subject} counted below` : `${subject} left out so these numbers match the seeded demo`;
 }
 
-/** Top-bar status: on simulated PayPal the label matches the sidebar card ("Simulated PayPal", grey dot); otherwise the live-update state. */
-export function topbarStatus(status: "connecting" | "live" | "reconnecting" | "offline", simulated: boolean): { label: string; dot: string; title?: string } {
+/**
+ * Top-bar status: the label matches the sidebar card, "Simulated PayPal" (grey dot) on the fake client, "PayPal Sandbox" /
+ * "PayPal Live" (green dot) on a real one; a dropped live stream still wins.
+ */
+export function topbarStatus(status: "connecting" | "live" | "reconnecting" | "offline", simulated: boolean, paypalEnv?: string | null): { label: string; dot: string; title?: string } {
   if (status === "offline") return { label: "Offline · retrying", dot: "dot dot-bad" };
   if (status === "reconnecting") return { label: "Reconnecting…", dot: "dot dot-warn" };
   if (simulated) return { label: "Simulated PayPal", dot: "dot", title: "Simulated PayPal: no money moves, ids start with SIM-. Live updates are on." };
-  return status === "live" ? { label: "Live", dot: "dot dot-ok" } : { label: "Connecting…", dot: "dot dot-warn" };
+  if (status !== "live") return { label: "Connecting…", dot: "dot dot-warn" };
+  if (paypalEnv === "sandbox") return { label: "PayPal Sandbox", dot: "dot dot-ok", title: "Real PayPal sandbox (test money, no real charges). Seeded history is demo data. Live updates are on." };
+  if (paypalEnv === "live") return { label: "PayPal Live", dot: "dot dot-ok", title: "Real PayPal. Live updates are on." };
+  return { label: "Live", dot: "dot dot-ok" };
 }

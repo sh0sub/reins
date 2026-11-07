@@ -341,7 +341,8 @@ function ResultPanel({
   const payId = row.payment?.capture_id ?? row.payment?.payout_batch_id ?? row.payment?.order_id ?? null;
   const advisory = Boolean((llm?.details as { advisory?: boolean } | null)?.advisory);
   const fooledButBlocked = result.auditor === "fooled" && row.status === "denied";
-  const verdict = verdictLine({ status: row.status, llm: llm ? { decision: llm.decision, actor: llm.actor } : null, rules, auditor: result.auditor });
+  const verdict = verdictLine({ status: row.status, llm: llm ? { decision: llm.decision, actor: llm.actor } : null, rules, auditor: result.auditor, paypal: result.paypal, orderId: row.payment?.order_id ? simId(row.payment.order_id) : null });
+  const approveUrl = row.status === "awaiting_buyer" && result.paypal === "sandbox" && /^https:\/\//.test(row.payment?.approve_url ?? "") ? row.payment!.approve_url : null;
   return (
     <div className="panel stack try-result" data-status={row.status}>
       <div ref={verdictRef} className={`try-verdict try-verdict-${verdict.tone}`} role="status">
@@ -439,6 +440,17 @@ function ResultPanel({
           {isSimId(payId) ? <span className="status status-info">simulated</span> : <span className="status status-ok">sandbox</span>}
         </p>
       )}
+      {approveUrl && (
+        <p className="alert row" role="note">
+          <Icon name="shield" className="ico" />
+          <span>
+            Approved by Reins. The real PayPal sandbox order is created; in supervised checkout the buyer approves it on PayPal as the last step, so it shows as Checkout open until then.{" "}
+            <a href={approveUrl} target="_blank" rel="noopener noreferrer">
+              Open the PayPal sandbox approval page
+            </a>
+          </span>
+        </p>
+      )}
       <div className="row">
         <Link className="btn" href={`/ledger?r=${row.request_id}&drawer=1`}>
           Open in the ledger
@@ -518,7 +530,8 @@ const STEPS: Array<{ title: string; preset: Preset["id"]; fooled?: boolean; butt
 function tourAfter(t: TourDone, r: Result): TourDone {
   const amount = Number(r.row.amount);
   const id = r.row.request_id;
-  if (amount === 12.98 && r.row.status === "paid") return { ...t, 0: id };
+  // supervised checkout on the real sandbox stops at "awaiting_buyer": approved by Reins without asking anyone counts too
+  if (amount === 12.98 && (r.row.status === "paid" || r.row.status === "awaiting_buyer")) return { ...t, 0: id };
   if (amount === 59 && r.row.status === "pending_human") return { ...t, 1: id };
   if (amount === 450 && r.auditor === "fooled" && r.row.status === "denied") return { ...t, 2: id };
   return t;

@@ -14,6 +14,10 @@ export interface VerdictInput {
   llm: { decision: string; actor: string | null } | null;
   rules: VerdictRule[];
   auditor: "configured" | "fooled";
+  /** Which PayPal took the order (from POST /api/try): "sandbox" = the real PayPal sandbox, "simulated" = the in-memory fake. */
+  paypal?: "sandbox" | "simulated" | "none";
+  /** PayPal order id, shown when the order waits for the buyer. */
+  orderId?: string | null;
 }
 
 /** Who the auditor was, in words. */
@@ -29,7 +33,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  * One line at the top of the Decision panel, e.g. "Blocked — 3 hard rules failed; Claude said approve".
  * With the fooled auditor the line reports what it said (approve), even if code clamped the stored answer.
  */
-export function verdictLine({ status, llm, rules, auditor }: VerdictInput): { tone: "ok" | "warn" | "bad" | "info"; head: string; text: string } {
+export function verdictLine({ status, llm, rules, auditor, paypal, orderId }: VerdictInput): { tone: "ok" | "warn" | "bad" | "info"; head: string; text: string } {
   const failed = rules.filter((r) => !r.ok).length;
   const said = llm ? `${auditorName(llm, auditor)} said ${auditor === "fooled" ? "approve" : auditorWord(llm.decision)}` : "auditor not called";
   const said1 = said[0]!.toUpperCase() + said.slice(1);
@@ -42,7 +46,11 @@ export function verdictLine({ status, llm, rules, auditor }: VerdictInput): { to
       return { tone: "bad", head: "Blocked", text: llm ? said1 : "denied" };
     case "pending_human":
       return { tone: "warn", head: "Needs you", text: `${checks}; ${said}` };
-    case "awaiting_buyer":
+    case "awaiting_buyer": {
+      // supervised checkout: Reins approved and created the order; the buyer approving it on PayPal is the last step, not a failure
+      const order = paypal === "sandbox" ? `real PayPal sandbox order${orderId ? ` ${orderId}` : ""} created` : `simulated PayPal order${orderId ? ` ${orderId}` : ""} created`;
+      return { tone: "ok", head: "Approved by Reins", text: `${checks}; ${said}; ${order}. Buyer approval on PayPal is the last step` };
+    }
     case "paying":
     case "approved":
       return { tone: "info", head: "Approved", text: `${checks}; ${said}; payment in progress` };
@@ -87,14 +95,17 @@ export function timelineItem(n: number, r: { status: string; rules: VerdictRule[
   if (r.status === "paid") return { n, label: "Paid", tone: "ok", reason: null };
   if (r.status === "denied") return { n, label: "Denied", tone: "bad", reason: failed.map((f) => f.detail).join("; ") || "denied by the auditor" };
   if (r.status === "pending_human") return { n, label: "Waiting for you", tone: "warn", reason: null };
+  // supervised checkout (public demo on the real sandbox): approved by Reins, the buyer step on PayPal is still open
+  if (r.status === "awaiting_buyer" || r.status === "paying" || r.status === "approved") return { n, label: "Approved", tone: "ok", reason: r.status === "awaiting_buyer" ? "PayPal order created, waiting for the buyer on PayPal" : null };
   return { n, label: r.status.replace(/_/g, " "), tone: "info", reason: null };
 }
 
-/** "3 paid, 2 denied" summary for the timeline heading. */
+/** "3 paid, 2 denied" (or "3 approved, 2 denied" when the orders wait for the buyer on PayPal) summary for the timeline heading. */
 export function timelineSummary(items: TimelineItem[]): string {
   const count = (l: string) => items.filter((i) => i.label === l).length;
   return [
     [count("Paid"), "paid"],
+    [count("Approved"), "approved"],
     [count("Waiting for you"), "waiting"],
     [count("Denied"), "denied"],
   ]
