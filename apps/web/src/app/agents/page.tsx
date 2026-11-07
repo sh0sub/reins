@@ -290,7 +290,7 @@ function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (
         </p>
       )}
       <p className="caption mono">
-        {agent.key_prefix}… (full key was shown once{agent.key_rotated_at ? `; regenerated ${new Date(agent.key_rotated_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : " at creation"}; paste it in place of the masked value)
+        {agent.key_prefix}… (full key was shown once{agent.key_rotated_at ? `; regenerated ${new Date(agent.key_rotated_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })}` : " at creation"}; paste it in place of the masked value)
       </p>
       <div className="code">{snippet}</div>
       <p className="caption">Agents only see get_mandate / request_purchase / get_request_status / list_transactions. They never see PayPal credentials. Running from a clone instead? <code>pnpm mcp:stdio</code> starts the same server with these two variables.</p>
@@ -548,7 +548,7 @@ function AgentsScreen() {
               </div>
               {agent.status === "paused" && (
                 <p className="alert" role="status">
-                  Paused{agent.paused_at ? ` since ${new Date(agent.paused_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}. Every new request from {agent.name} is denied by the
+                  Paused{agent.paused_at ? ` since ${new Date(agent.paused_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })}` : ""}. Every new request from {agent.name} is denied by the
                   “agent paused” hard rule before the auditor or PayPal is called. Pending approvals stay in the inbox.
                 </p>
               )}

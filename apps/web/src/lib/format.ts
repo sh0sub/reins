@@ -11,7 +11,7 @@ export function ago(iso: string, now = Date.now()): string {
   if (s < 45) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" });
 }
 
 export type RuleResult = { rule: string; ok: boolean; detail: string };
@@ -103,6 +103,10 @@ export function isUnknownRequest(rows: Array<Pick<LedgerRow, "display_id" | "req
 }
 
 /** "Nov 4, 17:42": short enough for a 128 px ledger column (or a phone card line) without an ellipsis. */
+/** "Nov 6, 2026, 3:57:46 PM UTC": English and UTC regardless of the browser locale. */
+export const fullTime = (v: string | number | Date): string =>
+  new Date(v).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit", timeZone: "UTC", timeZoneName: "short" });
+
 export const shortTime = (v: string | number | Date | null | undefined): string => (v ? new Date(v).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "");
 
 /** Korean audit text is kept in the data but shown only for a Korean locale (<html lang="ko"> or ?lang=ko). The product UI is English. */

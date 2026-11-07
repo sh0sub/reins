@@ -500,7 +500,7 @@ function RunTimeline({
             </li>
           ))}
       </ol>
-      <p className="caption">Select an order to see its decision below.</p>
+      {!current && <p className="caption">Select an order to see its decision below.</p>}
     </div>
   );
 }

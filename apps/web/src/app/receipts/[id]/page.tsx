@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Receipt } from "@reins/core";
 import { api } from "@/lib/api";
-import { isSimId, simId } from "@/lib/format";
+import { fullTime, isSimId, simId } from "@/lib/format";
 
 const MODE: Record<Receipt["payment"]["strategy"], string> = {
   vaulted: "Automatic (saved PayPal)",
@@ -52,7 +52,7 @@ export default function ReceiptPage() {
         </h1>
         <p className="row">
           <span className="status status-ok">Paid</span>
-          <span className="caption">{new Date(receipt.paid_at).toLocaleString()}</span>
+          <span className="caption">{fullTime(receipt.paid_at)}</span>
         </p>
       </header>
       <dl className="receipt">
@@ -76,7 +76,7 @@ export default function ReceiptPage() {
         <dt>Reconciled</dt>
         <dd>{receipt.payment.reconciled === "matched" ? "Matched in PayPal Transaction Search" : receipt.payment.reconciled === "mismatch" ? "Mismatch, check the ledger" : "Not checked yet"}</dd>
         <dt>Requested</dt>
-        <dd>{new Date(receipt.requested_at).toLocaleString()}</dd>
+        <dd>{fullTime(receipt.requested_at)}</dd>
       </dl>
       <div className="row">
         <Link className="btn" href={`/ledger?r=${receipt.request_id}`}>

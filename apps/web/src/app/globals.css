@@ -62,7 +62,7 @@ p { margin: 0; }
 .badge { min-width: 22px; padding: 0 7px; border-radius: var(--semantic-radius-pill); background: var(--semantic-color-status-danger-text); color: var(--semantic-color-text-inverse); font-size: var(--semantic-typography-caption-size); font-weight: 700; text-align: center; line-height: 20px; }
 .side-foot { margin-top: auto; display: grid; gap: var(--sp-3); padding: var(--sp-3); border-top: 1px solid var(--line); }
 .topbar { height: var(--topbar); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 0 var(--sp-10); border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
-.topbar .crumb { font-weight: 700; white-space: nowrap; }
+.topbar .crumb { font-weight: 700; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
 .topbar > .row { flex-wrap: nowrap; flex: none; }
 @media (max-width: 559px) { .topbar { gap: var(--sp-2); } .topbar .live-lbl { display: none; } }
 .main { padding: var(--sp-6) var(--sp-10) var(--sp-10); max-width: var(--semantic-size-content-max); width: 100%; }

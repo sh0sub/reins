@@ -17,7 +17,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule, StatusBarModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
-import { bucketTotal, decisionClass, decisionLabel, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
+import { bucketTotal, decisionClass, decisionLabel, fullTime, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
 // Community for filter/sort/CSV/row selection; Enterprise for row grouping (agent), master/detail (row expansion), set filters and the status bar.
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -194,7 +194,7 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         </dd>
         <dt>Txn Search</dt>
         <dd>
-          {row.payment ? `${row.payment.reconciled}${row.payment.reconcile_note ? ` · ${row.payment.reconcile_note}` : ""}${row.payment.reconciled_at ? ` · ${new Date(row.payment.reconciled_at).toLocaleString()}` : ""}` : "n/a"}
+          {row.payment ? `${row.payment.reconciled}${row.payment.reconcile_note ? ` · ${row.payment.reconcile_note}` : ""}${row.payment.reconciled_at ? ` · ${fullTime(row.payment.reconciled_at)}` : ""}` : "n/a"}
         </dd>
         <dt>Agent said</dt>
         <dd>“{row.agent_reason}”</dd>

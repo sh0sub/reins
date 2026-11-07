@@ -70,7 +70,7 @@ function Activity({ row, telegram }: { row: InboxItem; telegram: boolean }) {
     <ol className="timeline" aria-label={`Activity for ${row.display_id}`}>
       <li>
         <span className="label">Request received via MCP</span>
-        <span className="caption">{new Date(row.created_at).toLocaleTimeString("en-US")}</span>
+        <span className="caption">{new Date(row.created_at).toLocaleTimeString("en-US", { timeZone: "UTC" })}</span>
       </li>
       {hard && (
         <li className={hard.decision === "DENY" ? "bad" : undefined}>
@@ -86,13 +86,13 @@ function Activity({ row, telegram }: { row: InboxItem; telegram: boolean }) {
       {telegram && askedAt && (
         <li className="tg">
           <span className="label">Sent to Telegram</span>
-          <span className="caption">{new Date(askedAt).toLocaleTimeString("en-US")} · approval card</span>
+          <span className="caption">{new Date(askedAt).toLocaleTimeString("en-US", { timeZone: "UTC" })} · approval card</span>
         </li>
       )}
       {row.messages.map((m, i) => (
         <li key={i}>
           <span className="label">{m.role === "human" ? `You asked (${m.actor ?? "web"})` : `${row.agent_name} answered`}</span>
-          <span className="caption">{new Date(m.created_at).toLocaleTimeString("en-US")}</span>
+          <span className="caption">{new Date(m.created_at).toLocaleTimeString("en-US", { timeZone: "UTC" })}</span>
         </li>
       ))}
       <li className="wait">
