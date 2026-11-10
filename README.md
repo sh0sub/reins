@@ -28,7 +28,7 @@ pnpm judge        # throwaway database, simulated PayPal, opens http://localhost
 
 A shared PayPal credential would have paid the $450. Reins did not: send the $450 prompt-injected order and it is denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
 
-A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. A fourth preset, "Five $29 orders", splits one purchase at one merchant: three are paid, then the same-merchant 24-hour total passes the $100 per-purchase cap and the fourth and fifth are denied in code (3 unit tests and a playground test; it does not cover splitting across different merchants, and orders you approved by hand do not count). Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
+A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. A fourth preset, "Five $29 orders", splits one purchase at one merchant: three are paid, then the same-merchant 24-hour total passes the $100 per-purchase cap and the fourth and fifth are denied in code (3 unit tests and a playground test; subdomains of one site count together, different merchants do not, and orders you approved by hand do not count). Each `/try` visit is its own playground, so the tour gives these outcomes for every visitor. Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
 
 **Real vs simulated**
 
@@ -106,7 +106,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 284 tests
+pnpm test                   # 326 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
@@ -185,7 +185,11 @@ PayPal APIs used (sandbox): `POST /v1/oauth2/token`, Orders v2 (`POST /v2/checko
 - No PayPal credentials or `vault_id` are sent to the LLM; rejection reasons do not echo the raw prompt text.
 - PayPal webhooks are verified with `verify-webhook-signature`; Telegram webhooks with a secret token.
 - Secrets live in environment variables (Render env vars in production), never in the repo. Logs avoid secrets and emails.
-- The public demo is deliberately open (`REINS_PUBLIC_DEMO=1`, no admin token) and sandbox-only. Set `REINS_ADMIN_TOKEN` for a private deployment.
+- The public demo (`REINS_PUBLIC_DEMO=1`, sandbox-only) is read-mostly: judges can use `/try`, raise the sample card and approve or deny demo cards, but every other admin write (agents, keys, pause, mandates, workspace mode, PayPal connect/vault, Telegram link) answers 403 "disabled on the public demo". The owner's `REINS_ADMIN_TOKEN` unlocks them. Set `REINS_ADMIN_TOKEN` for a private deployment.
+- Admin writes must be `application/json` and, when `PUBLIC_BASE_URL` (or Render's URL) is known, come from that origin (CSRF guard). Public endpoints (`/api/try`, `/api/demo/request`, `/api/pay/*`, webhooks) have per-IP rate limits, and Claude calls have a daily cap (`REINS_CLAUDE_DAILY_CAP`, default 400) with template fallbacks.
+- Limits are checked twice: when the request arrives (pending and in-flight amounts are reserved) and again, atomically, when money moves, so a paused agent, a lowered cap or another order paid meanwhile stops an approval ("Limits changed since the request").
+- Merchant names are validated hostnames (no ports, trailing dots or paths to slip past a block list); allow-list entries and merchant rules must be registrable domains, and the split-purchase rule groups subdomains (`api.vercel.com` counts with `vercel.com`).
+- PayPal calls time out after 15 s and retry once with the same `PayPal-Request-Id`; an unknown outcome stays committed until PayPal answers.
 
 ## Status
 
