@@ -111,7 +111,7 @@ function KeyOnce({ created, onDone, rotated = false }: { created: Created; onDon
       <p className="alert">
         Shown once. Reins stores only a hash, so copy it now.{rotated ? " The previous key already stopped working: paste this one into the agent's MCP config." : ""}
       </p>
-      <div className="code" aria-label="API key">
+      <div className="code" role="group" tabIndex={0} aria-label="API key">
         {created.api_key}
       </div>
       <div className="row">
@@ -120,7 +120,7 @@ function KeyOnce({ created, onDone, rotated = false }: { created: Created; onDon
       </div>
       <details>
         <summary className="caption">claude_desktop_config.json snippet</summary>
-        <div className="code">{snippet}</div>
+        <div className="code" role="group" tabIndex={0} aria-label="MCP config snippet">{snippet}</div>
       </details>
       <div>
         <button className="btn btn-primary" onClick={onDone}>
@@ -292,7 +292,7 @@ function McpConnection({ agent, onRotated }: { agent: AgentSummary; onRotated: (
       <p className="caption mono">
         {agent.key_prefix}… (full key was shown once{agent.key_rotated_at ? `; regenerated ${new Date(agent.key_rotated_at).toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })}` : " at creation"}; paste it in place of the masked value)
       </p>
-      <div className="code">{snippet}</div>
+      <div className="code" role="group" tabIndex={0} aria-label="MCP config snippet">{snippet}</div>
       <p className="caption">Agents only see get_mandate / request_purchase / get_request_status / list_transactions. They never see PayPal credentials. Running from a clone instead? <code>pnpm mcp:stdio</code> starts the same server with these two variables.</p>
     </section>
   );
@@ -416,7 +416,7 @@ function AgentsScreen() {
         </div>
       ) : (
         <div className="split split-agents">
-          <section className="panel panel-tight stack" aria-label="Agents" aria-busy={agents === null}>
+          <section className="panel panel-tight stack" aria-label="Agent list" aria-busy={agents === null}>
             <div className="row between" style={{ flexWrap: "nowrap" }}>
               <h2 className="section-title">Agents {agents ? agents.length : ""}</h2>
               <button type="button" className="btn btn-primary" aria-expanded={newOpen} aria-controls="new-agent" onClick={() => setNewOpen((o) => !o)}>

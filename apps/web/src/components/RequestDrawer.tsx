@@ -339,7 +339,7 @@ export function RequestDrawer({ requestId, onClose, onChanged }: { requestId: st
                   <span>Raw MCP request</span>
                   <span className="caption mono">request_purchase</span>
                 </summary>
-                <pre className="code code-dark" aria-label="Raw MCP request JSON, agent key redacted">
+                <pre className="code code-dark" tabIndex={0} aria-label="Raw MCP request JSON, agent key redacted">
                   {JSON.stringify(detail.raw_request, null, 2)}
                 </pre>
               </details>

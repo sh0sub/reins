@@ -10,9 +10,10 @@ import { useLive } from "@/lib/live";
 import { bucketTotal, isUnknownRequest, outcomeBucket, reconcileBanner, resolveRequestId, usdAmount, type BannerTone, type ReconcileResponse } from "@/lib/format";
 import { agentsKpi, type ShellAgent } from "@/lib/shell";
 import { RequestDrawer } from "@/components/RequestDrawer";
+import { LedgerSkeleton } from "./LedgerSkeleton";
 
 // AG Grid / AG Charts touch window: client only.
-const LedgerGrid = dynamic(() => import("./LedgerGrid").then((m) => m.LedgerGrid), { ssr: false, loading: () => <div className="skeleton" style={{ minHeight: 420 }} /> });
+const LedgerGrid = dynamic(() => import("./LedgerGrid").then((m) => m.LedgerGrid), { ssr: false, loading: () => <LedgerSkeleton /> });
 const SpendChart = dynamic(() => import("./SpendChart").then((m) => m.SpendChart), { ssr: false, loading: () => <div className="skeleton" style={{ minHeight: 220 }} /> });
 
 const STATUS_FILTERS: Array<{ id: string; label: string; match: (r: LedgerRow) => boolean }> = [
@@ -308,7 +309,7 @@ function LedgerScreen() {
               </div>
             )}
             {rows === null ? (
-              <div className="skeleton" style={{ minHeight: 420 }} aria-label="Loading transactions" />
+              <LedgerSkeleton label="Loading transactions" />
             ) : rows.length === 0 ? (
               <div className="empty">
                 <h2>No activity yet</h2>

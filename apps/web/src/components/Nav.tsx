@@ -18,19 +18,26 @@ const ITEMS: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/setup", label: "Settings", icon: "gear" },
 ];
 
-/** Waiting approvals for the badge. Requests raised from /try are left out unless the playground toggle is on. */
-function usePending() {
-  const include = useIncludePlayground();
+/**
+ * Waiting approvals for the badge and "Pending N". Same list, same count as the /inbox header and tab (playground requests included:
+ * if /inbox shows it, the badge counts it). Reloaded on every live event and when the tab becomes visible again.
+ */
+export function usePending() {
   const initial = useShellInitial().inbox;
   const [items, setItems] = useState<Array<{ agent_name: string }> | null>(initial);
   const load = useCallback(() => {
     api<{ items: Array<{ agent_name: string }> }>("/api/inbox").then((r) => setItems(r.items)).catch(() => setItems(null));
   }, []);
   useEffect(load, [load]);
-  useLive((e) => {
-    if (e.type === "resync" || e.request?.status === "pending_human" || e.type === "request.updated") load();
-  });
-  return items === null ? null : pendingCount(items, include);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
+  useLive(load);
+  return items === null ? null : pendingCount(items, true);
 }
 
 export function Nav() {
@@ -40,7 +47,7 @@ export function Nav() {
   return (
     <nav className="nav" aria-label="Main">
       {ITEMS.map((i) => (
-        <Link key={i.href} href={withPlayground(i.href, include)} aria-current={path.startsWith(i.href) ? "page" : undefined}>
+        <Link key={i.href} href={withPlayground(i.href, include)} aria-label={i.href === "/inbox" && pending ? `${i.label}, ${pending} pending` : i.label} aria-current={path.startsWith(i.href) ? "page" : undefined}>
           <Icon name={i.icon} />
           <span className="lbl">{i.label}</span>
           {i.href === "/inbox" && pending ? (

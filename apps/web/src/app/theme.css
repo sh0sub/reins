@@ -17,6 +17,10 @@
   --reins-line: #e3e8f0;
   --reins-success: #1b8a5a;
   --reins-success-soft: #e3f5ea;
+  /* success TEXT step: #1b8a5a is 3.8:1 on the soft fill at 12 px; #146c46 is 5.7:1 on it and 6.6:1 on white. The fill and marks keep #1b8a5a. */
+  --reins-success-text: #146c46;
+  /* muted text on the navy hero (onboarding): solid, 7:1+, instead of opacity */
+  --reins-on-navy-muted: #c9d6f2;
   --reins-warning: #c77d12;
   --reins-warning-text: #8a560b;
   --reins-warning-soft: #fdf3dd;
@@ -43,7 +47,7 @@
   --semantic-color-action-selected-text: var(--reins-navy);
   --semantic-color-border-decorative: var(--reins-line);
   --semantic-color-border-focus: var(--reins-navy);
-  --semantic-color-status-success-text: var(--reins-success);
+  --semantic-color-status-success-text: var(--reins-success-text);
   --semantic-color-status-success-surface: var(--reins-success-soft);
   --semantic-color-status-warning-text: var(--reins-warning-text);
   --semantic-color-status-warning-surface: var(--reins-warning-soft);
@@ -63,7 +67,7 @@
   --component-navigation-text: var(--reins-ink-2);
   --component-navigation-selected-text: var(--reins-navy);
   --component-navigation-selected-background: var(--reins-navy-soft);
-  --component-status-success-text: var(--reins-success);
+  --component-status-success-text: var(--reins-success-text);
   --component-status-success-background: var(--reins-success-soft);
   --component-status-warning-text: var(--reins-warning-text);
   --component-status-warning-background: var(--reins-warning-soft);

@@ -17,6 +17,7 @@ import {
 import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule, StatusBarModule } from "ag-grid-enterprise";
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
+import { LedgerSkeleton } from "./LedgerSkeleton";
 import { bucketTotal, decisionClass, decisionLabel, fullTime, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
 // Community for filter/sort/CSV/row selection; Enterprise for row grouping (agent), master/detail (row expansion), set filters and the status bar.
@@ -101,7 +102,7 @@ function IdCell(p: CustomCellRendererProps<LedgerRow>) {
     </button>
   );
 }
-/** 390 px ledger: one card per request (item, id · merchant · time, decision + status chips); the chevron expands the same row detail. */
+/** 390 px ledger: one card per request (item, id · merchant · time, status chip); the chevron expands the same row detail. */
 function CardCell(p: CustomCellRendererProps<LedgerRow>) {
   const [open, setOpen] = useState(() => p.node.expanded);
   useEffect(() => {
@@ -111,7 +112,6 @@ function CardCell(p: CustomCellRendererProps<LedgerRow>) {
   }, [p.node]);
   const row = p.data;
   if (!row) return null;
-  const d = decisionLabel(row);
   const st = statusChip(row);
   const openDrawer = (p.context as GridContext | undefined)?.openDrawer;
   const showAgent = Boolean((p as { showAgent?: boolean }).showAgent);
@@ -132,7 +132,6 @@ function CardCell(p: CustomCellRendererProps<LedgerRow>) {
           </span>
         </div>
         <div className="ledger-card-chips">
-          {d !== "Needs you" && d.toLowerCase() !== st.label.toLowerCase() && <Chip value={d} className={decisionClass(d)} />}
           <Chip value={st.label} className={st.className} />
         </div>
       </div>
@@ -365,7 +364,8 @@ export function LedgerGrid({
       headerName: "Time",
       field: "created_at",
       sort: "desc",
-      width: 128,
+      width: 150,
+      minWidth: 150,
       // phones: the card shows the time; this column only keeps the newest-first sort
       hide: narrow,
       // carries the row-detail chevron and the pinned "Total" label (group rows are full width, so no group column does)
@@ -386,7 +386,7 @@ export function LedgerGrid({
         // not shown on a phone, still part of the CSV export
         ...(["id", "items", "merchant", "decision", "status"] as const).map<ColDef<LedgerRow>>((k) => ({
           colId: k,
-          headerName: k[0]!.toUpperCase() + k.slice(1),
+          headerName: k === "decision" ? "Rule outcome" : k[0]!.toUpperCase() + k.slice(1),
           hide: true,
           suppressColumnsToolPanel: true,
           valueGetter: (p) => (p.data ? (k === "id" ? p.data.display_id : k === "decision" ? decisionLabel(p.data) : p.data[k]) : null),
@@ -400,14 +400,15 @@ export function LedgerGrid({
       time,
       { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 74, sortable: false, filter: false },
       agent,
-      { headerName: "Item", field: "items", flex: 2, minWidth: 110, tooltipField: "items" },
+      { headerName: "Item", field: "items", flex: 1, minWidth: 140, tooltipField: "items" },
       { headerName: "Merchant", field: "merchant", width: 132, minWidth: 120, filter: "agSetColumnFilter" },
       amount,
-      { headerName: "Decision", colId: "decision", valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 96, filter: "agSetColumnFilter" },
+      // one status column in the grid: the Status chip. The rule engine's own outcome stays available (column menu, filters) and in the CSV as "Rule outcome"
+      { headerName: "Rule outcome", colId: "decision", hide: true, valueGetter: (p) => (p.data ? decisionLabel(p.data) : null), cellRenderer: DecisionCell, width: 110, filter: "agSetColumnFilter" },
       { headerName: "Status", field: "status", cellRenderer: StatusCell, width: 132, minWidth: 128, filter: "agSetColumnFilter", enableCellChangeFlash: true },
       { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: roomy ? PayPalIdCell : PayPalReconCell, width: roomy ? 92 : 116, suppressHeaderFilterButton: true },
       { headerName: "Recon", colId: "recon", hide: !roomy, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
-      { headerName: "Risk", field: "risk", width: 56, minWidth: 52, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+      { headerName: "Risk", field: "risk", width: 64, minWidth: 64, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
     ];
   }, [group, narrow, roomy]);
 
@@ -428,9 +429,9 @@ export function LedgerGrid({
 
   useEffect(focusRow, [focusRow, rows]);
 
-  if (narrowState === null) return <div className="skeleton" style={{ minHeight: 420 }} />;
+  if (narrowState === null) return <LedgerSkeleton />;
   return (
-    <div ref={boxRef} style={{ height: narrow ? "calc(100dvh - 140px)" : "calc(100dvh - 190px)", minHeight: 420 }}>
+    <div ref={boxRef} className="ledger-box">
       <AgGridReact<LedgerRow>
         key={narrow ? "cards" : "table"}
         theme={theme}

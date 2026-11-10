@@ -406,7 +406,7 @@ function RecentDecisions({ rows, onOpen }: { rows: LedgerRow[] | null; onOpen: (
   if (!rows?.length) return null;
   return (
     <section className="stack-s" aria-labelledby="recent-h">
-      <h3 id="recent-h" className="section-title">Recent decisions</h3>
+      <h2 id="recent-h" className="section-title">Recent decisions</h2>
       <DecisionRows rows={rows.slice(0, 3)} onOpen={onOpen} />
     </section>
   );

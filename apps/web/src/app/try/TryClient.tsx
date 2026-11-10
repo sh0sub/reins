@@ -174,7 +174,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
         <div className="panel stack" role="note">
           <h2>The playground is off on this server</h2>
           <p className="muted">It creates a demo agent, so it only runs on a demo instance. Start one locally with a throwaway database:</p>
-          <pre className="mono try-code">pnpm judge</pre>
+          <pre className="mono try-code" tabIndex={0} aria-label="Command: pnpm judge">pnpm judge</pre>
           <p className="caption">or set REINS_TRY=1 before starting the web app.</p>
         </div>
       ) : (
@@ -213,6 +213,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
                   <PresetCard key={p.id} preset={p} busy={busy === p.id} disabled={busy !== null} onSend={() => void send(p.title, p.purchase, p.id, fooled, p.repeat ?? 1)} />
                 ))}
               </ul>
+              <SendProgress busy={busy !== null && busy !== "reset"} />
               <label className="try-toggle">
                 <input type="checkbox" checked={fooled} onChange={(e) => setFooled(e.target.checked)} />
                 <span>
@@ -293,6 +294,31 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Under the preset list while a request is in flight. The server answers in one piece (a $59 order waits several seconds on the
+ * auditor), so the steps follow what the request goes through, in order, and the only number shown is the real elapsed time.
+ */
+function SendProgress({ busy }: { busy: boolean }) {
+  const [sec, setSec] = useState(0);
+  useEffect(() => {
+    if (!busy) {
+      setSec(0);
+      return;
+    }
+    const t0 = Date.now();
+    const id = setInterval(() => setSec(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [busy]);
+  if (!busy) return <p className="caption try-progress" role="status" aria-live="polite" />;
+  const text = sec < 1 ? "Checking hard rules…" : sec < 4 ? "Checking hard rules… asking the auditor…" : "Checking hard rules… asking the auditor… still waiting for its answer (a request that needs a person takes the longest).";
+  return (
+    <p className="caption try-progress" role="status" aria-live="polite">
+      <span className="dot dot-warn try-progress-dot" aria-hidden />
+      {text} <span className="num">{sec}s</span>
+    </p>
   );
 }
 

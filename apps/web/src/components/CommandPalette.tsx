@@ -56,7 +56,7 @@ export function CommandPalette() {
 
   return (
     <>
-      <button ref={opener} type="button" className="cmdk-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">
+      <button ref={opener} type="button" className="cmdk-trigger" aria-label="Search requests and agents" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">
         <svg viewBox="0 0 24 24" className="ico" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" aria-hidden>
           <circle cx="11" cy="11" r="6.5" />
           <path d="M16 16l4.5 4.5" />

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PLAYGROUND_AGENT } from "@reins/core";
 import config from "../next.config.ts";
-import { PLAYGROUND_AGENT_NAME, agentsKpi, capPct, pendingCount, playgroundCaption, searchPalette, sidebarAgents, withPlayground, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
+import { PLAYGROUND_AGENT_NAME, hostedMcpUrl, agentsKpi, capPct, pendingCount, playgroundCaption, searchPalette, sidebarAgents, withPlayground, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
 import { isUnknownRequest, linkedRequest, resolveRequestId, showKo } from "../src/lib/format.ts";
 
 const agents: ShellAgent[] = [
@@ -105,5 +105,18 @@ describe("playground rows stay out of badges and the sidebar unless the toggle i
     const [r] = await config.redirects!();
     expect(r).toMatchObject({ source: "/approvals", destination: "/inbox" });
     expect(r!.destination).not.toContain("?");
+  });
+});
+
+describe("P2 connect panel", () => {
+  it("maps a hosted reins-web URL to its MCP endpoint and nothing else", () => {
+    expect(hostedMcpUrl("https://reins-web.onrender.com")).toBe("https://reins-mcp.onrender.com/mcp");
+    expect(hostedMcpUrl("https://reins-web-ab12.onrender.com/")).toBe("https://reins-mcp-ab12.onrender.com/mcp");
+    expect(hostedMcpUrl("http://localhost:3100")).toBeNull();
+    expect(hostedMcpUrl("https://evil.example/reins-web.onrender.com")).toBeNull();
+    expect(hostedMcpUrl("not a url")).toBeNull();
+  });
+  it("counts every waiting request for the badge when asked to include the playground", () => {
+    expect(pendingCount([{ agent_name: PLAYGROUND_AGENT_NAME }, { agent_name: "Research Scout" }], true)).toBe(2);
   });
 });

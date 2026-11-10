@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { statusChip, usd } from "@/lib/format";
 import { playgroundCaption } from "@/lib/shell";
+import { usePending } from "@/components/Nav";
 import { Icon } from "@/components/Icon";
 import { RequestDrawer } from "@/components/RequestDrawer";
 import { sliceHref, toSlices } from "./slices";
@@ -85,6 +86,7 @@ function StatusChip({ status }: { status: Overview["status"] }) {
 function Kpis({ o }: { o: Overview }) {
   const d = o.decisions;
   const w = periodWords(o.period.kind);
+  const inboxWaiting = usePending() ?? d.pending; // same count as the nav badge and /inbox
   const segs = [
     { key: "auto", label: "Auto", n: d.auto },
     { key: "human", label: "Human", n: d.human },
@@ -144,10 +146,10 @@ function Kpis({ o }: { o: Overview }) {
         </span>
         <span className="caption">
           Only {d.human} needed your tap {w.within}
-          {d.pending > 0 && (
+          {inboxWaiting > 0 && (
             <>
               {" · "}
-              <Link href="/inbox">{d.pending} waiting</Link>
+              <Link href="/inbox">{inboxWaiting} waiting</Link>
             </>
           )}
         </span>
@@ -476,20 +478,37 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
   };
   const head = shown ? headRange(shown) : null;
   const w = periodWords(period);
+  const waiting = usePending() ?? 0;
 
   return (
     <>
       <div className="page-head ov-head">
         <div>
           <h1>{head ? head.title : "Overview"}</h1>
-          <p className="tagline">Hold the reins on AI spending. Every agent purchase checked against its mandate, then approved, paid or blocked.</p>
-          {shown && head && (
-            <p className="muted">
-              {w.lead} {usd(shown.totals.spent_cents)} of {usd(shown.totals.limit_cents)} across {shown.totals.agents} {shown.totals.agents === 1 ? "agent" : "agents"} · {head.range} · {envLabel(shown.paypal_env)}
-            </p>
-          )}
+          {/* one sub-line: the figures once loaded, the product line while loading or empty */}
+          <p className="muted ov-sub">
+            {shown && head && shown.totals.agents > 0
+              ? `${w.lead} ${usd(shown.totals.spent_cents)} of ${usd(shown.totals.limit_cents)} across ${shown.totals.agents} ${shown.totals.agents === 1 ? "agent" : "agents"} · ${head.range} · ${envLabel(shown.paypal_env)}`
+              : "Hold the reins on AI spending. Every agent purchase checked against its mandate, then approved, paid or blocked."}
+          </p>
         </div>
         <div className="row ov-tools">
+          {waiting > 0 && (
+            <Link className="btn btn-primary" href={"/inbox"}>
+              Review {waiting} waiting
+            </Link>
+          )}
+          {shown && (shown.playground.requests > 0 || shown.playground.included) && (
+            <label className="try-toggle ov-play" title={playgroundCaption(shown.playground.requests, incl)}>
+              <input type="checkbox" checked={incl} onChange={(e) => router.replace(href(period, e.target.checked), { scroll: false })} aria-describedby="ov-play-cap" />
+              <span>
+                <b>Include playground requests</b>
+                <span className="caption" id="ov-play-cap">
+                  {playgroundCaption(shown.playground.requests, incl)}
+                </span>
+              </span>
+            </label>
+          )}
           {tryEnabled && (
             <Link className="btn" href="/try">
               <Icon name="bot" className="ico" />
@@ -524,18 +543,6 @@ function OverviewScreen({ initial, tryEnabled }: { initial: Overview | null; try
         </div>
       ) : (
         <div className="stack-l">
-          {(shown.playground.requests > 0 || shown.playground.included) && (
-            <label className="try-toggle ov-play">
-              <input type="checkbox" checked={incl} onChange={(e) => router.replace(href(period, e.target.checked), { scroll: false })} />
-              <span>
-                <b>Include playground requests</b>
-                <span className="caption">
-                  {" "}
-                  {playgroundCaption(shown.playground.requests, incl)}
-                </span>
-              </span>
-            </label>
-          )}
           <Kpis o={shown} />
           <Protected o={shown} />
           <div className="ov-mid">
