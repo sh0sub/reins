@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  CLAIM_STATUSES,
+  MERCHANT_RESERVED_STATUSES,
+  RESERVED_STATUSES,
+  claimForPayment,
   countRequestsSince,
   createMandateVersion,
   findAgentByKeyHash,
@@ -19,10 +23,14 @@ import {
   listAgents,
   listDecisions,
   listRequests,
+  reservedSpendSinceCents,
   spendAtMerchantSinceCents,
+  spendScopeOf,
   spendSinceCents,
   transitionRequest,
+  updatePayment,
   updateRequest,
+  PLAYGROUND_SCOPE_PREFIX,
   type Agent,
   type Mandate,
   type PurchaseRequest,
@@ -30,12 +38,12 @@ import {
   type RequestStatus,
 } from "@reins/db";
 import { buildAuditInput, runAudit, RECENT_LIMIT, type AuditProvider } from "./policy/audit.ts";
-import { evaluateHardRules, MERCHANT_WINDOW_MS, monthStartUtc, VELOCITY_WINDOW_MS } from "./policy/hardRules.ts";
+import { evaluateHardRules, MERCHANT_WINDOW_MS, monthStartUtc, VELOCITY_WINDOW_MS, type HardRuleOutcome } from "./policy/hardRules.ts";
 import { anomalySummary, applyAnomalies, detectAnomalies, type QuietHours } from "./policy/anomalies.ts";
 import { writeRuleSentence, type RuleWriter } from "./policy/ruleWriter.ts";
 import { summarizeAnswer, type AnswerSummarizer } from "./policy/answerSummary.ts";
 import { generateApiKey, hashApiKey, parseBearer } from "./keys.ts";
-import { merchantInList, normalizeMerchant } from "./merchant.ts";
+import { InvalidMerchantError, isPublicSuffix, merchantInList, normalizeMerchant, parseMerchant, registrableDomain } from "./merchant.ts";
 import { centsToValue, toCents } from "./money.ts";
 import { STRATEGIES, type PaymentMode, type StrategyResult } from "./pay/strategies.ts";
 import type { PayPalClient } from "./paypal/types.ts";
@@ -59,7 +67,11 @@ export interface ReinsConfig {
   quietHours?: QuietHours | null;
   /** Overrides the velocity rule's max requests per 10 minutes (only the /try playground sets this). */
   velocityMax?: number;
+  /** H5: an awaiting_buyer checkout older than this stops counting as committed spend (default 3 hours). */
+  checkoutTtlMs?: number;
 }
+
+export const DEFAULT_CHECKOUT_TTL_MS = 3 * 60 * 60 * 1000;
 
 export interface ReinsContext {
   db: ReinsDb;
@@ -101,8 +113,21 @@ const money = z.union([z.string(), z.number()]).transform((v, ctx) => {
   }
 });
 
+/** H1: strict merchant hostname (lowercase, no port, trailing dot or path, punycode, at least two valid labels). */
+const merchantHost = z.string().max(300).transform((v, ctx) => {
+  try {
+    return parseMerchant(v);
+  } catch (err) {
+    ctx.addIssue({ code: "custom", message: err instanceof InvalidMerchantError ? err.message : "invalid merchant" });
+    return z.NEVER;
+  }
+});
+
+/** H2: allow-list entries and merchant rules must name a registrable domain, never a public suffix like com or github.io. */
+const registrableHost = merchantHost.refine((h) => !isPublicSuffix(h), { message: "must be a registrable domain such as vercel.com, not a public suffix" });
+
 export const PurchaseInputSchema = z.object({
-  merchant: z.string().trim().min(1).max(253),
+  merchant: merchantHost,
   amount: money,
   currency: z.string().trim().length(3).default("USD").transform((s) => s.toUpperCase()),
   items: z.string().trim().min(1).max(500),
@@ -123,14 +148,20 @@ export const MandateInputSchema = z
     auto_approve_limit: money,
     per_purchase_cap: z.union([money, z.null()]).optional().transform((v) => v ?? null),
     currency: z.string().length(3).default("USD"),
-    allowed_merchants: z.array(z.string().trim().min(1).max(253)).max(100).default([]),
-    blocked_merchants: z.array(z.string().trim().min(1).max(253)).max(100).default([]),
+    allowed_merchants: z.array(registrableHost).max(100).default([]),
+    blocked_merchants: z.array(merchantHost).max(100).default([]),
     categories: z.array(z.string().trim().min(1).max(64)).max(30).default([]),
     /** S5 merchant rules: { "statista.com": "59.00" } raises the auto-approve limit for that merchant only. */
     merchant_auto_limits: z
       .record(z.string().trim().min(1).max(253), money)
       .default({})
-      .refine((r) => Object.keys(r).length <= 50, { message: "at most 50 merchant rules" }),
+      .refine((r) => Object.keys(r).length <= 50, { message: "at most 50 merchant rules" })
+      .superRefine((r, ctx) => {
+        for (const k of Object.keys(r)) {
+          const parsed = registrableHost.safeParse(k);
+          if (!parsed.success) ctx.addIssue({ code: "custom", message: `${k}: ${parsed.error.issues[0]?.message ?? "invalid merchant"}` });
+        }
+      }),
     purpose: z.string().trim().min(1).max(500),
     valid_from: isoOrNull,
     valid_until: isoOrNull,
@@ -226,10 +257,10 @@ export async function saveMandate(ctx: ReinsContext, agentId: string, raw: unkno
     autoApproveLimitCents: m.auto_approve_limit,
     perTxCapCents: m.per_purchase_cap,
     currency: m.currency.toUpperCase(),
-    allowedMerchants: m.allowed_merchants.map(normalizeMerchant),
-    blockedMerchants: m.blocked_merchants.map(normalizeMerchant),
+    allowedMerchants: m.allowed_merchants,
+    blockedMerchants: m.blocked_merchants,
     categories: m.categories,
-    merchantAutoLimits: Object.fromEntries(Object.entries(m.merchant_auto_limits).map(([k, v]) => [normalizeMerchant(k), v])),
+    merchantAutoLimits: Object.fromEntries(Object.entries(m.merchant_auto_limits).map(([k, v]) => [parseMerchant(k), v])),
     purpose: m.purpose,
     validFrom: m.valid_from,
     validUntil: m.valid_until,
@@ -268,16 +299,22 @@ async function notify(ctx: ReinsContext, kind: "pendingHuman" | "resolved" | "up
  * Entry point for `request_purchase`. Idempotent on (agent, client_request_id): a retry returns the
  * existing request instead of paying twice.
  */
-export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unknown): Promise<RequestView> {
+export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unknown, opts: { scope?: string } = {}): Promise<RequestView> {
   const input = parseOr400(PurchaseInputSchema, raw);
+  if (input.client_request_id?.startsWith(PLAYGROUND_SCOPE_PREFIX) && !opts.scope) {
+    throw new ReinsError(400, "invalid_input", `client_request_id must not start with "${PLAYGROUND_SCOPE_PREFIX}" (reserved for the /try playground)`);
+  }
   const now = ctx.now();
   const mandate = await getActiveMandate(ctx.db, agent.id);
+  // H5: abandoned PayPal checkouts stop holding this agent's budget before the new request is checked
+  await expireAbandonedCheckouts(ctx, agent.id);
 
+  const cid = input.client_request_id ?? `auto-${randomUUID()}`;
   const { created, request } = await insertRequest(ctx.db, {
     agentId: agent.id,
     mandateId: mandate?.id ?? null,
-    clientRequestId: input.client_request_id ?? `auto-${randomUUID()}`,
-    merchant: normalizeMerchant(input.merchant),
+    clientRequestId: opts.scope ? `${opts.scope}${cid}` : cid,
+    merchant: input.merchant,
     amountCents: input.amount,
     currency: input.currency,
     items: input.items,
@@ -285,15 +322,24 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     category: input.category ?? null,
     createdAt: now,
   });
-  if (!created) return viewOf(ctx, request);
+  if (!created) {
+    // M5: the same idempotency key with a different purchase is a client bug, not a retry
+    if (request.merchant !== input.merchant || request.amountCents !== input.amount || request.currency !== input.currency || request.items !== input.items) {
+      throw new ReinsError(409, "idempotency_conflict", "client_request_id was already used for a different purchase");
+    }
+    return viewOf(ctx, request);
+  }
   await publish(ctx, request, "request.created");
 
   // ---- stage 1: hard rules ----
+  // C2: the monthly limit counts reserved spend (committed + reviewing + waiting for a person), not only paid orders.
+  // Playground rows only count inside the same /try visitor (spendScopeOf), so judges never fill each other's caps.
   const monthStart = monthStartUtc(now);
+  const scope = spendScopeOf(request.clientRequestId);
   const [monthSpent, recentCount, merchantSpent] = await Promise.all([
-    spendSinceCents(ctx.db, agent.id, monthStart),
-    countRequestsSince(ctx.db, agent.id, now - VELOCITY_WINDOW_MS, request.id),
-    spendAtMerchantSinceCents(ctx.db, agent.id, request.merchant, now - MERCHANT_WINDOW_MS, request.id),
+    reservedSpendSinceCents(ctx.db, agent.id, monthStart, { excludeId: request.id, scope, statuses: RESERVED_STATUSES }),
+    countRequestsSince(ctx.db, agent.id, now - VELOCITY_WINDOW_MS, request.id, { scope }),
+    spendAtMerchantSinceCents(ctx.db, agent.id, registrableDomain(request.merchant), now - MERCHANT_WINDOW_MS, request.id, { scope, statuses: MERCHANT_RESERVED_STATUSES }),
   ]);
   const hard = evaluateHardRules({
     mandate: mandate ?? null,
@@ -318,7 +364,7 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     actor: "policy",
   });
 
-  const recent = (await listRequests(ctx.db, { agentId: agent.id, limit: RECENT_LIMIT + 1 }))
+  const recent = (await listRequests(ctx.db, { agentId: agent.id, scope, limit: RECENT_LIMIT + 1 }))
     .filter((r) => r.id !== request.id)
     .slice(0, RECENT_LIMIT);
 
@@ -335,9 +381,10 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     let reasonEn = `Blocked by hard rules: ${failedText}.`;
     let reasonKo = `하드 룰에서 차단: ${hard.failed.map((f) => f.rule).join(", ")}.`;
     let risk: number | null = null;
-    // A paused agent is stopped by its owner: no auditor call (and no PayPal call) at all.
-    const paused = hard.failed.some((f) => f.rule === "agent_paused");
-    if (ctx.config.explainDenials && mandate && !paused) {
+    // A paused agent is stopped by its owner: no auditor call (and no PayPal call) at all. M1: neither for a burst
+    // (velocity) or a broken amount, so a flood of requests cannot turn into a flood of paid Claude calls.
+    const skipAdvice = hard.failed.some((f) => f.rule === "agent_paused" || f.rule === "velocity" || f.rule === "amount_valid");
+    if (ctx.config.explainDenials && mandate && !skipAdvice) {
       // Advisory only: the decision is already DENY and cannot be changed by the auditor.
       const advice = await runAudit(ctx.auditor, auditInput(), request.amountCents, autoLimit, ctx.config.auditTimeoutMs);
       await insertDecision(ctx.db, {
@@ -423,14 +470,85 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
   return pay(ctx, decided, ["reviewing"]);
 }
 
-/** Moves an approved request through the workspace's payment strategy. */
-async function pay(ctx: ReinsContext, r: PurchaseRequest, from: RequestStatus[]): Promise<RequestView> {
-  const claimed = await transitionRequest(ctx.db, r.id, from, { status: "paying" });
-  if (!claimed) return viewOf(ctx, (await getRequest(ctx.db, r.id))!);
-  await publish(ctx, claimed);
+/**
+ * C2 pay-time re-check: the agent, mandate and budget may have changed while the request waited (pause, revoke, a lower
+ * cap, an edited allow/block list, other orders paid meanwhile). Hard rules run again against the CURRENT agent and
+ * mandate, then the request is claimed for payment in one atomic statement (claimForPayment) that re-checks the monthly
+ * limit and, for agent-paid orders, the split-purchase total. Anything that no longer fits is denied with
+ * "Limits changed since the request".
+ */
+async function recheckForPayment(ctx: ReinsContext, r: PurchaseRequest, human: boolean): Promise<{ hard: HardRuleOutcome; guard: Parameters<typeof claimForPayment>[3] | null }> {
+  const now = ctx.now();
+  const [agent, mandate] = await Promise.all([getAgent(ctx.db, r.agentId), getActiveMandate(ctx.db, r.agentId)]);
+  const scope = spendScopeOf(r.clientRequestId);
+  const monthStart = monthStartUtc(now);
+  const domain = registrableDomain(r.merchant);
+  const since = now - MERCHANT_WINDOW_MS;
+  const [monthSpent, merchantSpent] = await Promise.all([
+    reservedSpendSinceCents(ctx.db, r.agentId, monthStart, { excludeId: r.id, scope, statuses: CLAIM_STATUSES }),
+    human ? Promise.resolve(undefined) : spendAtMerchantSinceCents(ctx.db, r.agentId, domain, since, r.id, { scope, statuses: CLAIM_STATUSES }),
+  ]);
+  const hard = evaluateHardRules({
+    mandate: mandate ?? null,
+    agentRevoked: !agent || agent.revokedAt != null,
+    agentPaused: agent?.pausedAt != null,
+    request: { merchant: r.merchant, amountCents: r.amountCents, currency: r.currency },
+    now,
+    monthSpentCents: monthSpent,
+    recentRequestCount: 0, // velocity is about how fast requests arrive, not when a person approves them
+    merchantSpent24hCents: merchantSpent,
+  });
+  if (!hard.pass || !mandate) return { hard, guard: null };
+  return {
+    hard,
+    guard: {
+      agentId: r.agentId,
+      amountCents: r.amountCents,
+      monthStart,
+      monthlyLimitCents: mandate.monthlyLimitCents,
+      scope,
+      ...(!human && mandate.perTxCapCents != null ? { merchant: { domain, since, capCents: mandate.perTxCapCents } } : {}),
+    },
+  };
+}
 
+export const LIMITS_CHANGED = "Limits changed since the request";
+
+async function denyAtPayTime(ctx: ReinsContext, r: PurchaseRequest, from: RequestStatus[], detail: string, results: unknown): Promise<RequestView> {
+  const reasonEn = `${LIMITS_CHANGED}: ${detail}.`;
+  const denied = await transitionRequest(ctx.db, r.id, from, {
+    status: "denied",
+    finalDecision: "DENY",
+    reasonEn,
+    reasonKo: `요청 이후 한도가 바뀜: ${detail}.`,
+  });
+  if (!denied) return viewOf(ctx, (await getRequest(ctx.db, r.id))!);
+  await insertDecision(ctx.db, { requestId: r.id, stage: "system", decision: "DENY", risk: null, reasonEn, reasonKo: null, details: { recheck: "payment", results }, actor: "policy" });
+  const view = await publish(ctx, denied);
+  await notify(ctx, "resolved", view);
+  return view;
+}
+
+/** Moves an approved request through the workspace's payment strategy. `human`: a person approved it (split rule skipped). */
+async function pay(ctx: ReinsContext, r: PurchaseRequest, from: RequestStatus[], opts: { human?: boolean } = {}): Promise<RequestView> {
+  const { hard, guard } = await recheckForPayment(ctx, r, opts.human === true);
+  if (!guard) return denyAtPayTime(ctx, r, from, hard.failed.map((f) => f.detail).join("; ") || "no active mandate", hard.results);
+  const claimed = await claimForPayment(ctx.db, r.id, from, guard);
+  if (!claimed) {
+    const cur = (await getRequest(ctx.db, r.id))!;
+    // still claimable, so the atomic budget check is what failed (another order took the room a moment ago)
+    if (from.includes(cur.status)) return denyAtPayTime(ctx, cur, from, "the monthly limit or the per-merchant total no longer fits", hard.results);
+    return viewOf(ctx, cur);
+  }
+  await publish(ctx, claimed);
+  return executePayment(ctx, claimed);
+}
+
+/** Runs the payment strategy for a request already in `paying` and records the outcome. Idempotent on PayPal's side. */
+async function executePayment(ctx: ReinsContext, claimed: PurchaseRequest): Promise<RequestView> {
   const ws = await getWorkspace(ctx.db);
-  const mode = ws.paymentMode as PaymentMode;
+  const existing = await getPaymentByRequest(ctx.db, claimed.id);
+  const mode = (existing?.strategy ?? ws.paymentMode) as PaymentMode;
   const result = await STRATEGIES[mode].execute(claimed, {
     paypal: ctx.paypal,
     publicBaseUrl: ctx.config.publicBaseUrl,
@@ -438,28 +556,31 @@ async function pay(ctx: ReinsContext, r: PurchaseRequest, from: RequestStatus[])
     treasuryPayeeEmail: ctx.config.treasuryPayeeEmail,
     vaultStoredCredential: ctx.config.vaultStoredCredential,
   });
-  await insertPayment(ctx.db, {
-    requestId: claimed.id,
-    strategy: mode,
+  const fields = {
     status: paymentStatusOf(result),
-    paypalOrderId: result.orderId ?? null,
+    paypalOrderId: result.orderId ?? existing?.paypalOrderId ?? null,
     captureId: result.captureId ?? null,
     payoutBatchId: result.payoutBatchId ?? null,
     approveUrl: result.approveUrl ?? null,
-    amountCents: claimed.amountCents,
-    currency: claimed.currency,
-    error: result.error?.slice(0, 500) ?? null,
-  });
+    error: result.status === "unknown" ? `${UNKNOWN_PREFIX}${result.error ?? ""}`.slice(0, 500) : (result.error?.slice(0, 500) ?? null),
+  };
+  if (existing) await updatePayment(ctx.db, existing.id, fields);
+  else await insertPayment(ctx.db, { requestId: claimed.id, strategy: mode, amountCents: claimed.amountCents, currency: claimed.currency, ...fields });
+  // H4: "unknown" (timeout, network error or PayPal 5xx after one retry) stays paying, still committed, until
+  // resolvePendingPayments asks PayPal again. Only a definite failure releases the budget.
   const next: RequestStatus =
-    result.status === "completed" ? "paid" : result.status === "awaiting_buyer" ? "awaiting_buyer" : result.status === "pending" ? "paying" : "failed";
-  const updated = next === "paying" ? claimed : await updateRequest(ctx.db, claimed.id, { status: next });
+    result.status === "completed" ? "paid" : result.status === "awaiting_buyer" ? "awaiting_buyer" : result.status === "pending" || result.status === "unknown" ? "paying" : "failed";
+  const updated = next === "paying" ? ((await getRequest(ctx.db, claimed.id)) ?? claimed) : ((await transitionRequest(ctx.db, claimed.id, ["paying"], { status: next })) ?? (await getRequest(ctx.db, claimed.id))!);
   const view = await publish(ctx, updated);
   if (next !== "paying") await notify(ctx, "resolved", view);
   return view;
 }
 
-function paymentStatusOf(r: StrategyResult) {
-  return r.status === "completed" ? "completed" : r.status === "awaiting_buyer" ? "awaiting_buyer" : r.status === "pending" ? "pending" : "failed";
+/** Marks a payment whose PayPal outcome is not known yet (H4). */
+export const UNKNOWN_PREFIX = "unknown: ";
+
+function paymentStatusOf(r: StrategyResult): "completed" | "awaiting_buyer" | "pending" | "failed" {
+  return r.status === "completed" ? "completed" : r.status === "awaiting_buyer" ? "awaiting_buyer" : r.status === "pending" || r.status === "unknown" ? "pending" : "failed";
 }
 
 /** Human decision from the web inbox or Telegram. First writer wins; the loser gets 409. */
@@ -493,7 +614,7 @@ export async function decideRequest(
   const approved = await transitionRequest(ctx.db, requestId, ["pending_human"], { status: "approved" });
   if (!approved) throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
   await insertDecision(ctx.db, { requestId, stage: "human", decision: "APPROVE", risk: null, reasonEn: null, reasonKo: null, details: null, actor });
-  return pay(ctx, approved, ["approved"]);
+  return pay(ctx, approved, ["approved"], { human: true });
 }
 
 export interface MerchantRule {
@@ -521,6 +642,7 @@ export async function approveAndAllowMerchant(ctx: ReinsContext, requestId: stri
   const current = await getActiveMandate(ctx.db, r.agentId);
   if (!current) throw new ReinsError(409, "no_mandate", "This agent has no mandate to add the rule to");
   if (merchantInList(r.merchant, current.blockedMerchants)) throw new ReinsError(409, "merchant_blocked", `${r.merchant} is blocked in the mandate`);
+  if (isPublicSuffix(r.merchant)) throw new ReinsError(409, "public_suffix", `${r.merchant} is a public suffix; a merchant rule needs a registrable domain`);
 
   const approved = await transitionRequest(ctx.db, requestId, ["pending_human"], { status: "approved" });
   if (!approved) throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
@@ -562,7 +684,7 @@ export async function approveAndAllowMerchant(ctx: ReinsContext, requestId: stri
     details: { merchant_rule: rule },
     actor,
   });
-  return { view: await pay(ctx, approved, ["approved"]), rule };
+  return { view: await pay(ctx, approved, ["approved"], { human: true }), rule };
 }
 
 async function expireRequest(ctx: ReinsContext, r: PurchaseRequest) {
@@ -573,8 +695,31 @@ async function expireRequest(ctx: ReinsContext, r: PurchaseRequest) {
   await notify(ctx, "resolved", view);
 }
 
+/**
+ * H5: a supervised checkout the buyer never finished (no return, no webhook) stops counting as committed spend after
+ * checkoutTtlMs (default 3 h). A capture that still arrives later is applied by the authoritative webhook (M2).
+ */
+export async function expireAbandonedCheckouts(ctx: ReinsContext, agentId?: string): Promise<number> {
+  const waiting = await listRequests(ctx.db, { status: ["awaiting_buyer"], agentId, limit: 500 });
+  const cutoff = ctx.now() - (ctx.config.checkoutTtlMs ?? DEFAULT_CHECKOUT_TTL_MS);
+  let n = 0;
+  for (const r of waiting) {
+    if (r.updatedAt >= cutoff) continue;
+    const expired = await transitionRequest(ctx.db, r.id, ["awaiting_buyer"], { status: "expired" });
+    if (!expired) continue;
+    n++;
+    const payment = await getPaymentByRequest(ctx.db, r.id);
+    if (payment?.status === "awaiting_buyer") await updatePayment(ctx.db, payment.id, { status: "failed", error: "checkout_expired" });
+    await insertDecision(ctx.db, { requestId: r.id, stage: "system", decision: "EXPIRE", risk: null, reasonEn: "PayPal checkout was not finished in time; the amount no longer counts against the budget", reasonKo: "PayPal 결제가 제때 끝나지 않아 예산에서 뺐습니다", details: null, actor: "timer" });
+    const view = await publish(ctx, expired);
+    await notify(ctx, "resolved", view);
+  }
+  return n;
+}
+
 /** Expires pending_human requests older than the TTL. Run on an interval (bot/web) or before listing the inbox. */
 export async function expireStale(ctx: ReinsContext): Promise<number> {
+  await expireAbandonedCheckouts(ctx).catch(() => 0);
   const pending = await listRequests(ctx.db, { status: ["pending_human"], limit: 500 });
   const cutoff = ctx.now() - ctx.config.approvalTtlMs;
   let n = 0;
@@ -704,5 +849,5 @@ export async function getLedgerRow(ctx: ReinsContext, requestId: string): Promis
   );
 }
 
-// used by webhook processing
-export { publish as publishRequest, notify as notifyChannels };
+// used by webhook processing and checkout return/cancel
+export { publish as publishRequest, notify as notifyChannels, executePayment, viewOf as requestViewOf };

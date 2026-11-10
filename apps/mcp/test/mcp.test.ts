@@ -46,7 +46,8 @@ describe("M4 Reins MCP server", () => {
     expect((res.content as Array<{ text: string }>)[0]!.text).toContain("Paid $12.98 to namecheap.com (R-0001, capture 8XK21)");
     expect(res.structuredContent).toMatchObject({ status: "paid" });
     expect(f.seen[0]).toMatchObject({ url: "http://reins.test/api/requests", method: "POST", auth: "Bearer rk_live_abc" });
-    expect((f.seen[0]!.body as { client_request_id: string }).client_request_id).toMatch(/[0-9a-f-]{36}/);
+    // M5: no client_request_id -> a hash of the purchase and its 10-minute window, so a retry dedupes
+    expect((f.seen[0]!.body as { client_request_id: string }).client_request_id).toMatch(/^mcp-[0-9a-f]{32}$/);
   });
 
   it("rejects malformed amounts before calling the API", async () => {

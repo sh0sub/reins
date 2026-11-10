@@ -43,7 +43,10 @@ describe("S5 approve + always allow this merchant", () => {
 
     // a day later: above the rule's amount, and other merchants, still ask
     h.tick(25 * 60);
-    expect((await scout.call("request_purchase", report(3, "59.01"))).data.status).toBe("pending_human");
+    const above = (await scout.call("request_purchase", report(3, "59.01"))).data;
+    expect(above.status).toBe("pending_human");
+    // C2: a pending request reserves its amount against the monthly cap; declining it frees the room again
+    await h.admin("POST", `/api/requests/${above.request_id}/decision`, { action: "deny" });
     h.tick();
     expect((await scout.call("request_purchase", report(4, "59.00", "gartner.com"))).data.status).toBe("pending_human");
   });

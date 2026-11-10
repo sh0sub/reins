@@ -26,8 +26,55 @@ import {
 
 export const newId = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
 
-/** Statuses whose amount counts against the monthly limit. */
+/** Statuses whose amount counts against the monthly limit (Overview, budgets, Telegram card). */
 export const COMMITTED_STATUSES: RequestStatus[] = ["approved", "awaiting_buyer", "paying", "paid"];
+
+/**
+ * C2 reserved spend, checked when a new request arrives: committed money plus everything still in flight
+ * (reviewing, waiting for a person). Two requests that would only fit the cap one at a time cannot both pass stage 1.
+ */
+export const RESERVED_STATUSES: RequestStatus[] = ["reviewing", "pending_human", "approved", "awaiting_buyer", "paying", "paid"];
+
+/**
+ * Split-purchase rule at submit time: everything the agent may still get paid on its own. Requests waiting for a person
+ * are left out, because once a person approves them they no longer count towards the rule.
+ */
+export const MERCHANT_RESERVED_STATUSES: RequestStatus[] = ["reviewing", "approved", "awaiting_buyer", "paying", "paid"];
+
+/**
+ * C2 claim statuses: what an approved request is checked against at the moment it is claimed for payment
+ * (claimForPayment). Other requests still waiting for a person are left out, so approving one card never fails because
+ * of a card nobody decided yet; every transition into these statuses goes through the same atomic check.
+ */
+export const CLAIM_STATUSES: RequestStatus[] = ["awaiting_buyer", "paying", "paid"];
+
+/**
+ * /try playground scope: requests raised from /try carry client_request_id "try:<visitor>:<id>". Spend windows,
+ * velocity and the auditor's recent history only see rows of the same visitor, so every judge gets the scripted
+ * outcomes. Clients cannot pick this prefix themselves (submitPurchase refuses it).
+ */
+export const PLAYGROUND_SCOPE_PREFIX = "try:";
+
+/** "try:abc123:9f" -> "try:abc123:"; anything else -> null (not a playground-visitor row). */
+export function spendScopeOf(clientRequestId: string): string | null {
+  if (!clientRequestId.startsWith(PLAYGROUND_SCOPE_PREFIX)) return null;
+  const end = clientRequestId.indexOf(":", PLAYGROUND_SCOPE_PREFIX.length);
+  return end > PLAYGROUND_SCOPE_PREFIX.length ? clientRequestId.slice(0, end + 1) : null;
+}
+
+/** undefined = every row; null = rows outside any playground visitor; "try:x:" = that visitor's rows only. */
+export type SpendScope = string | null | undefined;
+
+function scopeCond(scope: SpendScope, col = requests.clientRequestId) {
+  if (scope === undefined) return undefined;
+  if (scope === null) return sql`substr(${col}, 1, ${PLAYGROUND_SCOPE_PREFIX.length}) <> ${PLAYGROUND_SCOPE_PREFIX}`;
+  return sql`substr(${col}, 1, ${scope.length}) = ${scope}`;
+}
+
+/** Same merchant group as `domain` (H3): the registrable domain itself or any subdomain of it. Hostnames are [a-z0-9.-]. */
+function merchantGroupCond(domain: string, col = requests.merchant) {
+  return sql`(${col} = ${domain} or ${col} like ${`%.${domain}`})`;
+}
 
 // ---------- workspace ----------
 
@@ -170,8 +217,8 @@ export async function insertRequest(
   input: NewRequestInput,
 ): Promise<{ created: boolean; request: PurchaseRequest }> {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const [cur] = await db.select({ s: max(requests.seq) }).from(requests);
-    const seq = input.seq ?? (cur?.s ?? 0) + 1;
+    // next display number computed inside the INSERT, so concurrent submits do not race for the same seq
+    const seq = input.seq ?? sql<number>`(select coalesce(max(${requests.seq}), 0) + 1 from ${requests})`;
     const ts = input.createdAt ?? Date.now();
     try {
       const [row] = await db
@@ -231,12 +278,55 @@ export async function transitionRequest(
   return row;
 }
 
+export interface PaymentClaimGuard {
+  agentId: string;
+  amountCents: number;
+  monthStart: number;
+  monthlyLimitCents: number;
+  scope: SpendScope;
+  /** Split-purchase guard (agent-paid orders only): registrable domain, window start and the per-purchase cap. */
+  merchant?: { domain: string; since: number; capCents: number };
+}
+
+/**
+ * C2 atomic claim for payment: moves the request from `from` to `paying` only if, at that instant, the agent's
+ * CLAIM_STATUSES spend this month plus this amount still fits the monthly limit (and, when `merchant` is given, the
+ * agent-paid spend at that merchant group still fits the per-purchase cap). One UPDATE statement, so SQLite serialises
+ * concurrent claims and two approvals can never overspend the cap together. Undefined = not claimed (status changed or
+ * the budget no longer fits; re-read the row to tell which).
+ */
+export async function claimForPayment(db: ReinsDb, id: string, from: RequestStatus[], g: PaymentClaimGuard): Promise<PurchaseRequest | undefined> {
+  const other = sql.raw("r2");
+  const statuses = sql.join(CLAIM_STATUSES.map((s) => sql`${s}`), sql`, `);
+  const scope =
+    g.scope === undefined
+      ? sql``
+      : g.scope === null
+        ? sql` and substr(${other}.client_request_id, 1, ${PLAYGROUND_SCOPE_PREFIX.length}) <> ${PLAYGROUND_SCOPE_PREFIX}`
+        : sql` and substr(${other}.client_request_id, 1, ${g.scope.length}) = ${g.scope}`;
+  const monthly = sql`(select coalesce(sum(${other}.amount_cents), 0) from requests ${other} where ${other}.agent_id = ${g.agentId} and ${other}.created_at >= ${g.monthStart} and ${other}.status in (${statuses}) and ${other}.id <> ${id}${scope}) + ${g.amountCents} <= ${g.monthlyLimitCents}`;
+  const conds = [eq(requests.id, id), inArray(requests.status, from), monthly];
+  if (g.merchant) {
+    const m = g.merchant;
+    const prior = sql`(select coalesce(sum(${other}.amount_cents), 0) from requests ${other} where ${other}.agent_id = ${g.agentId} and ${other}.created_at >= ${m.since} and ${other}.status in (${statuses}) and ${other}.id <> ${id}${scope} and (${other}.merchant = ${m.domain} or ${other}.merchant like ${`%.${m.domain}`}) and not exists (select 1 from decisions d where d.request_id = ${other}.id and d.stage = 'human' and d.decision = 'APPROVE'))`;
+    conds.push(sql`(${prior} = 0 or ${prior} + ${g.amountCents} <= ${m.capCents})`);
+  }
+  const [row] = await db
+    .update(requests)
+    .set({ status: "paying", updatedAt: Date.now() })
+    .where(and(...conds))
+    .returning();
+  return row;
+}
+
 export async function listRequests(
   db: ReinsDb,
-  filter: { agentId?: string; status?: RequestStatus[]; limit?: number } = {},
+  filter: { agentId?: string; status?: RequestStatus[]; limit?: number; scope?: SpendScope } = {},
 ): Promise<PurchaseRequest[]> {
   const conds = [];
   if (filter.agentId) conds.push(eq(requests.agentId, filter.agentId));
+  const sc = scopeCond(filter.scope);
+  if (sc) conds.push(sc);
   if (filter.status?.length) conds.push(inArray(requests.status, filter.status));
   return db
     .select()
@@ -259,9 +349,12 @@ export async function countRequestsSince(
   agentId: string,
   since: number,
   excludeId?: string,
+  opts: { scope?: SpendScope } = {},
 ): Promise<number> {
   const conds = [eq(requests.agentId, agentId), gte(requests.createdAt, since)];
   if (excludeId) conds.push(sql`${requests.id} <> ${excludeId}`);
+  const sc = scopeCond(opts.scope);
+  if (sc) conds.push(sc);
   const [row] = await db
     .select({ n: count() })
     .from(requests)
@@ -269,7 +362,7 @@ export async function countRequestsSince(
   return row?.n ?? 0;
 }
 
-/** Sum of committed spend since `since` (monthly-limit rule). */
+/** Sum of committed spend since `since` (Overview and budget displays). */
 export async function spendSinceCents(db: ReinsDb, agentId: string, since: number): Promise<number> {
   const [row] = await db
     .select({ total: sql<number>`coalesce(sum(${requests.amountCents}), 0)` })
@@ -280,21 +373,42 @@ export async function spendSinceCents(db: ReinsDb, agentId: string, since: numbe
   return Number(row?.total ?? 0);
 }
 
+/** C2 monthly-limit input: spend in `statuses` (default RESERVED_STATUSES) since `since`, excluding `excludeId`, inside `scope`. */
+export async function reservedSpendSinceCents(
+  db: ReinsDb,
+  agentId: string,
+  since: number,
+  opts: { excludeId?: string; scope?: SpendScope; statuses?: RequestStatus[] } = {},
+): Promise<number> {
+  const conds = [eq(requests.agentId, agentId), gte(requests.createdAt, since), inArray(requests.status, opts.statuses ?? RESERVED_STATUSES)];
+  if (opts.excludeId) conds.push(sql`${requests.id} <> ${opts.excludeId}`);
+  const sc = scopeCond(opts.scope);
+  if (sc) conds.push(sc);
+  const [row] = await db
+    .select({ total: sql<number>`coalesce(sum(${requests.amountCents}), 0)` })
+    .from(requests)
+    .where(and(...conds));
+  return Number(row?.total ?? 0);
+}
+
 /**
- * Committed spend by one agent at one merchant since `since` (split-purchase rule). Orders a person approved by hand are
- * not counted: the rule is about what the agent got paid on its own. `merchant` must already be normalised (requests
- * store it that way). Excludes `excludeId`.
+ * Spend by one agent at one merchant group since `since` (split-purchase rule). `domain` is the registrable domain
+ * (H3: shop.vercel.com and api.vercel.com add up under vercel.com). Orders a person approved by hand are not counted:
+ * the rule is about what the agent got paid on its own. Excludes `excludeId`. `statuses` defaults to committed.
  */
 export async function spendAtMerchantSinceCents(
   db: ReinsDb,
   agentId: string,
-  merchant: string,
+  domain: string,
   since: number,
   excludeId?: string,
+  opts: { scope?: SpendScope; statuses?: RequestStatus[] } = {},
 ): Promise<number> {
-  const conds = [eq(requests.agentId, agentId), gte(requests.createdAt, since), inArray(requests.status, COMMITTED_STATUSES), eq(requests.merchant, merchant),
+  const conds = [eq(requests.agentId, agentId), gte(requests.createdAt, since), inArray(requests.status, opts.statuses ?? COMMITTED_STATUSES), merchantGroupCond(domain),
     sql`not exists (select 1 from ${decisions} where ${decisions.requestId} = ${requests.id} and ${decisions.stage} = 'human' and ${decisions.decision} = 'APPROVE')`];
   if (excludeId) conds.push(sql`${requests.id} <> ${excludeId}`);
+  const sc = scopeCond(opts.scope);
+  if (sc) conds.push(sc);
   const [row] = await db
     .select({ total: sql<number>`coalesce(sum(${requests.amountCents}), 0)` })
     .from(requests)

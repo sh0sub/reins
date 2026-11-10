@@ -10,7 +10,7 @@ import {
 } from "@reins/db";
 import { captureApprovedOrder } from "./pay/strategies.ts";
 import type { WebhookEvent, WebhookHeaders } from "./paypal/types.ts";
-import { notifyChannels, publishRequest, type ReinsContext } from "./service.ts";
+import { UNKNOWN_PREFIX, notifyChannels, publishRequest, type ReinsContext } from "./service.ts";
 
 /** Events Reins subscribes to in the sandbox app (finalised in spike #34). */
 export const SUBSCRIBED_EVENTS = [
@@ -91,9 +91,14 @@ export async function handlePayPalWebhook(ctx: ReinsContext, headers: HeaderSour
   }
 }
 
-async function finish(ctx: ReinsContext, payment: Payment, ok: boolean, from: Parameters<typeof transitionRequest>[2]) {
+/**
+ * Moves the request, then (M2) writes payment.status only when that transition succeeded, so a late DENIED event can
+ * never mark the payment of a paid request as failed.
+ */
+async function finish(ctx: ReinsContext, payment: Payment, ok: boolean, from: Parameters<typeof transitionRequest>[2], patch: Parameters<typeof updatePayment>[2] = {}) {
   const r = await transitionRequest(ctx.db, payment.requestId, from, { status: ok ? "paid" : "failed" });
   if (!r) return "no_transition";
+  await updatePayment(ctx.db, payment.id, { status: ok ? "completed" : "failed", ...patch });
   const view = await publishRequest(ctx, r);
   await notifyChannels(ctx, "resolved", view);
   return ok ? "paid" : "failed";
@@ -110,30 +115,29 @@ async function applyEvent(ctx: ReinsContext, event: WebhookEvent): Promise<strin
       if (!claimed) return "already_handled";
       await publishRequest(ctx, claimed);
       const result = await captureApprovedOrder(ctx.paypal, orderId, payment.requestId);
-      await updatePayment(ctx.db, payment.id, {
-        status: result.status === "completed" ? "completed" : result.status === "pending" ? "pending" : "failed",
-        captureId: result.captureId ?? null,
-        error: result.error?.slice(0, 500) ?? null,
-      });
-      if (result.status === "pending") return "capture_pending";
-      return finish(ctx, payment, result.status === "completed", ["paying"]);
+      if (result.status === "pending" || result.status === "unknown") {
+        // still committed; PAYMENT.CAPTURE.* or the resolvePendingPayments sweeper settles it (H4/M3)
+        if ((await getRequest(ctx.db, payment.requestId))?.status === "paying") {
+          await updatePayment(ctx.db, payment.id, { status: "pending", captureId: result.captureId ?? null, error: result.status === "unknown" ? `${UNKNOWN_PREFIX}${result.error ?? ""}`.slice(0, 500) : null });
+        }
+        return result.status === "unknown" ? "capture_unknown" : "capture_pending";
+      }
+      return finish(ctx, payment, result.status === "completed", ["paying"], { captureId: result.captureId ?? null, error: result.error?.slice(0, 500) ?? null });
     }
     case "PAYMENT.CAPTURE.COMPLETED": {
       const related = (res.supplementary_data as { related_ids?: { order_id?: string } } | undefined)?.related_ids;
       const payment = related?.order_id ? await getPaymentByOrderId(ctx.db, related.order_id) : undefined;
       if (!payment) return "unknown_order";
-      if (payment.status !== "completed") {
-        await updatePayment(ctx.db, payment.id, { status: "completed", captureId: String(res.id ?? payment.captureId ?? "") || null });
-      }
-      return finish(ctx, payment, true, ["paying", "awaiting_buyer"]);
+      // M2: PayPal says the money moved. That is authoritative, so it also corrects a request we had given up on
+      // (failed after a timeout, expired checkout).
+      return finish(ctx, payment, true, ["paying", "awaiting_buyer", "failed", "expired"], { captureId: String(res.id ?? payment.captureId ?? "") || null, error: null });
     }
     case "PAYMENT.CAPTURE.DENIED":
     case "PAYMENT.CAPTURE.DECLINED": {
       const related = (res.supplementary_data as { related_ids?: { order_id?: string } } | undefined)?.related_ids;
       const payment = related?.order_id ? await getPaymentByOrderId(ctx.db, related.order_id) : undefined;
       if (!payment) return "unknown_order";
-      await updatePayment(ctx.db, payment.id, { status: "failed", error: event.event_type });
-      return finish(ctx, payment, false, ["paying", "awaiting_buyer"]);
+      return finish(ctx, payment, false, ["paying", "awaiting_buyer"], { error: event.event_type });
     }
     default: {
       if (event.event_type.startsWith("PAYMENT.PAYOUTS-ITEM.")) {
@@ -141,14 +145,12 @@ async function applyEvent(ctx: ReinsContext, event: WebhookEvent): Promise<strin
         const payment = await getPaymentByBatchId(ctx.db, batchId);
         if (!payment) return "unknown_batch";
         const ok = event.event_type === "PAYMENT.PAYOUTS-ITEM.SUCCEEDED";
-        await updatePayment(ctx.db, payment.id, {
-          status: ok ? "completed" : "failed",
+        const req = await getRequest(ctx.db, payment.requestId);
+        if (!req) return "unknown_request";
+        return finish(ctx, payment, ok, ok ? ["paying", "failed"] : ["paying"], {
           captureId: typeof res.transaction_id === "string" ? res.transaction_id : payment.captureId,
           error: ok ? null : event.event_type,
         });
-        const req = await getRequest(ctx.db, payment.requestId);
-        if (!req) return "unknown_request";
-        return finish(ctx, payment, ok, ["paying"]);
       }
       return "ignored";
     }

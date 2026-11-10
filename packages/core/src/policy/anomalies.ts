@@ -1,10 +1,10 @@
 import type { RequestAnomaly } from "@reins/db";
-import { merchantInList } from "../merchant.ts";
+import { registrableDomain } from "../merchant.ts";
 import { RISK_DENY_MIN, type FinalDecision } from "./audit.ts";
 
 /**
  * Feature S3: unusual-pattern detection. Deterministic checks run in code next to the auditor:
- * - repeat_merchant: this is at least the REPEAT_MERCHANT_MIN-th request to the same merchant within 24 hours
+ * - repeat_merchant: this is at least the REPEAT_MERCHANT_MIN-th request to the same merchant (registrable domain) within 24 hours
  * - late_night: requested inside the workspace's quiet hours (local time)
  * - off_mandate_category: the agent's category is not one of the mandate's categories
  * Each hit adds risk points and turns an AUTO_APPROVE into ASK_HUMAN with a warning. Patterns never block on
@@ -52,7 +52,9 @@ export function detectAnomalies(input: AnomalyInput): RequestAnomaly[] {
   const out: RequestAnomaly[] = [];
 
   const since = request.createdAt - REPEAT_MERCHANT_WINDOW_MS;
-  const same = recent.filter((r) => r.createdAt >= since && r.createdAt <= request.createdAt && merchantInList(r.merchant, [request.merchant])).length;
+  // H3: grouped by registrable domain, so a.vercel.com, b.vercel.com and vercel.com count as one merchant
+  const group = registrableDomain(request.merchant);
+  const same = recent.filter((r) => r.createdAt >= since && r.createdAt <= request.createdAt && registrableDomain(r.merchant) === group).length;
   if (same + 1 >= REPEAT_MERCHANT_MIN) {
     out.push({
       code: "repeat_merchant",

@@ -159,6 +159,17 @@ export class PayPalApiError extends Error {
   }
 }
 
+/**
+ * H4: PayPal's outcome is unknown (timeout, network error or a 5xx that a retry with the same PayPal-Request-Id did not
+ * clear). The money may or may not have moved, so callers must keep the request committed and ask PayPal again later.
+ */
+export class PayPalUnknownError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = "PayPalUnknownError";
+  }
+}
+
 export function findLink(order: { links?: Link[] }, ...rels: string[]): string | undefined {
   for (const rel of rels) {
     const l = order.links?.find((x) => x.rel === rel);

@@ -1,6 +1,7 @@
 import {
   PAYPAL_BASE_URL,
   PayPalApiError,
+  PayPalUnknownError,
   type CreateOrderBody,
   type CreatePayoutBody,
   type Order,
@@ -20,6 +21,8 @@ export interface HttpPayPalClientOptions {
   env?: PayPalEnv;
   fetch?: FetchLike;
   now?: () => number;
+  /** H4 per-attempt timeout (default 15 s). */
+  timeoutMs?: number;
 }
 
 /** fetch-based PayPal REST client (no SDK). Secrets stay in memory; nothing is logged. */
@@ -44,9 +47,41 @@ export class HttpPayPalClient implements PayPalClient {
     return this.tokenPromise;
   }
 
+  /**
+   * H4: every PayPal call gets AbortSignal.timeout (15 s). A network error, timeout or 5xx is retried once with the same
+   * request (same PayPal-Request-Id, so PayPal replays instead of paying twice); if that also fails the outcome is
+   * unknown and PayPalUnknownError is thrown. 4xx answers are definite and returned as they are.
+   */
+  private async send(url: string, init: RequestInit): Promise<Response> {
+    let last = "";
+    let lastStatus: number | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(this.opts.timeoutMs ?? 15_000) });
+        if (res.status < 400 || (attempt === 0 && res.status < 500)) return res;
+        if (attempt === 1 && res.status < 500) {
+          // the first attempt may have gone through (duplicate PayPal-Request-Id / sender_batch_id in flight): not definite
+          const err = await toError(res);
+          throw new PayPalUnknownError(`${err.message} (on retry after an unanswered attempt)`, res.status);
+        }
+        lastStatus = res.status;
+        last = `PayPal ${res.status}`;
+        if (attempt === 1) {
+          const err = await toError(res);
+          throw new PayPalUnknownError(`${err.message} (after one retry)`, res.status);
+        }
+      } catch (err) {
+        if (err instanceof PayPalUnknownError) throw err;
+        last = err instanceof Error ? (err.name === "TimeoutError" || err.name === "AbortError" ? "PayPal timeout" : `network error: ${err.message}`) : "network error";
+        lastStatus = undefined;
+      }
+    }
+    throw new PayPalUnknownError(`${last} (after one retry)`, lastStatus);
+  }
+
   private async fetchToken(): Promise<string> {
     const basic = Buffer.from(`${this.opts.clientId}:${this.opts.clientSecret}`).toString("base64");
-    const res = await this.fetchImpl(`${this.base}/v1/oauth2/token`, {
+    const res = await this.send(`${this.base}/v1/oauth2/token`, {
       method: "POST",
       headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: "grant_type=client_credentials",
@@ -61,7 +96,7 @@ export class HttpPayPalClient implements PayPalClient {
   /** Generic authenticated call (used by spike scripts for endpoints outside PayPalClient). */
   async call<T>(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
     const token = await this.getAccessToken();
-    const res = await this.fetchImpl(`${this.base}${path}`, {
+    const res = await this.send(`${this.base}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,

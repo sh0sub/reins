@@ -1,5 +1,5 @@
 import { centsToValue } from "../money.ts";
-import { findLink, firstCapture, type CreateOrderBody, type PayPalClient } from "../paypal/types.ts";
+import { PayPalUnknownError, findLink, firstCapture, type CreateOrderBody, type PayPalClient } from "../paypal/types.ts";
 
 export type PaymentMode = "vaulted" | "supervised" | "treasury";
 
@@ -24,7 +24,8 @@ export interface PaymentEnv {
 }
 
 export interface StrategyResult {
-  status: "completed" | "awaiting_buyer" | "pending" | "failed";
+  /** "unknown" (H4): PayPal did not answer definitively; keep the request committed and ask again (resolvePendingPayments). */
+  status: "completed" | "awaiting_buyer" | "pending" | "failed" | "unknown";
   orderId?: string;
   captureId?: string;
   payoutBatchId?: string;
@@ -52,6 +53,7 @@ async function guard(fn: () => Promise<StrategyResult>): Promise<StrategyResult>
   try {
     return await fn();
   } catch (err) {
+    if (err instanceof PayPalUnknownError) return { status: "unknown", error: err.message };
     return { status: "failed", error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -78,6 +80,8 @@ export const vaultedStrategy: PaymentStrategy = {
       // Sandbox returns COMPLETED directly for vault_id orders (spike #28); the capture call is a fallback for CREATED/APPROVED.
       if (order.status !== "COMPLETED") order = await env.paypal.captureOrder(order.id, `reins-capture-${req.id}`);
       const cap = firstCapture(order);
+      // M3: a PENDING capture (e.g. under review at PayPal) is not a failure: the money may still move, so it stays committed
+      if (cap?.status === "PENDING") return { status: "pending", orderId: order.id, captureId: cap.id };
       if (order.status !== "COMPLETED" || !cap || cap.status !== "COMPLETED") {
         return { status: "failed", orderId: order.id, error: `Capture not completed (order ${order.status}, capture ${cap?.status ?? "none"})` };
       }

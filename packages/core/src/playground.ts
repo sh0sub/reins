@@ -1,4 +1,6 @@
-import { getWorkspace, listAgents, listRequestsSince, purgeAgents, type ReinsDb } from "@reins/db";
+import { randomBytes } from "node:crypto";
+import { PLAYGROUND_SCOPE_PREFIX, getWorkspace, listAgents, listRequestsSince, purgeAgents, type ReinsDb } from "@reins/db";
+import { hashApiKey } from "./keys.ts";
 import type { AuditProvider, AuditVerdict } from "./policy/audit.ts";
 import { rotateAgentKey } from "./agentControl.ts";
 import { authenticateAgent, createAgent, getLedgerRow, mcpSnippet, saveMandate, submitPurchase, type ReinsContext } from "./service.ts";
@@ -46,12 +48,34 @@ export function judgeMode(env: Record<string, string | undefined> = process.env)
   return env.REINS_TRY === "1";
 }
 
+/**
+ * Per-visitor playground scope (#2): the /try page gives every visit a random id (cookie reins_try). Requests carry it
+ * in client_request_id ("try:<id>:..."), and the spend, split-purchase, velocity and auditor-history windows only see
+ * that visitor's rows. Every judge therefore gets the scripted outcomes, however many judges came before.
+ */
+export const PLAYGROUND_COOKIE = "reins_try";
+const VISITOR_ID = /^[A-Za-z0-9-]{8,40}$/;
+
+export function newPlaygroundVisitor(): string {
+  return randomBytes(12).toString("hex");
+}
+
+export function isPlaygroundVisitor(id: string | null | undefined): id is string {
+  return typeof id === "string" && VISITOR_ID.test(id);
+}
+
+export function playgroundScope(visitor: string): string {
+  if (!isPlaygroundVisitor(visitor)) throw new Error("invalid playground visitor id");
+  return `${PLAYGROUND_SCOPE_PREFIX}${visitor}:`;
+}
+
 async function ensureAgent(ctx: ReinsContext): Promise<string> {
   const existing = (await listAgents(ctx.db)).find((a) => a.name === PLAYGROUND_AGENT && !a.revokedAt);
   const known = keys.get(ctx.db);
-  if (existing && known) return known;
+  // the cached key is only good while it still matches the stored hash (a key rotation on the Agents screen replaces it)
+  if (existing && known && hashApiKey(known) === existing.keyHash) return known;
   if (existing) {
-    // server restarted: the old key is gone from memory, so issue a fresh one for this demo-only agent
+    // server restarted or the key was rotated elsewhere: the cached key is gone or stale, so issue a fresh one
     const { api_key } = await rotateAgentKey(ctx, existing.id, "playground");
     keys.set(ctx.db, api_key);
     return api_key;
@@ -71,7 +95,7 @@ export interface PlaygroundResult {
   paypal: "sandbox" | "simulated" | "none";
 }
 
-export async function runPlayground(ctx: ReinsContext, raw: unknown, opts: { fooled?: boolean } = {}): Promise<PlaygroundResult> {
+export async function runPlayground(ctx: ReinsContext, raw: unknown, opts: { fooled?: boolean; visitor?: string } = {}): Promise<PlaygroundResult> {
   const key = await ensureAgent(ctx);
   const agent = await authenticateAgent(ctx, `Bearer ${key}`);
   const run: ReinsContext = {
@@ -79,7 +103,7 @@ export async function runPlayground(ctx: ReinsContext, raw: unknown, opts: { foo
     auditor: opts.fooled ? new FooledAuditor() : ctx.auditor,
     config: { ...ctx.config, velocityMax: PLAYGROUND_VELOCITY_MAX },
   };
-  const view = await submitPurchase(run, agent, raw);
+  const view = await submitPurchase(run, agent, raw, { scope: playgroundScope(opts.visitor ?? "local-default") });
   const row = await getLedgerRow(ctx, view.request_id);
   const hard = row.decisions.find((d) => d.stage === "hard_rules");
   const results = (hard?.details as { results?: Array<{ rule: string; ok: boolean }> } | null)?.results ?? [];
