@@ -1,9 +1,16 @@
 import { timingSafeEqual } from "node:crypto";
 import { webhookCallback, type Bot } from "grammy";
-import { getActiveMandate, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
+import { getActiveMandate, getAgent, getRequest, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
 import {
   HttpPayPalClient,
+  PLAYGROUND_AGENT,
+  PLAYGROUND_COOKIE,
   ReinsError,
+  cancelCheckout,
+  isPlaygroundVisitor,
+  newPlaygroundVisitor,
+  playgroundScope,
+  returnFromCheckout,
   agentStatus,
   getAgentEvents,
   getRequestDetail,
@@ -48,16 +55,27 @@ import {
 } from "@reins/core";
 
 type Params = Record<string, string>;
-type Handler = (req: Request, ctx: ReinsContext, params: Params, url: URL) => Promise<Response>;
+/** `rt.locked`: the public-demo lock applies to this caller (C1). */
+type Handler = (req: Request, ctx: ReinsContext, params: Params, url: URL, rt: { locked: boolean }) => Promise<Response>;
 interface Route {
   method: string;
   pattern: RegExp;
   keys: string[];
   auth: "agent" | "admin" | "cron" | "public";
   handler: Handler;
+  /** C1: on the public demo (REINS_PUBLIC_DEMO=1) mutating admin routes are refused unless marked "allow". */
+  demo?: "allow";
+  /** M1: per-IP token bucket name (see RATE_LIMITS). */
+  limit?: keyof typeof RATE_LIMITS;
 }
 
 import { DEMO_MERCHANT_EMAIL, workspaceView } from "./workspace.ts";
+import { RATE_LIMITS, RateLimiter, clientIp } from "./rateLimit.ts";
+
+/** Seeded agents of the public demo (scripts/seed.ts); with the Playground Agent the only ones a judge may decide for. */
+export const DEMO_AGENT_NAMES = new Set(["Claude Code – DevOps", "Research Scout", "Desk Restock Bot", PLAYGROUND_AGENT]);
+
+export const PUBLIC_DEMO_REFUSAL = "This action is disabled on the public demo. Run Reins locally (pnpm judge) to try it.";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
@@ -71,7 +89,7 @@ async function readJson(req: Request): Promise<unknown> {
   }
 }
 
-function toRoute(method: string, path: string, auth: Route["auth"], handler: Handler): Route {
+function toRoute(method: string, path: string, auth: Route["auth"], handler: Handler, extra: Pick<Route, "demo" | "limit"> = {}): Route {
   const keys: string[] = [];
   const pattern = new RegExp(
     `^${path.replace(/:([a-zA-Z_]+)/g, (_, k: string) => {
@@ -79,7 +97,7 @@ function toRoute(method: string, path: string, auth: Route["auth"], handler: Han
       return "([A-Za-z0-9_-]+)";
     })}$`,
   );
-  return { method, pattern, keys, auth, handler };
+  return { method, pattern, keys, auth, handler, ...extra };
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -88,15 +106,60 @@ function safeEqual(a: string, b: string): boolean {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
+const readCookie = (req: Request, name: string) => {
+  const raw = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(req.headers.get("cookie") ?? "")?.[1] ?? "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return "";
+  }
+};
+
+/** True when the caller presented REINS_ADMIN_TOKEN (header, Bearer or the reins_admin cookie). */
+function hasAdminToken(req: Request, token: string | undefined): boolean {
+  if (!token) return false;
+  const header = req.headers.get("x-reins-admin") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  return safeEqual(header, token) || safeEqual(readCookie(req, "reins_admin"), token);
+}
+
 /** Optional dashboard guard: when REINS_ADMIN_TOKEN is set, admin routes need it. Unset = open demo mode. */
 function checkAdmin(req: Request, token: string | undefined) {
   if (!token) return;
-  const header = req.headers.get("x-reins-admin") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const cookie = /(?:^|;\s*)reins_admin=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1] ?? "";
-  if (!safeEqual(header, token) && !safeEqual(decodeURIComponent(cookie), token)) {
-    throw new ReinsError(401, "admin_required", "Admin token required");
-  }
+  if (!hasAdminToken(req, token)) throw new ReinsError(401, "admin_required", "Admin token required");
 }
+
+/**
+ * M7 CSRF guard for admin writes: the body must be application/json (a cross-site form cannot send that without a CORS
+ * preflight, which this API never answers) and a browser Origin, when sent, must be the deployment's own origin.
+ */
+function checkWrite(req: Request, url: URL, publicBaseUrl: string | undefined) {
+  const type = (req.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  if (type !== "application/json") throw new ReinsError(415, "json_required", "POST bodies must be sent as application/json");
+  const origin = req.headers.get("origin");
+  if (!publicBaseUrl || !origin) return;
+  let expected: string;
+  try {
+    expected = new URL(publicBaseUrl).origin;
+  } catch {
+    return;
+  }
+  // the page's own host also counts (local dev on localhost while PUBLIC_BASE_URL points at a tunnel)
+  const host = req.headers.get("host");
+  const own = host ? [`http://${host}`, `https://${host}`] : [];
+  if (origin !== expected && origin !== url.origin && !own.includes(origin)) throw new ReinsError(403, "bad_origin", "Cross-site request refused");
+}
+
+/** /try visitor id (cookie reins_try). A fresh one is minted when missing; the response then sets the cookie. */
+function playgroundVisitor(req: Request): { id: string; fresh: boolean } {
+  const id = readCookie(req, PLAYGROUND_COOKIE);
+  return isPlaygroundVisitor(id) ? { id, fresh: false } : { id: newPlaygroundVisitor(), fresh: true };
+}
+
+export function playgroundCookie(id: string, secure: boolean): string {
+  return `${PLAYGROUND_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400${secure ? "; Secure" : ""}`;
+}
+
+const isHttps = (req: Request, url: URL) => url.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
 
 /**
  * Render Cron jobs can't mount the web service's disk, so scheduled jobs call the web service instead. These routes
@@ -186,6 +249,8 @@ const routes: Route[] = [
   // Public demo only: a judge who approved (or let expire) the seeded card can raise the same Research Scout request again
   toRoute("POST", "/api/demo/request", "admin", async (_r, ctx) => {
     if (process.env.REINS_PUBLIC_DEMO !== "1") throw new ReinsError(403, "demo_only", "Only the public demo can create sample requests");
+    // #2: every sample card gets its own spend scope, so earlier approvals (this judge's or anyone's) never use up
+    // Research Scout's $100 cap and the card always waits for a person
     const agents = await listAgents(ctx.db);
     const agent = agents.find((a) => a.name === "Research Scout" && !a.revokedAt && !a.pausedAt);
     if (!agent) throw new ReinsError(404, "not_found", "The demo agent Research Scout is missing or paused");
@@ -195,16 +260,20 @@ const routes: Route[] = [
       items: 'Report "Agentic Commerce 2026" (PDF)',
       reason: "Market sizing for Q4 memo (task #31)",
       category: "research",
-    });
+    }, { scope: playgroundScope(newPlaygroundVisitor()) });
     return json({ request_id: view.request_id, status: view.status }, 201);
-  }),
+  }, { demo: "allow", limit: "demo" }),
   // /try playground: a judge raises requests as a demo agent (no MCP client needed). Off unless REINS_TRY=1 or the public demo.
   toRoute("GET", "/api/try", "admin", async () => json({ enabled: playgroundEnabled() })),
-  toRoute("POST", "/api/try", "admin", async (req, ctx) => {
+  toRoute("POST", "/api/try", "admin", async (req, ctx, _p, url) => {
     if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The playground is off here. Run `pnpm judge` or set REINS_TRY=1.");
     const { fooled_auditor, ...purchase } = (await readJson(req)) as Record<string, unknown>;
-    return json(await runPlayground(ctx, purchase, { fooled: fooled_auditor === true }), 201);
-  }),
+    // #2 per-visitor playground: spend, split-purchase and history windows only count this visitor's /try rows
+    const visitor = playgroundVisitor(req);
+    const res = json(await runPlayground(ctx, purchase, { fooled: fooled_auditor === true, visitor: visitor.id }), 201);
+    if (visitor.fresh) res.headers.append("set-cookie", playgroundCookie(visitor.id, isHttps(req, url)));
+    return res;
+  }, { demo: "allow", limit: "try" }),
   toRoute("GET", "/api/try/connect", "admin", async (_req, ctx) => {
     if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The demo key is only available on a demo instance (pnpm judge or REINS_TRY=1).");
     return json(await playgroundConnect(ctx));
@@ -212,10 +281,17 @@ const routes: Route[] = [
   toRoute("POST", "/api/try/reset", "admin", async (_req, ctx) => {
     if (!judgeMode()) throw new ReinsError(403, "try_disabled", "Reset is only available in judge mode (pnpm judge or REINS_TRY=1).");
     return json(await resetPlayground(ctx));
-  }),
-  toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p) => {
+  }, { demo: "allow" }), // guarded by judge mode itself (the public demo is never judge mode)
+  toRoute("POST", "/api/requests/:id/decision", "admin", async (req, ctx, p, _url, rt) => {
     const { action, note, allow_merchant } = (await readJson(req)) as { action?: string; note?: unknown; allow_merchant?: unknown };
     if (action !== "approve" && action !== "deny") throw new ReinsError(400, "invalid_input", "action must be approve or deny");
+    if (rt.locked) {
+      // C1: judges decide the Playground Agent's and the seeded agents' cards only, and never rewrite a shared mandate
+      const r = await getRequest(ctx.db, p.id!);
+      const agent = r ? await getAgent(ctx.db, r.agentId) : undefined;
+      if (r && (!agent || !DEMO_AGENT_NAMES.has(agent.name))) throw new ReinsError(403, "public_demo", PUBLIC_DEMO_REFUSAL);
+      if (allow_merchant === true) throw new ReinsError(403, "public_demo", "Approve + always allow saves a new mandate, which is disabled on the public demo (other judges share it). Use Approve.");
+    }
     if (allow_merchant === true) {
       // S5 one tap: approve + auto-approve this merchant up to this amount from now on
       if (action !== "approve") throw new ReinsError(400, "invalid_input", "allow_merchant only works with approve");
@@ -224,7 +300,7 @@ const routes: Route[] = [
     }
     await decideRequest(ctx, p.id!, action, "web", typeof note === "string" ? note : undefined);
     return json(await getLedgerRow(ctx, p.id!));
-  }),
+  }, { demo: "allow" }),
   toRoute("POST", "/api/requests/:id/ask", "admin", async (req, ctx, p) => {
     const { question } = (await readJson(req)) as { question?: unknown };
     await askAgent(ctx, p.id!, question, "web");
@@ -282,16 +358,30 @@ const routes: Route[] = [
   }),
   toRoute("GET", "/api/events", "admin", async (req, ctx) => sseResponse(req, ctx, sseHeartbeatMs)),
 
+  // ---- H5 supervised checkout: the buyer comes back from paypal.com (return_url / cancel_url of the order) ----
+  toRoute("POST", "/api/pay/return", "public", async (req, ctx) => {
+    const { request, token } = (await readJson(req)) as { request?: unknown; token?: unknown };
+    if (typeof request !== "string" || !request) throw new ReinsError(400, "invalid_input", "request is required");
+    const r = await returnFromCheckout(ctx, request, typeof token === "string" ? token : null);
+    return json({ outcome: r.outcome, request: r.view });
+  }, { limit: "checkout" }),
+  toRoute("POST", "/api/pay/cancel", "public", async (req, ctx) => {
+    const { request, token } = (await readJson(req)) as { request?: unknown; token?: unknown };
+    if (typeof request !== "string" || !request) throw new ReinsError(400, "invalid_input", "request is required");
+    const r = await cancelCheckout(ctx, request, typeof token === "string" ? token : null);
+    return json({ outcome: r.outcome, request: r.view });
+  }, { limit: "checkout" }),
+
   // ---- inbound webhooks ----
   toRoute("POST", "/api/webhooks/paypal", "public", async (req, ctx) => {
     const r = await handlePayPalWebhook(ctx, req.headers, await req.text());
     return json(r.body, r.status);
-  }),
+  }, { limit: "webhook" }),
   toRoute("POST", "/api/telegram/webhook", "public", async (req, ctx) => {
     const bot = (ctx as ReinsContext & { telegramBot?: Bot }).telegramBot;
     if (!bot) return json({ ok: false, error: "Telegram bot not configured" }, 503);
     return webhookCallback(bot, "std/http", { secretToken: process.env.TELEGRAM_WEBHOOK_SECRET })(req);
-  }),
+  }, { limit: "webhook" }),
 ];
 
 let sseHeartbeatMs = 15_000;
@@ -338,8 +428,25 @@ function sseResponse(req: Request, ctx: ReinsContext, heartbeatMs: number): Resp
   });
 }
 
-export function createRouter(getCtx: () => Promise<ReinsContext>, opts: { adminToken?: string; cronSecret?: string; sseHeartbeatMs?: number } = {}) {
+export interface RouterOptions {
+  adminToken?: string;
+  cronSecret?: string;
+  sseHeartbeatMs?: number;
+  /** C1 public-demo lock; default REINS_PUBLIC_DEMO=1 at request time. */
+  publicDemo?: boolean;
+  /** M7 Origin check; default PUBLIC_BASE_URL, else RENDER_EXTERNAL_URL. */
+  publicBaseUrl?: string;
+  /** M1 per-IP buckets (tests inject their own). */
+  rateLimiter?: RateLimiter;
+}
+
+export function createRouter(getCtx: () => Promise<ReinsContext>, opts: RouterOptions = {}) {
   if (opts.sseHeartbeatMs) sseHeartbeatMs = opts.sseHeartbeatMs;
+  const limiter = opts.rateLimiter ?? new RateLimiter();
+  const isPublicDemo = () => opts.publicDemo ?? process.env.REINS_PUBLIC_DEMO === "1";
+  // the owner with REINS_ADMIN_TOKEN can still administer a public deploy
+  const locked = (req: Request) => isPublicDemo() && !hasAdminToken(req, opts.adminToken);
+  const baseUrl = () => opts.publicBaseUrl ?? (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || undefined);
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const candidates = routes.filter((r) => r.pattern.test(url.pathname));
@@ -349,9 +456,17 @@ export function createRouter(getCtx: () => Promise<ReinsContext>, opts: { adminT
     const match = route.pattern.exec(url.pathname)!;
     const params = Object.fromEntries(route.keys.map((k, i) => [k, match[i + 1]!]));
     try {
+      if (route.limit) {
+        const wait = limiter.take(route.limit, clientIp(req));
+        if (wait > 0) return new Response(JSON.stringify({ error: "rate_limited", message: "Too many requests. Try again in a few seconds." }), { status: 429, headers: { "content-type": "application/json; charset=utf-8", "retry-after": String(Math.ceil(wait / 1000)), "cache-control": "no-store" } });
+      }
       if (route.auth === "admin") checkAdmin(req, opts.adminToken);
       if (route.auth === "cron") checkCron(req, opts.cronSecret);
-      return await route.handler(req, await getCtx(), params, url);
+      if (route.auth === "admin" && req.method !== "GET") {
+        checkWrite(req, url, baseUrl());
+        if (route.demo !== "allow" && locked(req)) throw new ReinsError(403, "public_demo", PUBLIC_DEMO_REFUSAL);
+      }
+      return await route.handler(req, await getCtx(), params, url, { locked: locked(req) });
     } catch (err) {
       if (err instanceof ReinsError) return json({ error: err.code, message: err.message }, err.status);
       console.error("[reins] unhandled", req.method, url.pathname, err instanceof Error ? err.message : "error");

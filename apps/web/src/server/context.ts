@@ -3,6 +3,11 @@ import { setDefaultAutoSelectFamily } from "node:net";
 import { resolve } from "node:path";
 import { createDb, getActiveMandate, getAgent, getWorkspace, migrateDb, spendSinceCents, updateWorkspace } from "@reins/db";
 import {
+  BudgetedAuditor,
+  DEFAULT_CLAUDE_DAILY_CAP,
+  DailyCallBudget,
+  budgeted,
+  resolvePendingPayments,
   ClaudeAuditor,
   ClaudeAnswerSummarizer,
   ClaudeCategorySuggester,
@@ -37,16 +42,23 @@ export function paypalFromEnv(env: Env): { client: PayPalClient; env: "sandbox" 
   return { client: new FakePayPalClient(), env: "fake" };
 }
 
+/** M1: one daily Claude call budget per process (REINS_CLAUDE_DAILY_CAP, default 400) shared by every Claude feature. */
+export function claudeBudgetFromEnv(env: Env): DailyCallBudget {
+  const raw = env.REINS_CLAUDE_DAILY_CAP?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return new DailyCallBudget(Number.isInteger(n) && n >= 0 ? n : DEFAULT_CLAUDE_DAILY_CAP);
+}
+
 /** S1 weekly summary: Claude only with a key outside fake/test runs; otherwise the labelled template is used. */
-export function summarizerFromEnv(env: Env) {
+export function summarizerFromEnv(env: Env, budget = claudeBudgetFromEnv(env)) {
   if (!env.ANTHROPIC_API_KEY || env.PAYPAL_ENV === "fake" || env.NODE_ENV === "test") return undefined;
-  return new ClaudeWeeklySummarizer({ apiKey: env.ANTHROPIC_API_KEY });
+  return budgeted(new ClaudeWeeklySummarizer({ apiKey: env.ANTHROPIC_API_KEY }), "summarize", budget);
 }
 
 /** S5 rule sentence: same gating as the weekly summary (Claude only with a key outside fake/test runs). */
-export function ruleWriterFromEnv(env: Env) {
+export function ruleWriterFromEnv(env: Env, budget = claudeBudgetFromEnv(env)) {
   if (!env.ANTHROPIC_API_KEY || env.PAYPAL_ENV === "fake" || env.NODE_ENV === "test") return undefined;
-  return new ClaudeRuleWriter({ apiKey: env.ANTHROPIC_API_KEY });
+  return budgeted(new ClaudeRuleWriter({ apiKey: env.ANTHROPIC_API_KEY }), "write", budget);
 }
 
 /**
@@ -92,14 +104,16 @@ export async function createContextFromEnv(rawEnv: Env = process.env): Promise<R
   const seeded = mode === "vaulted" && !ws.vaultId ? "supervised" : mode;
   if (!ws.connectedAt && seeded && seeded !== ws.paymentMode) await updateWorkspace(db, { paymentMode: seeded });
 
+  const budget = claudeBudgetFromEnv(env);
   const ctx: ReinsContext = {
     db,
     paypal: paypal.client,
-    auditor: env.ANTHROPIC_API_KEY ? new ClaudeAuditor({ apiKey: env.ANTHROPIC_API_KEY }) : new MockAuditor(),
-    categorySuggester: env.ANTHROPIC_API_KEY ? new ClaudeCategorySuggester({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
-    summarizer: summarizerFromEnv(env),
-    ruleWriter: ruleWriterFromEnv(env),
-    answerSummarizer: env.ANTHROPIC_API_KEY && env.PAYPAL_ENV !== "fake" && env.NODE_ENV !== "test" ? new ClaudeAnswerSummarizer({ apiKey: env.ANTHROPIC_API_KEY }) : undefined,
+    // over the daily cap the template auditor decides (same rubric, no API call)
+    auditor: env.ANTHROPIC_API_KEY ? new BudgetedAuditor(new ClaudeAuditor({ apiKey: env.ANTHROPIC_API_KEY }), new MockAuditor(), budget) : new MockAuditor(),
+    categorySuggester: env.ANTHROPIC_API_KEY ? budgeted(new ClaudeCategorySuggester({ apiKey: env.ANTHROPIC_API_KEY }), "suggest", budget) : undefined,
+    summarizer: summarizerFromEnv(env, budget),
+    ruleWriter: ruleWriterFromEnv(env, budget),
+    answerSummarizer: env.ANTHROPIC_API_KEY && env.PAYPAL_ENV !== "fake" && env.NODE_ENV !== "test" ? budgeted(new ClaudeAnswerSummarizer({ apiKey: env.ANTHROPIC_API_KEY }), "summarize", budget) : undefined,
     events: new ReinsEvents(),
     notifiers: [],
     now: Date.now,
@@ -114,6 +128,7 @@ export async function createContextFromEnv(rawEnv: Env = process.env): Promise<R
       quietHours: quietHoursFromEnv(env),
       // demo instances (pnpm judge) raise the 3-per-10-minutes velocity rule so an example agent can be re-run; unset = the real default
       velocityMax: Number(env.REINS_VELOCITY_MAX) > 0 ? Number(env.REINS_VELOCITY_MAX) : undefined,
+      checkoutTtlMs: Number(env.REINS_CHECKOUT_TTL_MINUTES) > 0 ? Number(env.REINS_CHECKOUT_TTL_MINUTES) * 60_000 : undefined,
     },
   };
 
@@ -121,7 +136,11 @@ export async function createContextFromEnv(rawEnv: Env = process.env): Promise<R
 
   // Approval expiry timer (M9 "만료 타이머"): pending_human cards expire after REINS_APPROVAL_TTL_MINUTES and
   // the Telegram card is edited to "Expired". Also runs lazily before /api/inbox.
-  const sweep = setInterval(() => void expireStale(ctx).catch(() => undefined), Number(env.REINS_EXPIRY_SWEEP_MS ?? 60_000));
+  // The same sweep releases abandoned PayPal checkouts (H5) and asks PayPal again about payments stuck in paying (H4/M6).
+  const sweep = setInterval(() => {
+    void expireStale(ctx).catch(() => undefined);
+    void resolvePendingPayments(ctx).catch(() => undefined);
+  }, Number(env.REINS_EXPIRY_SWEEP_MS ?? 60_000));
   sweep.unref?.();
   return ctx;
 }

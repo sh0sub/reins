@@ -183,7 +183,7 @@ describe("#38 cron reconcile route (Render Cron can't share the web disk)", () =
 });
 
 describe("POST /api/paypal/connect on the public demo", () => {
-  it("refuses custom credentials but still connects the demo merchant", async () => {
+  it("C1: refuses every connect (custom credentials and the demo merchant): the seed already connected it", async () => {
     process.env.REINS_PUBLIC_DEMO = "1";
     try {
       const ctx = await createTestContext();
@@ -191,8 +191,10 @@ describe("POST /api/paypal/connect on the public demo", () => {
       const post = (body: unknown) => handle(new Request(`${BASE}/api/paypal/connect`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
       const custom = await post({ client_id: "x", client_secret: "y" });
       expect(custom.status).toBe(403);
-      expect((await custom.json()).error).toBe("demo_only");
-      expect((await post({ demo: true })).status).toBe(200);
+      expect((await custom.json()).error).toBe("public_demo");
+      const demo = await post({ demo: true });
+      expect(demo.status).toBe(403);
+      expect((await demo.json()).message).toContain("disabled on the public demo");
     } finally {
       delete process.env.REINS_PUBLIC_DEMO;
     }
@@ -208,9 +210,9 @@ describe("POST /api/demo/request on the public demo", () => {
   });
 
   it("raises the Research Scout statista request into the inbox", async () => {
+    const { call } = await setup(); // agents are created before the public-demo lock is on (the seed does the same)
     process.env.REINS_PUBLIC_DEMO = "1";
     try {
-      const { call } = await setup();
       const res = await call("POST", "/api/demo/request", {});
       expect(res.status).toBe(201);
       expect(res.body.status).toBe("pending_human");

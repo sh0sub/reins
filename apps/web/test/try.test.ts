@@ -93,7 +93,7 @@ describe("/try playground", () => {
   it("REST: reset and include_playground follow judge mode", async () => {
     const handle = createRouter(async () => ctx);
     const prev = { try: process.env.REINS_TRY, demo: process.env.REINS_PUBLIC_DEMO };
-    const reset = () => handle(new Request("http://localhost/api/try/reset", { method: "POST" }));
+    const reset = () => handle(new Request("http://localhost/api/try/reset", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }));
     try {
       delete process.env.REINS_TRY;
       process.env.REINS_PUBLIC_DEMO = "1";

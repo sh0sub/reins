@@ -9,8 +9,9 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(path, {
     method: init.method ?? "GET",
-    headers: init.body === undefined ? undefined : { "content-type": "application/json" },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    // every write is JSON (the server refuses other content types on POST as a CSRF guard)
+    headers: init.body === undefined && (init.method ?? "GET") === "GET" ? undefined : { "content-type": "application/json" },
+    body: init.body === undefined ? ((init.method ?? "GET") === "GET" ? undefined : "{}") : JSON.stringify(init.body),
     credentials: "same-origin",
     cache: "no-store",
   });
