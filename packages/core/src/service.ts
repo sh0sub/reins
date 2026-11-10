@@ -43,6 +43,7 @@ import { anomalySummary, applyAnomalies, detectAnomalies, type QuietHours } from
 import { writeRuleSentence, type RuleWriter } from "./policy/ruleWriter.ts";
 import { summarizeAnswer, type AnswerSummarizer } from "./policy/answerSummary.ts";
 import { generateApiKey, hashApiKey, parseBearer } from "./keys.ts";
+import { lookupDemoKey } from "./demoKeys.ts";
 import { InvalidMerchantError, isPublicSuffix, merchantInList, normalizeMerchant, parseMerchant, registrableDomain } from "./merchant.ts";
 import { centsToValue, toCents } from "./money.ts";
 import { STRATEGIES, type PaymentMode, type StrategyResult } from "./pay/strategies.ts";
@@ -192,11 +193,26 @@ function parseOr400<T extends z.ZodTypeAny>(schema: T, input: unknown): z.output
 // ---------------- agents & mandates (M2, M3) ----------------
 
 export async function authenticateAgent(ctx: ReinsContext, authorization: string | null | undefined): Promise<Agent> {
+  return (await authenticateAgentScoped(ctx, authorization)).agent;
+}
+
+/**
+ * Like authenticateAgent, plus the playground scope of a per-visitor demo key (demoKeys.ts): requests made with such a
+ * key only see that visitor's rows. `scope` is undefined for ordinary agent keys.
+ */
+export async function authenticateAgentScoped(ctx: ReinsContext, authorization: string | null | undefined): Promise<{ agent: Agent; scope?: string }> {
   const key = parseBearer(authorization);
   if (!key) throw new ReinsError(401, "missing_key", "Missing Authorization: Bearer <agent key>");
+  const demo = lookupDemoKey(ctx.db, key, ctx.now());
+  if (demo?.state === "expired") throw new ReinsError(401, "expired_key", "This demo key has expired. Reload /try for a new one.");
+  if (demo) {
+    const agent = await getAgent(ctx.db, demo.entry.agentId);
+    if (!agent || agent.revokedAt) throw new ReinsError(401, "invalid_key", "Invalid or revoked agent key");
+    return { agent, scope: demo.entry.scope };
+  }
   const agent = await findAgentByKeyHash(ctx.db, hashApiKey(key));
   if (!agent || agent.revokedAt) throw new ReinsError(401, "invalid_key", "Invalid or revoked agent key");
-  return agent;
+  return { agent };
 }
 
 export function mcpSnippet(apiBaseUrl: string, apiKey: string) {
@@ -760,10 +776,10 @@ export async function askAgent(ctx: ReinsContext, requestId: string, rawQuestion
 }
 
 /** Agent answers the open question through MCP get_request_status(answer). */
-export async function answerClarification(ctx: ReinsContext, agent: Agent, requestId: string, rawAnswer: unknown): Promise<RequestView> {
+export async function answerClarification(ctx: ReinsContext, agent: Agent, requestId: string, rawAnswer: unknown, scope?: string): Promise<RequestView> {
   const answer = parseOr400(QuestionSchema, rawAnswer);
   const r = await getRequest(ctx.db, requestId);
-  if (!r || r.agentId !== agent.id) throw new ReinsError(404, "not_found", "Request not found");
+  if (!r || r.agentId !== agent.id || (scope && !r.clientRequestId.startsWith(scope))) throw new ReinsError(404, "not_found", "Request not found");
   if (r.status !== "pending_human") throw new ReinsError(409, "already_decided", `Request is already ${r.status}`);
   const current = latestClarification(await listRequestMessages(ctx.db, requestId));
   if (!current || current.answer != null) throw new ReinsError(409, "no_question", "There is no open question for this request");
@@ -802,14 +818,15 @@ export type InboxItem = Awaited<ReturnType<typeof getInbox>>[number];
 
 // ---------------- reads ----------------
 
-export async function getRequestForAgent(ctx: ReinsContext, agent: Agent, requestId: string): Promise<RequestView> {
+/** `scope` (a per-visitor demo key): the request must belong to that visitor too. */
+export async function getRequestForAgent(ctx: ReinsContext, agent: Agent, requestId: string, scope?: string): Promise<RequestView> {
   const r = await getRequest(ctx.db, requestId);
-  if (!r || r.agentId !== agent.id) throw new ReinsError(404, "not_found", "Request not found");
+  if (!r || r.agentId !== agent.id || (scope && !r.clientRequestId.startsWith(scope))) throw new ReinsError(404, "not_found", "Request not found");
   return viewOf(ctx, r);
 }
 
-export async function listTransactionsForAgent(ctx: ReinsContext, agent: Agent, limit = 20): Promise<RequestView[]> {
-  const rows = await listRequests(ctx.db, { agentId: agent.id, limit: Math.min(Math.max(limit, 1), 100) });
+export async function listTransactionsForAgent(ctx: ReinsContext, agent: Agent, limit = 20, scope?: string): Promise<RequestView[]> {
+  const rows = await listRequests(ctx.db, { agentId: agent.id, scope, limit: Math.min(Math.max(limit, 1), 100) });
   return Promise.all(rows.map((r) => viewOf(ctx, r)));
 }
 

@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getPaymentByRequest, listAgents, updateWorkspace } from "@reins/db";
 import { createTestContext } from "@reins/core/testing";
-import { PLAYGROUND_AGENT, rotateAgentKey, playgroundConnect, authenticateAgent } from "@reins/core";
+import { DEMO_KEY_TTL_MS, PLAYGROUND_AGENT, rotateAgentKey, playgroundConnect, authenticateAgent } from "@reins/core";
 import { seedDemo } from "../../../scripts/seed.ts";
 import { createRouter, type RouterOptions } from "../src/server/router.ts";
 import { RateLimiter } from "../src/server/rateLimit.ts";
@@ -187,7 +187,9 @@ describe("#2 per-visitor playground: the judge tour gives the documented outcome
     const { ctx, call } = await demo();
     const first = await call("POST", "/api/try", PRESETS[0]!.purchase);
     expect(first.headers.get("set-cookie")).toContain("reins_try=");
-    const { api_key } = await playgroundConnect(ctx);
+    // an ordinary agent key (not a per-visitor demo key) cannot write into a playground scope
+    const scout = (await listAgents(ctx.db)).find((a) => a.name === "Research Scout")!;
+    const { api_key } = await rotateAgentKey(ctx, scout.id, "web");
     const r = await call("POST", "/api/requests", { ...PRESETS[0]!.purchase, client_request_id: "try:judge-one-aaaa:x" }, { authorization: `Bearer ${api_key}` });
     expect(r.status).toBe(400);
   });
@@ -198,7 +200,7 @@ describe("#2 per-visitor playground: the judge tour gives the documented outcome
     const pg = (await listAgents(ctx.db)).find((a) => a.name === PLAYGROUND_AGENT)!;
     await rotateAgentKey(ctx, pg.id, "web");
     expect((await call("POST", "/api/try", { ...PRESETS[0]!.purchase, items: "second domain" })).status).toBe(201);
-    const { api_key } = await playgroundConnect(ctx);
+    const { api_key } = await playgroundConnect(ctx, "visitor-rotate-1");
     await expect(authenticateAgent(ctx, `Bearer ${api_key}`)).resolves.toMatchObject({ id: pg.id });
   });
 });
@@ -235,5 +237,112 @@ describe("#4 landing and pages", () => {
     expect(read("pay/return/page.tsx")).toContain('kind="return"');
     expect(read("pay/cancel/page.tsx")).toContain('kind="cancel"');
     expect(read("pay/CheckoutResult.tsx")).toContain("/api/pay/${kind}");
+  });
+});
+
+describe("#A per-visitor MCP demo keys (/api/try/connect)", () => {
+  const order = (i: number) => ({ merchant: "namecheap.com", amount: "1.00", items: `Domain renewal #${i}`, reason: "Keep the landing page online", category: "infrastructure" });
+  const bearer = (key: string) => ({ authorization: `Bearer ${key}` });
+  async function connect(call: Awaited<ReturnType<typeof demo>>["call"], visitor: string) {
+    const r = await call("GET", "/api/try/connect", undefined, { cookie: `reins_try=${visitor}` });
+    expect(r.status).toBe(200);
+    return r.body as { api_key: string; expires_at: string; agent: string };
+  }
+
+  it("two visitors get different keys; each makes 3 calls without blocking the other, the 4th of one visitor is still denied by velocity", async () => {
+    const { ctx, call } = await demo();
+    const a = await connect(call, "visitor-aaaa1111");
+    const b = await connect(call, "visitor-bbbb2222");
+    expect(a.api_key).toMatch(/^rk_demo_[A-Za-z0-9]{32}$/);
+    expect(a.api_key).not.toBe(b.api_key);
+    expect(a.agent).toBe(PLAYGROUND_AGENT);
+    // the same visitor gets the same key back while it lives
+    expect((await connect(call, "visitor-aaaa1111")).api_key).toBe(a.api_key);
+
+    const statuses = async (key: string, from: number, n: number) => {
+      const out: string[] = [];
+      for (let i = from; i < from + n; i++) {
+        const r = await call("POST", "/api/requests", order(i), bearer(key));
+        expect(r.status).toBe(201);
+        out.push(r.body.status);
+      }
+      return out;
+    };
+    const approved = ["paid", "awaiting_buyer"];
+    const first = await statuses(a.api_key, 0, 3);
+    const second = await statuses(b.api_key, 10, 3);
+    expect([...first, ...second].every((s) => approved.includes(s))).toBe(true);
+    const fourth = await call("POST", "/api/requests", order(99), bearer(a.api_key));
+    expect(fourth.body.status).toBe("denied");
+    const ledger = await call("GET", `/api/ledger/${fourth.body.request_id}`);
+    const hard = (ledger.body.decisions as Array<{ stage: string; details: { results: Array<{ rule: string; ok: boolean }> } }>).find((d) => d.stage === "hard_rules")!;
+    expect(hard.details.results.filter((r) => !r.ok).map((r) => r.rule)).toEqual(["velocity"]);
+    // every request belongs to the Playground Agent, never to a seeded or real agent
+    const pg = (await listAgents(ctx.db)).find((x) => x.name === PLAYGROUND_AGENT)!;
+    await expect(authenticateAgent(ctx, `Bearer ${b.api_key}`)).resolves.toMatchObject({ id: pg.id });
+  });
+
+  it("the $29 x 5 split attack over MCP is still stopped inside one visitor", async () => {
+    const { call } = await demo();
+    const { api_key } = await connect(call, "visitor-split-0001");
+    const split = PRESETS.find((p) => p.id === "split")!;
+    const five: string[] = [];
+    for (let i = 0; i < 5; i++) five.push((await call("POST", "/api/requests", { ...split.purchase, client_request_id: `split-${i}` }, bearer(api_key))).body.status);
+    expect(five.slice(3)).toEqual(["denied", "denied"]);
+  });
+
+  it("a visitor cannot read another visitor's request, and the key does not unlock admin routes", async () => {
+    const { call } = await demo();
+    const a = await connect(call, "visitor-read-aaaa");
+    const b = await connect(call, "visitor-read-bbbb");
+    const mine = await call("POST", "/api/requests", order(1), bearer(a.api_key));
+    expect((await call("GET", `/api/requests/${mine.body.request_id}`, undefined, bearer(a.api_key))).status).toBe(200);
+    expect((await call("GET", `/api/requests/${mine.body.request_id}`, undefined, bearer(b.api_key))).status).toBe(404);
+    const tx = await call("GET", "/api/transactions", undefined, bearer(b.api_key));
+    expect(tx.body.transactions).toEqual([]);
+    // public-demo lock still holds for a caller presenting a demo key
+    expect((await call("POST", "/api/agents", { name: "Evil" }, bearer(a.api_key))).status).toBe(403);
+  });
+
+  it("no cookie: a fresh visitor id is set; keys are unguessable and creation is rate-limited per IP", async () => {
+    const { call } = await demo({ rateLimiter: new RateLimiter({ connect: { capacity: 3, refillPerMinute: 1 } }, () => 0) });
+    const ip = { "x-forwarded-for": "203.0.113.9" };
+    const r1 = await call("GET", "/api/try/connect", undefined, ip);
+    expect(r1.status).toBe(200);
+    expect(r1.headers.get("set-cookie")).toMatch(/reins_try=[0-9a-f]{24};.*HttpOnly/);
+    const r2 = await call("GET", "/api/try/connect", undefined, ip);
+    expect(r2.body.api_key).not.toBe(r1.body.api_key);
+    expect((await call("GET", "/api/try/connect", undefined, ip)).status).toBe(200);
+    expect((await call("GET", "/api/try/connect", undefined, ip)).status).toBe(429);
+    // a made-up demo key is refused
+    expect((await call("POST", "/api/requests", order(1), bearer("rk_demo_" + "a".repeat(32)))).status).toBe(401);
+  });
+
+  it("a demo key expires after 24 hours", async () => {
+    let t = Date.UTC(2026, 10, 10, 12);
+    const ctx = await createTestContext({ now: () => t });
+    await seedDemo(ctx.db, { connectDemoMerchant: true, env: { PAYPAL_ENV: "fake" } });
+    const handle = createRouter(async () => ctx, { publicDemo: true });
+    const res = await handle(new Request(`${BASE}/api/try/connect`, { headers: { cookie: "reins_try=visitor-expire-01" } }));
+    const { api_key, expires_at } = (await res.json()) as { api_key: string; expires_at: string };
+    expect(Date.parse(expires_at)).toBe(t + DEMO_KEY_TTL_MS);
+    await expect(authenticateAgent(ctx, `Bearer ${api_key}`)).resolves.toMatchObject({ name: PLAYGROUND_AGENT });
+    t += DEMO_KEY_TTL_MS;
+    await expect(authenticateAgent(ctx, `Bearer ${api_key}`)).rejects.toMatchObject({ status: 401, code: "expired_key" });
+    // the same visitor then gets a new key
+    const again = await handle(new Request(`${BASE}/api/try/connect`, { headers: { cookie: "reins_try=visitor-expire-01" } }));
+    expect(((await again.json()) as { api_key: string }).api_key).not.toBe(api_key);
+  });
+
+  it("on the hosted instance the HTTP MCP config comes first; stdio is the local option", async () => {
+    const ctx = await createTestContext({ config: { publicBaseUrl: "https://reins-web.onrender.com" } });
+    await seedDemo(ctx.db, { connectDemoMerchant: true, env: { PAYPAL_ENV: "fake" } });
+    const c = await playgroundConnect(ctx, "visitor-hosted-01");
+    expect(c.transport).toBe("http");
+    expect(c.mcp_url).toBe("https://reins-mcp.onrender.com/mcp");
+    expect(c.mcp_config).toEqual({ mcpServers: { reins: { type: "http", url: c.mcp_url, headers: { Authorization: `Bearer ${c.api_key}` } } } });
+    expect(c.claude_code_command).toBe(`claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp --header "Authorization: Bearer ${c.api_key}"`);
+    expect(JSON.stringify(c.mcp_config_local)).toContain("/ABSOLUTE/PATH/TO/reins");
+    expect(Object.keys(c).indexOf("mcp_config")).toBeLessThan(Object.keys(c).indexOf("mcp_config_local"));
   });
 });

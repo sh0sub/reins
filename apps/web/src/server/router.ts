@@ -23,6 +23,7 @@ import {
   approveAndAllowMerchant,
   askAgent,
   authenticateAgent,
+  authenticateAgentScoped,
   completeVaultSetup,
   connectPayPal,
   createAgent,
@@ -201,23 +202,24 @@ const routes: Route[] = [
     return json({ agent: { id: agent.id, name: agent.name, status: agentStatus(agent) }, mandate: mandateView(m) });
   }),
   toRoute("POST", "/api/requests", "agent", async (req, ctx) => {
-    const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
+    // a per-visitor demo key carries its own playground scope (only that visitor's rows count, velocity included)
+    const { agent, scope } = await authenticateAgentScoped(ctx, req.headers.get("authorization"));
     const body = (await readJson(req)) as Record<string, unknown>;
     const idem = req.headers.get("idempotency-key");
-    return json(await submitPurchase(ctx, agent, idem && !body.client_request_id ? { ...body, client_request_id: idem } : body), 201);
+    return json(await submitPurchase(ctx, agent, idem && !body.client_request_id ? { ...body, client_request_id: idem } : body, { scope }), 201);
   }),
   toRoute("GET", "/api/requests/:id", "agent", async (req, ctx, p) => {
-    const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
-    return json(await getRequestForAgent(ctx, agent, p.id!));
+    const { agent, scope } = await authenticateAgentScoped(ctx, req.headers.get("authorization"));
+    return json(await getRequestForAgent(ctx, agent, p.id!, scope));
   }),
   toRoute("POST", "/api/requests/:id/answer", "agent", async (req, ctx, p) => {
-    const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
+    const { agent, scope } = await authenticateAgentScoped(ctx, req.headers.get("authorization"));
     const { answer } = (await readJson(req)) as { answer?: unknown };
-    return json(await answerClarification(ctx, agent, p.id!, answer));
+    return json(await answerClarification(ctx, agent, p.id!, answer, scope));
   }),
   toRoute("GET", "/api/transactions", "agent", async (req, ctx, _p, url) => {
-    const agent = await authenticateAgent(ctx, req.headers.get("authorization"));
-    return json({ transactions: await listTransactionsForAgent(ctx, agent, Number(url.searchParams.get("limit") ?? 20)) });
+    const { agent, scope } = await authenticateAgentScoped(ctx, req.headers.get("authorization"));
+    return json({ transactions: await listTransactionsForAgent(ctx, agent, Number(url.searchParams.get("limit") ?? 20), scope) });
   }),
 
   // ---- dashboard / admin ----
@@ -274,10 +276,15 @@ const routes: Route[] = [
     if (visitor.fresh) res.headers.append("set-cookie", playgroundCookie(visitor.id, isHttps(req, url)));
     return res;
   }, { demo: "allow", limit: "try" }),
-  toRoute("GET", "/api/try/connect", "admin", async (_req, ctx) => {
+  // #A per-visitor demo key: each visitor (cookie reins_try) gets an own key and scope, so MCP calls of one judge never
+  // count against another's velocity window. Creation is rate-limited per IP; keys expire after 24 hours.
+  toRoute("GET", "/api/try/connect", "admin", async (req, ctx, _p, url) => {
     if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The demo key is only available on a demo instance (pnpm judge or REINS_TRY=1).");
-    return json(await playgroundConnect(ctx));
-  }),
+    const visitor = playgroundVisitor(req);
+    const res = json(await playgroundConnect(ctx, visitor.id));
+    if (visitor.fresh) res.headers.append("set-cookie", playgroundCookie(visitor.id, isHttps(req, url)));
+    return res;
+  }, { limit: "connect" }),
   toRoute("POST", "/api/try/reset", "admin", async (_req, ctx) => {
     if (!judgeMode()) throw new ReinsError(403, "try_disabled", "Reset is only available in judge mode (pnpm judge or REINS_TRY=1).");
     return json(await resetPlayground(ctx));

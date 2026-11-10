@@ -6,6 +6,8 @@ export const RATE_LIMITS = {
   /** The judge tour sends about ten requests, five of them back to back. */
   try: { capacity: 30, refillPerMinute: 30 },
   demo: { capacity: 5, refillPerMinute: 5 },
+  /** Per-visitor demo keys (/api/try/connect): a few page loads, not a key factory. */
+  connect: { capacity: 10, refillPerMinute: 5 },
   checkout: { capacity: 20, refillPerMinute: 20 },
   webhook: { capacity: 120, refillPerMinute: 120 },
 } as const;

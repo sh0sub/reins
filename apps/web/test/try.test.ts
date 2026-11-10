@@ -161,7 +161,7 @@ describe("/try playground", () => {
       const res = await get();
       expect(res.status).toBe(200);
       const c = (await res.json()) as { api_key: string; mcp_config: { mcpServers: { reins: { env: { REINS_API_KEY: string } } } } };
-      expect(c.api_key).toMatch(/^rk_live_/);
+      expect(c.api_key).toMatch(/^rk_demo_/);
       expect(c.mcp_config.mcpServers.reins.env.REINS_API_KEY).toBe(c.api_key);
       const paid = await handle(
         new Request("http://localhost/api/requests", { method: "POST", headers: { authorization: `Bearer ${c.api_key}`, "content-type": "application/json" }, body: JSON.stringify(preset("domain")) }),

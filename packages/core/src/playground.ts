@@ -3,6 +3,7 @@ import { PLAYGROUND_SCOPE_PREFIX, getWorkspace, listAgents, listRequestsSince, p
 import { hashApiKey } from "./keys.ts";
 import type { AuditProvider, AuditVerdict } from "./policy/audit.ts";
 import { rotateAgentKey } from "./agentControl.ts";
+import { issueDemoKey, revokeDemoKeys } from "./demoKeys.ts";
 import { authenticateAgent, createAgent, getLedgerRow, mcpSnippet, saveMandate, submitPurchase, type ReinsContext } from "./service.ts";
 import type { LedgerRow } from "./views.ts";
 
@@ -69,21 +70,21 @@ export function playgroundScope(visitor: string): string {
   return `${PLAYGROUND_SCOPE_PREFIX}${visitor}:`;
 }
 
-async function ensureAgent(ctx: ReinsContext): Promise<string> {
+async function ensureAgent(ctx: ReinsContext): Promise<{ key: string; id: string }> {
   const existing = (await listAgents(ctx.db)).find((a) => a.name === PLAYGROUND_AGENT && !a.revokedAt);
   const known = keys.get(ctx.db);
   // the cached key is only good while it still matches the stored hash (a key rotation on the Agents screen replaces it)
-  if (existing && known && hashApiKey(known) === existing.keyHash) return known;
+  if (existing && known && hashApiKey(known) === existing.keyHash) return { key: known, id: existing.id };
   if (existing) {
     // server restarted or the key was rotated elsewhere: the cached key is gone or stale, so issue a fresh one
     const { api_key } = await rotateAgentKey(ctx, existing.id, "playground");
     keys.set(ctx.db, api_key);
-    return api_key;
+    return { key: api_key, id: existing.id };
   }
   const created = await createAgent(ctx, PLAYGROUND_AGENT);
   await saveMandate(ctx, created.agent.id, PLAYGROUND_MANDATE);
   keys.set(ctx.db, created.api_key);
-  return created.api_key;
+  return { key: created.api_key, id: created.agent.id };
 }
 
 export interface PlaygroundResult {
@@ -96,7 +97,7 @@ export interface PlaygroundResult {
 }
 
 export async function runPlayground(ctx: ReinsContext, raw: unknown, opts: { fooled?: boolean; visitor?: string } = {}): Promise<PlaygroundResult> {
-  const key = await ensureAgent(ctx);
+  const { key } = await ensureAgent(ctx);
   const agent = await authenticateAgent(ctx, `Bearer ${key}`);
   const run: ReinsContext = {
     ...ctx,
@@ -127,15 +128,45 @@ export async function resetPlayground(ctx: ReinsContext): Promise<{ removed_requ
   const removed = rows.filter((r) => ids.includes(r.agentId)).length;
   await purgeAgents(ctx.db, ids);
   keys.delete(ctx.db);
+  revokeDemoKeys(ctx.db, ids);
   return { removed_requests: removed };
 }
 
+/** The hosted MCP endpoint that belongs to a hosted web URL (reins-web.onrender.com -> reins-mcp.onrender.com/mcp); null on a local instance. */
+export function hostedMcpUrl(apiUrl: string): string | null {
+  try {
+    const u = new URL(apiUrl);
+    if (!/^reins-web[\w-]*\.onrender\.com$/.test(u.hostname)) return null;
+    return `https://${u.hostname.replace(/^reins-web/, "reins-mcp")}/mcp`;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * "Connect your agent" card: the demo key of the Playground Agent (demo instances only, throwaway data), the API base URL and the
- * ready-made MCP config. Real agents get their own key on the Agents screen; this one only exists so a judge can paste and run.
+ * "Connect your agent" card (demo instances only, throwaway data): a per-visitor demo key (demoKeys.ts) for the
+ * Playground Agent, the API base URL and ready-made MCP configs. The key has its own playground scope, so the velocity
+ * rule (3 requests / 10 min) counts each visitor separately and stays fully in force for that visitor. It expires
+ * after 24 hours. On the hosted instance `mcp_config` is the Streamable HTTP config (plus a `claude mcp add` command);
+ * the stdio config with its placeholder path is `mcp_config_local` ("run it locally"). Locally `mcp_config` is stdio.
  */
-export async function playgroundConnect(ctx: ReinsContext) {
-  const api_key = await ensureAgent(ctx);
+export async function playgroundConnect(ctx: ReinsContext, visitor: string) {
+  if (!isPlaygroundVisitor(visitor)) throw new Error("invalid playground visitor id");
+  const { id } = await ensureAgent(ctx);
+  const demo = issueDemoKey(ctx.db, id, visitor, ctx.now());
   const api_url = ctx.config.apiBaseUrl ?? ctx.config.publicBaseUrl;
-  return { agent: PLAYGROUND_AGENT, api_key, api_url, mcp_config: mcpSnippet(api_url, api_key) };
+  const mcp_url = hostedMcpUrl(api_url);
+  const local = mcpSnippet(api_url, demo.key);
+  const http = mcp_url ? { mcpServers: { reins: { type: "http", url: mcp_url, headers: { Authorization: `Bearer ${demo.key}` } } } } : null;
+  return {
+    agent: PLAYGROUND_AGENT,
+    api_key: demo.key,
+    expires_at: new Date(demo.expiresAt).toISOString(),
+    api_url,
+    transport: http ? ("http" as const) : ("stdio" as const),
+    mcp_url,
+    claude_code_command: mcp_url ? `claude mcp add --transport http reins ${mcp_url} --header "Authorization: Bearer ${demo.key}"` : null,
+    mcp_config: http ?? local,
+    mcp_config_local: local,
+  };
 }

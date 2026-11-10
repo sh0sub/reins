@@ -122,13 +122,13 @@ describe("/try verdict line and folded rules", () => {
   it("blocked by three hard rules while Claude said approve", () => {
     const rules = [...basics, fail("per_tx_cap"), fail("monthly_limit"), fail("allowlist"), pass("merchant_total")];
     const v = verdictLine({ status: "denied", llm: { decision: "AUTO_APPROVE", actor: "claude" }, rules, auditor: "configured" });
-    expect(`${v.head} — ${v.text}`).toBe("Blocked — 3 hard rules failed; Claude said approve");
+    expect(`${v.head} — ${v.text}`).toBe("Blocked — 3 hard rules failed, so code denied it; Claude said approve (advisory only, it cannot override a rule)");
     expect(v.tone).toBe("bad");
   });
 
   it("fooled auditor, demo auditor, paid and waiting read in words, never enums", () => {
     const rules = [...basics, pass("per_tx_cap")];
-    expect(verdictLine({ status: "denied", llm: { decision: "ASK_HUMAN", actor: "fooled" }, rules: [fail("per_tx_cap")], auditor: "fooled" }).text).toBe("1 hard rule failed; the fooled auditor said approve");
+    expect(verdictLine({ status: "denied", llm: { decision: "ASK_HUMAN", actor: "fooled" }, rules: [fail("per_tx_cap")], auditor: "fooled" }).text).toBe("1 hard rule failed, so code denied it; the fooled auditor said approve (advisory only, it cannot override a rule)");
     expect(verdictLine({ status: "paid", llm: { decision: "AUTO_APPROVE", actor: "mock" }, rules, auditor: "configured" })).toMatchObject({ tone: "ok", head: "Paid", text: "all 9 checks passed; the demo auditor said approve" });
     expect(verdictLine({ status: "pending_human", llm: { decision: "ASK_HUMAN", actor: "mock" }, rules, auditor: "configured" })).toMatchObject({ head: "Needs you", text: "all 9 checks passed; the demo auditor said ask a person" });
     expect(verdictLine({ status: "denied", llm: null, rules: [fail("agent_paused")], auditor: "configured" }).text).toBe("1 hard rule failed; auditor not called");

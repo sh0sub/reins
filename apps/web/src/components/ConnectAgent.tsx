@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { hostedMcpUrl } from "@/lib/shell";
 
+/** GET /api/try/connect (packages/core playgroundConnect): a per-visitor demo key and the configs that use it. */
 interface Connect {
   agent: string;
   api_key: string;
+  expires_at: string;
   api_url: string;
+  transport: "http" | "stdio";
+  mcp_url: string | null;
+  claude_code_command: string | null;
   mcp_config: unknown;
+  mcp_config_local: unknown;
 }
 
 /** One copy button per block; a failed clipboard write says so instead of staying silent. */
@@ -38,8 +43,9 @@ function Copy({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * "Connect your agent" (demo instances only), collapsed by default so /try stays short. One paste first (curl), then the Streamable HTTP
- * MCP config when a hosted MCP server exists, and the stdio config with its placeholder path under "Run it locally".
+ * "Connect your agent" (demo instances only), collapsed by default so /try stays short. On the hosted instance the Streamable HTTP MCP
+ * config comes first (Claude Code command + JSON), then curl; the stdio config with its placeholder path is under "Run it locally".
+ * The key is this visitor's own (24 h), so other judges' calls never count against its velocity window.
  */
 export function ConnectAgent() {
   const [info, setInfo] = useState<Connect | null>(null);
@@ -48,9 +54,10 @@ export function ConnectAgent() {
     api<Connect>("/api/try/connect").then(setInfo).catch((e: Error) => setError(e.message));
   }, []);
   if (error) return null; // not a demo instance: real agents get their own key on the Agents screen
-  const stdio = info ? JSON.stringify(info.mcp_config, null, 2) : "Loading the demo key…";
-  const mcpUrl = info ? hostedMcpUrl(info.api_url) : null;
-  const http = info && mcpUrl ? JSON.stringify({ mcpServers: { reins: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${info.api_key}` } } } }, null, 2) : null;
+  const stdio = info ? JSON.stringify(info.mcp_config_local, null, 2) : "Loading the demo key…";
+  const mcpUrl = info?.mcp_url ?? null;
+  const http = info?.transport === "http" ? JSON.stringify(info.mcp_config, null, 2) : null;
+  const cli = info?.claude_code_command ?? null;
   const curl = info
     ? `curl -s ${info.api_url}/api/requests \\\n  -H "Authorization: Bearer ${info.api_key}" -H "Content-Type: application/json" \\\n  -d '{"merchant":"namecheap.com","amount":"12.98","items":"Domain, 1 year","reason":"Landing page"}'`
     : "";
@@ -60,7 +67,7 @@ export function ConnectAgent() {
         <h2 id="connect-h" className="h-card">
           Connect your own agent
         </h2>
-        <span className="caption">one paste, demo key</span>
+        <span className="caption">one paste, your own demo key</span>
       </summary>
       <div className="stack">
         <p className="muted">
@@ -69,16 +76,18 @@ export function ConnectAgent() {
         <p className="row connect-tags" aria-label="About the key in these snippets">
           <span className="status status-warn">Demo key</span>
           <span className="caption">
-            Every Reins key starts with <code>rk_live_</code>, so this one looks live. It is not: it belongs to the throwaway Playground Agent, moves no money and dies with the demo.
+            This <code>rk_demo_</code> key is yours alone: it belongs to the throwaway Playground Agent, only your own requests count against its rules (velocity included), it moves no real money and expires after 24 hours.
           </span>
         </p>
-        <div className="stack-s">
-          <div className="row between">
-            <b>Paste this in a terminal</b>
-            {info && <Copy text={curl} label="Copy curl" />}
+        {cli && (
+          <div className="stack-s">
+            <div className="row between">
+              <b>Claude Code (hosted MCP)</b>
+              <Copy text={cli} label="Copy command" />
+            </div>
+            <pre className="mono try-code connect-pre" tabIndex={0} aria-label="claude mcp add command with your demo key">{cli}</pre>
           </div>
-          <pre className="mono try-code connect-pre" tabIndex={0} aria-label="curl command with the demo key">{curl || "…"}</pre>
-        </div>
+        )}
         {http && (
           <div className="stack-s">
             <div className="row between">
@@ -91,6 +100,13 @@ export function ConnectAgent() {
             <pre className="mono try-code connect-pre" tabIndex={0} aria-label="Streamable HTTP MCP config with the demo key">{http}</pre>
           </div>
         )}
+        <div className="stack-s">
+          <div className="row between">
+            <b>{http ? "Or call the API with curl" : "Paste this in a terminal"}</b>
+            {info && <Copy text={curl} label="Copy curl" />}
+          </div>
+          <pre className="mono try-code connect-pre" tabIndex={0} aria-label="curl command with the demo key">{curl || "…"}</pre>
+        </div>
         <details className="fold">
           <summary>
             <span>Run it locally (stdio)</span>

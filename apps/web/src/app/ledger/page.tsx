@@ -8,7 +8,8 @@ import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { bucketTotal, isUnknownRequest, outcomeBucket, reconcileBanner, resolveRequestId, usdAmount, type BannerTone, type ReconcileResponse } from "@/lib/format";
-import { agentsKpi, type ShellAgent } from "@/lib/shell";
+import { agentsKpi, sidebarAgents, type ShellAgent } from "@/lib/shell";
+import { useIncludePlayground } from "@/components/ShellData";
 import { RequestDrawer } from "@/components/RequestDrawer";
 import { LedgerSkeleton } from "./LedgerSkeleton";
 
@@ -52,6 +53,9 @@ function LedgerScreen() {
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [roster, setRoster] = useState<ShellAgent[] | null>(null);
+  // same agents as the sidebar: the /try Playground Agent only counts while the playground toggle is on
+  const includePlayground = useIncludePlayground();
+  const agentKpi = useMemo(() => (roster ? agentsKpi(sidebarAgents(roster, includePlayground)) : null), [roster, includePlayground]);
   const startView = VIEWS.find((v) => v.id === params.get("view"));
   const [agent, setAgent] = useState<string>(() => params.get("agent") ?? "all");
   // month to date like the overview; a deep link to one request (?r=) opens all time so the row is never filtered out
@@ -250,8 +254,8 @@ function LedgerScreen() {
               </div>
               <div className="panel panel-tight stack-s">
                 <span className="caption">Agents</span>
-                <span className="metric">{roster ? agentsKpi(roster).total : "–"}</span>
-                <span className="caption">{roster ? agentsKpi(roster).line : "Loading…"}</span>
+                <span className="metric">{agentKpi ? agentKpi.total : "–"}</span>
+                <span className="caption">{agentKpi ? agentKpi.line : "Loading…"}</span>
               </div>
           </div>
 

@@ -31,7 +31,8 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 /**
  * One line at the top of the Decision panel, e.g. "Blocked — 3 hard rules failed; Claude said approve".
- * With the fooled auditor the line reports what it said (approve), even if code clamped the stored answer.
+ * With the fooled auditor the line reports what it said (approve), even if code clamped the stored answer. On a request the
+ * hard rules denied, the auditor's answer is marked advisory: it could not change the outcome.
  */
 export function verdictLine({ status, llm, rules, auditor, paypal, orderId }: VerdictInput): { tone: "ok" | "warn" | "bad" | "info"; head: string; text: string } {
   const failed = rules.filter((r) => !r.ok).length;
@@ -42,7 +43,8 @@ export function verdictLine({ status, llm, rules, auditor, paypal, orderId }: Ve
     case "paid":
       return { tone: "ok", head: "Paid", text: `${checks}; ${said}` };
     case "denied":
-      if (failed) return { tone: "bad", head: "Blocked", text: `${plural(failed, "hard rule")} failed; ${said}` };
+      // the hard rules decide first; an auditor that still ran on a denied request is advisory only and cannot undo the denial
+      if (failed) return { tone: "bad", head: "Blocked", text: llm ? `${plural(failed, "hard rule")} failed, so code denied it; ${said} (advisory only, it cannot override a rule)` : `${plural(failed, "hard rule")} failed; ${said}` };
       return { tone: "bad", head: "Blocked", text: llm ? said1 : "denied" };
     case "pending_human":
       return { tone: "warn", head: "Needs you", text: `${checks}; ${said}` };

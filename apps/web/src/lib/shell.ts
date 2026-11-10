@@ -114,14 +114,3 @@ export function topbarStatus(status: "connecting" | "live" | "reconnecting" | "o
   if (paypalEnv === "live") return { label: "PayPal Live", dot: "dot dot-ok", title: "Real PayPal. Live updates are on." };
   return { label: "Live", dot: "dot dot-ok" };
 }
-
-/** The hosted MCP endpoint that belongs to a hosted web URL (reins-web.onrender.com -> reins-mcp.onrender.com/mcp); null on a local instance. */
-export function hostedMcpUrl(apiUrl: string): string | null {
-  try {
-    const u = new URL(apiUrl);
-    if (!/^reins-web[\w-]*\.onrender\.com$/.test(u.hostname)) return null;
-    return `https://${u.hostname.replace(/^reins-web/, "reins-mcp")}/mcp`;
-  } catch {
-    return null;
-  }
-}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PLAYGROUND_AGENT } from "@reins/core";
+import { PLAYGROUND_AGENT, hostedMcpUrl } from "@reins/core";
 import config from "../next.config.ts";
-import { PLAYGROUND_AGENT_NAME, hostedMcpUrl, agentsKpi, capPct, pendingCount, playgroundCaption, searchPalette, sidebarAgents, withPlayground, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
+import { PLAYGROUND_AGENT_NAME, agentsKpi, capPct, pendingCount, playgroundCaption, searchPalette, sidebarAgents, withPlayground, type ShellAgent, type ShellRequest } from "../src/lib/shell.ts";
 import { isUnknownRequest, linkedRequest, resolveRequestId, showKo } from "../src/lib/format.ts";
 
 const agents: ShellAgent[] = [
@@ -90,6 +90,11 @@ describe("playground rows stay out of badges and the sidebar unless the toggle i
   it("sidebar agents hide the Playground Agent and revoked agents, unless the toggle is on", () => {
     expect(sidebarAgents(withPg, false).map((a) => a.name)).toEqual(["Claude Code – DevOps", "Research Scout", "Desk Restock Bot"]);
     expect(sidebarAgents(withPg, true).map((a) => a.name)).toContain(PLAYGROUND_AGENT_NAME);
+  });
+  it("the ledger Agents KPI counts the same agents as the sidebar (was 4 vs 3 once /try had run)", () => {
+    expect(agentsKpi(sidebarAgents(withPg, false)).total).toBe(sidebarAgents(withPg, false).length);
+    expect(agentsKpi(sidebarAgents(withPg, false)).total).toBe(3);
+    expect(agentsKpi(sidebarAgents(withPg, true)).total).toBe(4);
   });
   it("in-app links keep ?playground=1 while it is on", () => {
     expect(withPlayground("/inbox", true)).toBe("/inbox?playground=1");

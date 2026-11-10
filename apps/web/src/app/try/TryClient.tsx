@@ -433,7 +433,11 @@ function ResultPanel({
             <span className="status">{result.auditor === "fooled" ? "simulated fooled auditor" : llm.actor === "mock" ? "demo auditor (offline stand-in)" : "Claude"}</span>{" "}
             said <b>{result.auditor === "fooled" ? "approve" : auditorWord(llm.decision)}</b>
             {llm.risk != null ? ` · risk ${llm.risk}/10` : ""}
-            {result.auditor === "fooled" && llm.decision !== "AUTO_APPROVE" && <span className="muted"> · code clamped the answer to {auditorWord(llm.decision)}</span>}{" "}
+            {advisory ? (
+              <span className="muted"> · ignored: a hard rule had already denied this request, and no auditor answer can override a rule</span>
+            ) : (
+              result.auditor === "fooled" && llm.decision !== "AUTO_APPROVE" && <span className="muted"> · code capped the answer at {auditorWord(llm.decision)}</span>
+            )}{" "}
             {result.auditor !== "fooled" && <span className="muted">{llm.reasonEn}</span>}
           </p>
         ) : (
