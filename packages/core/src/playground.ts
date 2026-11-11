@@ -149,6 +149,8 @@ export function hostedMcpUrl(apiUrl: string): string | null {
  * rule (3 requests / 10 min) counts each visitor separately and stays fully in force for that visitor. It expires
  * after 24 hours. On the hosted instance `mcp_config` is the Streamable HTTP config (plus a `claude mcp add` command);
  * the stdio config with its placeholder path is `mcp_config_local` ("run it locally"). Locally `mcp_config` is stdio.
+ * On the public demo `claude_code_command_keyless` comes first: no key at all, reins-mcp gives every MCP session its
+ * own demo key with the same per-visitor scope.
  */
 export async function playgroundConnect(ctx: ReinsContext, visitor: string) {
   if (!isPlaygroundVisitor(visitor)) throw new Error("invalid playground visitor id");
@@ -157,6 +159,7 @@ export async function playgroundConnect(ctx: ReinsContext, visitor: string) {
   const api_url = ctx.config.apiBaseUrl ?? ctx.config.publicBaseUrl;
   const mcp_url = hostedMcpUrl(api_url);
   const local = mcpSnippet(api_url, demo.key);
+  const keyless = process.env.REINS_PUBLIC_DEMO === "1";
   const http = mcp_url ? { mcpServers: { reins: { type: "http", url: mcp_url, headers: { Authorization: `Bearer ${demo.key}` } } } } : null;
   return {
     agent: PLAYGROUND_AGENT,
@@ -165,6 +168,8 @@ export async function playgroundConnect(ctx: ReinsContext, visitor: string) {
     api_url,
     transport: http ? ("http" as const) : ("stdio" as const),
     mcp_url,
+    // public demo: reins-mcp opens a session with its own demo key for a client that sends no key (apps/mcp/src/http.ts)
+    claude_code_command_keyless: mcp_url && keyless ? `claude mcp add --transport http reins ${mcp_url}` : null,
     claude_code_command: mcp_url ? `claude mcp add --transport http reins ${mcp_url} --header "Authorization: Bearer ${demo.key}"` : null,
     mcp_config: http ?? local,
     mcp_config_local: local,

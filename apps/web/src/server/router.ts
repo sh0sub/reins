@@ -445,6 +445,12 @@ export interface RouterOptions {
   publicBaseUrl?: string;
   /** M1 per-IP buckets (tests inject their own). */
   rateLimiter?: RateLimiter;
+  /**
+   * Shared with reins-mcp (default REINS_MCP_MINT_SECRET): its keyless demo sessions mint their demo key through
+   * /api/try/connect with this secret and skip the per-IP "connect" bucket (every session would otherwise share the
+   * MCP server's address; reins-mcp applies its own per-client limit). Unset = no exemption.
+   */
+  mcpMintSecret?: string;
 }
 
 export function createRouter(getCtx: () => Promise<ReinsContext>, opts: RouterOptions = {}) {
@@ -463,7 +469,9 @@ export function createRouter(getCtx: () => Promise<ReinsContext>, opts: RouterOp
     const match = route.pattern.exec(url.pathname)!;
     const params = Object.fromEntries(route.keys.map((k, i) => [k, match[i + 1]!]));
     try {
-      if (route.limit) {
+      const mintSecret = opts.mcpMintSecret ?? process.env.REINS_MCP_MINT_SECRET;
+      const minting = route.limit === "connect" && !!mintSecret && safeEqual(req.headers.get("x-reins-mint-secret") ?? "", mintSecret);
+      if (route.limit && !minting) {
         const wait = limiter.take(route.limit, clientIp(req));
         if (wait > 0) return new Response(JSON.stringify({ error: "rate_limited", message: "Too many requests. Try again in a few seconds." }), { status: 429, headers: { "content-type": "application/json; charset=utf-8", "retry-after": String(Math.ceil(wait / 1000)), "cache-control": "no-store" } });
       }

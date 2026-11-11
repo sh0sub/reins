@@ -186,10 +186,14 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 0. **Fastest:** open `/try` (live) or run `pnpm judge` locally. Four presets ($12.98 domain: paid, $59 report: waits for you, $450 injected order: denied with the failing hard-rule table, and "Five $29 orders" to one merchant: three paid, the fourth and fifth denied by the same-merchant total) plus a free-form request, calling the same code path as the MCP `request_purchase`. Tick "Simulate a fooled auditor (always AUTO_APPROVE)": the $450 order is still denied by code. A three-step Judge tour on the page walks these in order and ends with links to the ledger row and audit trail. Payments in this path are simulated and labelled `SIM-…`; `/proof` shows the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) behind them, labelled as a recorded run, not live. Playground requests stay out of the Overview numbers by default, so they match the video.
 1. Open the web app. `/overview` shows "This month $117.97 of $410" across 3 seeded agents on a fresh seed; the video shows $176.97 of $410 after approving the $59 Statista request.
 2. `/setup` then **Use demo merchant (sandbox)** connects the server's sandbox merchant, so the full flow works without your own PayPal keys.
-3. `/agents` then create an agent and copy its `rk_live_...` key (shown once). Seeded `rk_demo_` keys are not usable.
-4. Connect your own Claude. Claude Code:
+3. Connect your own Claude, no key needed. Claude Code:
    ```bash
-   claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp --header "Authorization: Bearer rk_live_..."
+   claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
+   ```
+   Each MCP session gets its own throwaway demo key for the Playground Agent, so your velocity window and ledger rows never mix with another judge's.
+4. Second option, with a key: copy your own `rk_demo_` key from "Connect your own agent" on `/try` (or an `rk_live_...` key on a deployment you run):
+   ```bash
+   claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp --header "Authorization: Bearer rk_demo_..."
    ```
    Claude Desktop / any stdio client (clone the repo, `pnpm install`):
    ```json

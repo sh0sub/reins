@@ -57,6 +57,9 @@ services:
       # Protects POST /api/cron/reconcile (run it by hand; see the header)
       - key: REINS_CRON_SECRET
         generateValue: true
+      # Shared with reins-mcp: its keyless demo sessions mint per-session demo keys without the per-IP connect limit
+      - key: REINS_MCP_MINT_SECRET
+        generateValue: true
       # ---- secrets (prompted once at Blueprint creation) ----
       - key: PAYPAL_CLIENT_ID
         sync: false
@@ -93,3 +96,14 @@ services:
       # Public URL of reins-web. If Render gives the service a different subdomain, change it in the Environment tab.
       - key: REINS_API_URL
         value: https://reins-web.onrender.com
+      # Keyless demo: `claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp` with no key. Every MCP
+      # session gets its own Playground Agent demo key (own velocity scope); per-IP and total session limits in http.ts.
+      - key: REINS_PUBLIC_DEMO
+        value: "1"
+      - key: REINS_MCP_KEYLESS_DEMO
+        value: "1"
+      - key: REINS_MCP_MINT_SECRET
+        fromService:
+          type: web
+          name: reins-web
+          envVarKey: REINS_MCP_MINT_SECRET

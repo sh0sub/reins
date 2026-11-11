@@ -11,6 +11,8 @@ interface Connect {
   api_url: string;
   transport: "http" | "stdio";
   mcp_url: string | null;
+  /** Public demo: no key, reins-mcp gives each MCP session its own demo key. */
+  claude_code_command_keyless?: string | null;
   claude_code_command: string | null;
   mcp_config: unknown;
   mcp_config_local: unknown;
@@ -44,7 +46,7 @@ function Copy({ text, label }: { text: string; label: string }) {
 
 /**
  * "Connect your agent" (demo instances only), collapsed by default so /try stays short. On the hosted instance the Streamable HTTP MCP
- * config comes first (Claude Code command + JSON), then curl; the stdio config with its placeholder path is under "Run it locally".
+ * config comes first (the keyless Claude Code one-liner on the public demo, then the keyed command + JSON), then curl; the stdio config with its placeholder path is under "Run it locally".
  * The key is this visitor's own (24 h), so other judges' calls never count against its velocity window.
  */
 export function ConnectAgent() {
@@ -58,6 +60,7 @@ export function ConnectAgent() {
   const mcpUrl = info?.mcp_url ?? null;
   const http = info?.transport === "http" ? JSON.stringify(info.mcp_config, null, 2) : null;
   const cli = info?.claude_code_command ?? null;
+  const keyless = info?.claude_code_command_keyless ?? null;
   const curl = info
     ? `curl -s ${info.api_url}/api/requests \\\n  -H "Authorization: Bearer ${info.api_key}" -H "Content-Type: application/json" \\\n  -d '{"merchant":"namecheap.com","amount":"12.98","items":"Domain, 1 year","reason":"Landing page"}'`
     : "";
@@ -79,10 +82,20 @@ export function ConnectAgent() {
             This <code>rk_demo_</code> key is yours alone: it belongs to the throwaway Playground Agent, only your own requests count against its rules (velocity included), it moves no real money and expires after 24 hours.
           </span>
         </p>
+        {keyless && (
+          <div className="stack-s">
+            <div className="row between">
+              <b>Claude Code, no key (hosted MCP)</b>
+              <Copy text={keyless} label="Copy one-liner" />
+            </div>
+            <p className="caption">Each MCP session gets its own demo key automatically, so your calls never mix with another judge&apos;s.</p>
+            <pre className="mono try-code connect-pre" tabIndex={0} aria-label="claude mcp add command without a key">{keyless}</pre>
+          </div>
+        )}
         {cli && (
           <div className="stack-s">
             <div className="row between">
-              <b>Claude Code (hosted MCP)</b>
+              <b>{keyless ? "Or with your demo key" : "Claude Code (hosted MCP)"}</b>
               <Copy text={cli} label="Copy command" />
             </div>
             <pre className="mono try-code connect-pre" tabIndex={0} aria-label="claude mcp add command with your demo key">{cli}</pre>

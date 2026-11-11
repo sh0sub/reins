@@ -26,16 +26,31 @@ export class ReinsApi {
   private readonly base: string;
   private readonly fetchImpl: FetchLike;
 
+  /**
+   * `renewKey` (keyless demo sessions only): called once when the API answers 401 invalid/expired key, e.g. after the
+   * free web instance restarted and forgot its in-memory demo keys. It returns a fresh key, and the call is retried.
+   */
   constructor(
     baseUrl: string,
-    private readonly apiKey: string,
+    private apiKey: string,
     fetchImpl?: FetchLike,
+    private readonly renewKey?: () => Promise<string>,
   ) {
     this.base = baseUrl.replace(/\/$/, "");
     this.fetchImpl = fetchImpl ?? ((i, init) => fetch(i, init));
   }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    try {
+      return await this.send<T>(method, path, body);
+    } catch (err) {
+      if (!this.renewKey || !(err instanceof ReinsApiError) || err.status !== 401 || !["invalid_key", "expired_key"].includes(err.code)) throw err;
+      this.apiKey = await this.renewKey();
+      return this.send<T>(method, path, body);
+    }
+  }
+
+  private async send<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.fetchImpl(`${this.base}${path}`, {
       method,
       headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json", accept: "application/json" },

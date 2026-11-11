@@ -26,6 +26,14 @@ git clone https://github.com/sh0sub/reins && cd reins && pnpm install
 pnpm judge        # throwaway database, simulated PayPal, opens http://localhost:3100/try
 ```
 
+Or point Claude Code at the hosted demo, no clone and no key (free instances sleep: the first call can take about a minute):
+
+```bash
+claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
+```
+
+Every MCP session gets its own throwaway demo key for the Playground Agent, so your velocity window, requests and ledger rows never mix with another judge's (sessions are limited per client IP and close after 30 idle minutes). The key-based config (your own `rk_demo_` key from "Connect your own agent" on `/try`) is the second option.
+
 A shared PayPal credential would have paid the $450. Reins did not: send the $450 prompt-injected order and it is denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
 
 A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. A fourth preset, "Five $29 orders", splits one purchase at one merchant: three are paid, then the same-merchant 24-hour total passes the $100 per-purchase cap and the fourth and fifth are denied in code (3 unit tests and a playground test; subdomains of one site count together, different merchants do not, and orders you approved by hand do not count). Each `/try` visit is its own playground, so the tour gives these outcomes for every visitor. Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
@@ -106,7 +114,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 326 tests
+pnpm test                   # 344 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
@@ -121,7 +129,13 @@ export REINS_API_KEY=rk_live_...
 claude mcp list
 ```
 
-Claude Code against a hosted server (Streamable HTTP):
+Claude Code against the hosted public demo (Streamable HTTP, no key: each session gets its own demo key):
+
+```bash
+claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
+```
+
+With a key (any non-demo deployment requires one):
 
 ```bash
 claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp --header "Authorization: Bearer rk_live_..."
