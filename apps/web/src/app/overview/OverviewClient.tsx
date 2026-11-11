@@ -169,7 +169,7 @@ function Protected({ o }: { o: Overview }) {
           <Icon name="shield" className="ico" />
           Money protected
         </h2>
-        <span className="caption">{p.demo_data ? "Seeded sandbox demo data, not live traffic" : "Computed from your ledger"}</span>
+        <span className="caption">{p.demo_data ? "Demo data: a recorded real sandbox run (times shifted) plus what is sent on this demo" : "Computed from your ledger"}</span>
       </div>
       <dl className="protect-grid num">
         <div>

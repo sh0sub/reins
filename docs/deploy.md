@@ -14,7 +14,7 @@
 계획서(D11)에는 Postgres라고 적혀 있지만 SQLite(libsql 파일)를 `/tmp`에 두기로 했다.
 
 - 무료이고 만료되지 않는다. 따로 띄울 서비스도 없고, 코드도 로컬과 같은 경로를 탄다(`DATABASE_URL=file:/tmp/reins.db`).
-- 부팅할 때마다 `/tmp`가 비어 있어서 시드(`seed.ts --if-empty`)가 데모 상태(에이전트 3개, $117.97 / $410.00)를 새로 넣는다. 심사위원이 보는 데모는 항상 깨끗하게 시작한다.
+- 부팅할 때마다 `/tmp`가 비어 있어서 시드(`seed.ts --if-empty`)가 데모 상태(에이전트 3개, 녹화된 실제 샌드박스 실행 15건, $43.95 / $410.00)를 새로 넣는다. 심사위원이 보는 데모는 항상 깨끗하게 시작한다.
 - 대신 생기는 제약: 무료 인스턴스는 15분쯤 요청이 없으면 잠들고, 깨어나는 데 약 1분 걸린다. 잠들거나 재배포하면 `/tmp`가 지워져서 그동안 만든 에이전트·키·승인 기록이 사라진다. 녹화 데모나 라이브 심사 직전에는 요청을 한 번 보내 먼저 깨워 둔다(예: `curl -sS $WEB/api/health`). 에이전트와 키는 깨운 뒤에 만든다.
 
 ## 1. Render 계정과 Blueprint
@@ -23,7 +23,7 @@
 2. **New → Blueprint** → 저장소 선택 → 브랜치 `main`. Render가 `render.yaml`을 읽어서 무료 서비스 2개를 보여준다.
 3. `sync: false`인 변수들의 값을 묻는 화면이 나온다. 아래 표대로 넣는다. 지금 모르는 값(`PAYPAL_WEBHOOK_ID`, `REINS_API_KEY`)은 비워 두고 배포 뒤에 채운다. 이 화면은 처음 만들 때 한 번만 나온다. 나중에 바꿀 때는 각 서비스의 **Environment** 탭을 쓴다.
 4. **Apply**를 누른다. 유료 인스턴스는 없다(전부 Free 플랜, ₩0).
-5. 첫 배포가 끝나면 `reins-web`이 빈 DB에 데모 데이터를 한 번 넣는다(에이전트 3개, "This month $117.97 of $410.00"). 같은 부팅 안에서는 에이전트가 하나라도 있으면 다시 넣지 않는다(`seed.ts --if-empty`, `--force`는 절대 쓰지 않음).
+5. 첫 배포가 끝나면 `reins-web`이 빈 DB에 데모 데이터를 한 번 넣는다(에이전트 3개, 녹화 실행 15건, "This month $43.95 of $410.00"). 같은 부팅 안에서는 에이전트가 하나라도 있으면 다시 넣지 않는다(`seed.ts --if-empty`, `--force`는 절대 쓰지 않음).
 
 서비스 주소는 보통 `https://reins-web.onrender.com`, `https://reins-mcp.onrender.com`이다. 이름이 이미 쓰이고 있으면 Render가 `reins-web-xxxx`처럼 접미사를 붙이므로 대시보드에 나온 실제 주소를 쓴다. 앱은 `PUBLIC_BASE_URL`이 없으면 Render가 넣어 주는 `RENDER_EXTERNAL_URL`을 쓰기 때문에 주소를 직접 적을 필요는 없다.
 
@@ -37,13 +37,13 @@
 | `PAYPAL_CLIENT_SECRET` | 권장 | 같은 화면의 Secret |
 | `PAYPAL_WEBHOOK_ID` | 배포 뒤 | 3단계에서 웹훅을 등록하면 나오는 Webhook ID. 없으면 웹훅 서명 검증이 실패한다 |
 | `PAYPAL_SANDBOX_MERCHANT_EMAIL` | 선택 | 샌드박스 비즈니스 계정 이메일(developer.paypal.com → Testing Tools → Sandbox Accounts). Setup의 "Use demo merchant"에 표시된다 |
-| `TREASURY_PAYEE_EMAIL` | 선택 | Treasury 모드를 쓸 때 받는 쪽 샌드박스 계정 이메일 |
+| `TREASURY_PAYEE_EMAIL` | 필수(treasury 모드) | 받는 쪽 샌드박스 개인 계정 이메일. Render 대시보드에서 직접 입력한다(저장소에 쓰지 않음). 없으면 서버가 경고를 남기고 supervised로 동작한다(실패한 결제는 생기지 않음) |
 | `ANTHROPIC_API_KEY` | 권장 | console.anthropic.com → API Keys. 비우면 결정적 mock 심사기 |
 | `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` | 선택 | AG Grid Enterprise 키(체험판 키는 ag-grid.com 무료 신청). 비우면 공개 URL의 원장에 체험판 워터마크가 보인다. 빌드 때 읽으므로 넣은 뒤 재배포 |
 | `TELEGRAM_BOT_TOKEN` | 선택 | BotFather에서 받은 토큰. 비우면 텔레그램 없이 웹 승인함만 쓴다 |
 | `TELEGRAM_WEBHOOK_SECRET` | 텔레그램 쓸 때 | 직접 만든다: `openssl rand -hex 32`. 영문·숫자·`_`·`-`만 된다. 4단계 setWebhook에 같은 값을 넣는다 |
 
-`render.yaml`에 이미 들어 있어서 넣을 필요 없는 값: `DATABASE_URL=file:/tmp/reins.db`, `PAYPAL_ENV=sandbox`, `PAYPAL_PAYMENT_MODE=supervised`, `REINS_TIMEZONE=Asia/Seoul`, `REINS_QUIET_HOURS=off`(심사위원 시간대 때문에 공개 데모에서는 끔), `REINS_PUBLIC_DEMO=1`(방문자 PayPal 키 입력 차단, 데모 판매자만 연결), `REINS_APPROVAL_TTL_MINUTES=10080`(7일. 심사 기간 내내 시드된 승인 카드가 만료되지 않게), `TELEGRAM_BOT_USERNAME=ReinsApproveBot`(봇 이름이 다르면 Environment 탭에서 고친다), `NODE_VERSION=22`, `REINS_CRON_SECRET`(Render가 자동 생성. 크론과 공유하지 않고, 수동 reconcile 호출에만 쓴다. 값은 `reins-web` Environment 탭에서 본다).
+`render.yaml`에 이미 들어 있어서 넣을 필요 없는 값: `DATABASE_URL=file:/tmp/reins.db`, `PAYPAL_ENV=sandbox`, `PAYPAL_PAYMENT_MODE=treasury`(승인된 /try 요청이 구매자 로그인 없이 실제 샌드박스 Payouts로 지급되고, 앱이 payout 조회와 `PAYMENT.PAYOUTS-ITEM.*` 웹훅으로 정산한다. `TREASURY_PAYEE_EMAIL`이 필요하다), `REINS_TIMEZONE=Asia/Seoul`, `REINS_QUIET_HOURS=off`(심사위원 시간대 때문에 공개 데모에서는 끔), `REINS_PUBLIC_DEMO=1`(방문자 PayPal 키 입력 차단, 데모 판매자만 연결), `REINS_APPROVAL_TTL_MINUTES=10080`(7일. 심사 기간 내내 시드된 승인 카드가 만료되지 않게), `TELEGRAM_BOT_USERNAME=ReinsApproveBot`(봇 이름이 다르면 Environment 탭에서 고친다), `NODE_VERSION=22`, `REINS_CRON_SECRET`(Render가 자동 생성. 크론과 공유하지 않고, 수동 reconcile 호출에만 쓴다. 값은 `reins-web` Environment 탭에서 본다).
 
 `NODE_ENV`는 일부러 넣지 않았다. Render가 실행할 때만 `production`으로 설정한다. 빌드 때도 `production`이면 pnpm이 devDependencies(typescript, tsx)를 건너뛰어서 빌드와 시드가 깨진다.
 
@@ -59,6 +59,7 @@
    - `CHECKOUT.ORDER.APPROVED`
    - `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.DECLINED`
    - `PAYMENT.PAYOUTS-ITEM.SUCCEEDED`, `PAYMENT.PAYOUTS-ITEM.FAILED`, `PAYMENT.PAYOUTS-ITEM.BLOCKED`, `PAYMENT.PAYOUTS-ITEM.RETURNED`, `PAYMENT.PAYOUTS-ITEM.DENIED`, `PAYMENT.PAYOUTS-ITEM.UNCLAIMED`
+   - 이미 등록한 웹훅(`1RG081878V566513K`)에는 `PAYMENT.PAYOUTS-ITEM.DENIED`가 빠져 있다. 추가를 권장한다(없어도 payout 조회가 정산하므로 동작은 한다). `PAYOUTSBATCH.*` 이벤트는 필요 없다.
 4. 저장한 뒤 나온 **Webhook ID**를 `reins-web` → Environment → `PAYPAL_WEBHOOK_ID`에 넣고 저장한다(자동으로 재배포된다).
 
 ## 4. Telegram 웹훅 (봇을 쓸 때만)
@@ -83,7 +84,8 @@ WEB=https://reins-web.onrender.com     # 실제 주소로 바꾼다
 MCP=https://reins-mcp.onrender.com
 
 curl -sS $WEB/api/health                 # {"ok":true}  (DB 열기와 마이그레이션까지 확인됨. 잠든 뒤 첫 요청은 ~1분 걸린다)
-curl -sS $WEB/api/overview | head -c 300 # "totals":{"spent_cents":11797,"limit_cents":41000,"agents":3,...}
+curl -sS "$WEB/api/health?detail=1"      # payment_mode, treasury_payee_configured (true/false만 나온다. 값은 안 나옴)
+curl -sS $WEB/api/overview | head -c 300 # "totals":{"spent_cents":4395,"limit_cents":41000,"agents":3,...}
 curl -sS $MCP/health                     # ok
 
 # MCP tools/list: 배포 뒤 /agents에서 만든 에이전트 키 (rk_live_...)
@@ -99,15 +101,15 @@ curl -sS -o /dev/null -w "%{http_code}\n" -X POST $WEB/api/cron/reconcile   # 40
 그 밖에:
 
 - 브라우저로 `$WEB/overview`, `$WEB/setup`을 연다. Setup 1단계 **Use demo merchant (sandbox)** 를 누르면 서버의 샌드박스 자격증명으로 연결된다. 심사위원은 자기 PayPal 키 없이 전체 흐름을 볼 수 있다.
-- **공개 데모의 PayPal 표시** (PayPal 키가 있을 때): 부팅 시드가 워크스페이스를 `paypal_env=sandbox`로 연결한다(판매자 이메일은 `PAYPAL_SANDBOX_MERCHANT_EMAIL`, 없으면 데모 주소). 서버가 실제로 쓰는 클라이언트(`HttpPayPalClient`, 샌드박스)와 같게 사이드바·헤더는 **PayPal Sandbox**, `/api/try` 응답은 `"paypal":"sandbox"`. 키가 없거나 `PAYPAL_ENV=fake`면 지금처럼 **Simulated PayPal**(`pnpm judge`는 항상 fake). 시드된 이력은 그대로 `FAKE-…` id(화면에는 SIM-… + "simulated" 칩)이고 Overview에 "Seeded sandbox demo data" 문구가 남는다.
-- **/try 결과 (supervised)**: 승인된 요청은 실제 샌드박스 주문이 만들어지고 `awaiting_buyer`에서 멈춘다. 실패가 아니라 "Approved by Reins — real PayPal sandbox order … created. Buyer approval on PayPal is the last step"으로 보이고, 주문 id와 PayPal 샌드박스 승인 링크가 나온다. "Five $29 orders"는 3 approved, 2 denied(awaiting_buyer도 지출로 잡힘).
-- **Ledger "Reconcile now" (공개 데모 + 샌드박스)**: 창 안의 완료 결제가 모두 시드(`FAKE-`/`SIM-` id)면 Transaction Search를 부르지 않고 중립 안내만 보인다(mismatch 배너 없음, 아무 행도 안 바뀜). /try 주문을 PayPal에서 승인·캡처한 진짜 결제가 있으면 그것만 실제로 대사하고, 시드 행은 건너뛴다(배너에 "N seeded demo payments left as seeded"). 크론 `/api/cron/reconcile`도 실제 PayPal 워크스페이스에서는 시드 행을 건너뛴다.
+- **공개 데모의 PayPal 표시** (PayPal 키가 있을 때): 부팅 시드가 워크스페이스를 `paypal_env=sandbox`로 연결한다(판매자 이메일은 `PAYPAL_SANDBOX_MERCHANT_EMAIL`, 없으면 데모 주소). 서버가 실제로 쓰는 클라이언트(`HttpPayPalClient`, 샌드박스)와 같게 사이드바·헤더는 **PayPal Sandbox**, `/api/try` 응답은 `"paypal":"sandbox"`. 키가 없거나 `PAYPAL_ENV=fake`면 지금처럼 **Simulated PayPal**(`pnpm judge`는 항상 fake). 시드된 이력은 녹화된 실제 샌드박스 실행이다(실제 batch·transaction id, 모든 행에 "recorded run" 칩과 툴팁에 실제 녹화 시각·이동값). `pnpm judge`·`PAYPAL_ENV=fake`에서도 시드 원장은 같지만 새 요청만 가짜 PayPal(SIM id)과 오프라인 심사기를 쓴다.
+- **/try 결과 (treasury)**: 승인된 요청은 실제 샌드박스 payout으로 지급된다(구매자 로그인 없음). PayPal이 UNCLAIMED로 보고하면 "Payout unclaimed"로 보이고 실패가 아니라 확정(committed) 상태다. `TREASURY_PAYEE_EMAIL`이 없어 supervised로 떨어졌다면: 승인된 요청은 실제 샌드박스 주문이 만들어지고 `awaiting_buyer`에서 멈춘다. 실패가 아니라 "Approved by Reins — real PayPal sandbox order … created. Buyer approval on PayPal is the last step"으로 보이고, 주문 id와 PayPal 샌드박스 승인 링크가 나온다. "Five $29 orders"는 하드 룰상 앞 3건 통과, 4·5번째는 같은 판매자 합계로 거절된다. 호스팅의 실제 Claude 심사기가 앞 3건 중 일부를 분할 주문으로 보고 직접 거절하거나 사람 승인으로 올릴 수 있다.
+- **Ledger "Reconcile now" (공개 데모 + 샌드박스)**: 창 안의 완료 결제가 모두 시드(녹화 실행 행 또는 `SIM-` id)면 Transaction Search를 부르지 않고 중립 안내만 보인다(mismatch 배너 없음, 아무 행도 안 바뀜). /try 주문을 PayPal에서 승인·캡처한 진짜 결제가 있으면 그것만 실제로 대사하고, 녹화·시드 행은 건너뛴다(배너에 "N seeded demo payments left as seeded"). 크론 `/api/cron/reconcile`도 실제 PayPal 워크스페이스에서는 시드 행을 건너뛴다.
 - 아래 [수동 실행](#수동-실행)의 두 명령을 한 번씩 돌려 본다. devops는 "Infra cost check: ..."를, reconcile은 `{"window":...,"checked":...}`(건수만)를 찍는다.
 - Claude Code에서 HTTP MCP로 붙이기: `claude mcp add --transport http reins $MCP/mcp --header "Authorization: Bearer rk_live_..."`.
 
 ## 운영 메모
 
-- **데모 데이터 다시 넣기**: 시드는 실행한 달 기준으로 "이번 달" 숫자를 만든다. 달이 바뀌거나 대기 승인 항목이 만료되면(30분) 데모 녹화 직전에 다시 넣는다. `reins-web` → **Shell**에서 실행: `cd apps/web && node --import tsx ../../scripts/seed.ts --db "$DATABASE_URL"`. 직접 만든 에이전트 같은 다른 데이터가 있으면 거부하는데, 그때는 끝에 `--force`를 붙인다(시드 행만 바뀐다).
+- **데모 데이터 다시 넣기**: 시드는 녹화된 실행(`scripts/demo/fixtures/real-sandbox-run.json`)을 재생하며, 시각은 녹화 종료가 부팅 약 3분 전이 되도록 한 번에 이동된다. 달이 바뀌거나 대기 승인 항목이 만료되면(30분) 데모 녹화 직전에 다시 넣는다. `reins-web` → **Shell**에서 실행: `cd apps/web && node --import tsx ../../scripts/seed.ts --db "$DATABASE_URL"`. 직접 만든 에이전트 같은 다른 데이터가 있으면 거부하는데, 그때는 끝에 `--force`를 붙인다(시드 행만 바뀐다).
 - **처음부터 다시**: `reins-web`에서 Manual Deploy를 하거나 15분 뒤 잠들 때까지 기다린다. 어느 쪽이든 `/tmp`가 비워지고 다음 부팅 때 데모 상태로 다시 시드된다.
 - **로그**: 비밀값·이메일은 찍지 않는다. reconcile은 건수만, Telegram 로그는 `REINS_TELEGRAM_LOG=1`일 때 카드 첫 줄만 남긴다.
 - 서비스 2개는 공개 URL로 통신하므로 region이 같을 필요는 없지만, 지연을 줄이려고 둘 다 `oregon`에 둔다.

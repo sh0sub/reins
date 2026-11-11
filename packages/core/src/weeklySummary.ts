@@ -17,7 +17,8 @@ import type { ReinsContext } from "./service.ts";
  */
 
 const DAY = 86_400_000;
-const INJECTION = /prompt injection|injected|instruction from (an )?external/i;
+// auditor wording for a purchase an outside page asked for (Claude: "a web page told it to buy without asking")
+const INJECTION = /prompt injection|injected|instruction from (an )?external|(web )?page (told|instructed)|instructed by (the |a )?(web )?page/i;
 
 /** Monday 00:00 UTC of the ISO week containing `now`. */
 export function isoWeekStartUtc(now: number): number {

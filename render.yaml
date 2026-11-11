@@ -3,8 +3,9 @@
 #
 # Free plan, no cost:
 # reins-web  Next.js dashboard + REST API + PayPal/Telegram webhooks. SQLite (libsql) in /tmp: free instances have no
-#            disk, so every boot starts from the seeded demo state (3 agents, $117.97 of $410.00). That is what a
-#            judge-facing demo wants anyway. Free instances sleep after ~15 min idle; the first request wakes them (~1 min).
+#            disk, so every boot starts from the seeded demo state: 3 agents and the ledger of a recorded real sandbox
+#            run (scripts/demo/fixtures/real-sandbox-run.json, times shifted to the boot). That is what a judge-facing
+#            demo wants anyway. Free instances sleep after ~15 min idle; the first request wakes them (~1 min).
 # reins-mcp  MCP Streamable HTTP server (POST /mcp); calls reins-web over its public URL (free instances can't use the
 #            private network).
 # Not included (paid on Render): the daily DevOps demo agent and nightly reconcile cron jobs. Run them by hand instead:
@@ -22,7 +23,7 @@ services:
     region: oregon
     plan: free
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @reins/web build
-    # Each boot seeds the demo data (3 agents, $117.97 of $410.00) because /tmp starts empty; --if-empty never overwrites.
+    # Each boot seeds the demo data (3 agents + the recorded sandbox run) because /tmp starts empty; --if-empty never overwrites.
     startCommand: cd apps/web && node --import tsx ../../scripts/seed.ts --if-empty --db "$DATABASE_URL" && exec node node_modules/next/dist/bin/next start -H 0.0.0.0
     healthCheckPath: /api/health
     autoDeployTrigger: commit
@@ -34,8 +35,10 @@ services:
       # PUBLIC_BASE_URL is optional: the app falls back to RENDER_EXTERNAL_URL (https://reins-web.onrender.com)
       - key: PAYPAL_ENV
         value: sandbox
+      # Treasury: approved requests pay a sandbox payee with the Payouts API, so /try completes without a buyer login.
+      # Needs TREASURY_PAYEE_EMAIL (secret below); without it the server warns and uses supervised checkout instead.
       - key: PAYPAL_PAYMENT_MODE
-        value: supervised
+        value: treasury
       - key: PAYPAL_VAULT_STORED_CREDENTIAL
         value: "0"
       - key: REINS_TIMEZONE
@@ -69,7 +72,7 @@ services:
         sync: false
       - key: PAYPAL_SANDBOX_MERCHANT_EMAIL
         sync: false
-      - key: TREASURY_PAYEE_EMAIL
+      - key: TREASURY_PAYEE_EMAIL # a sandbox personal account's address (payee of treasury payouts); set by hand in the dashboard
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false

@@ -99,10 +99,14 @@ export async function createContextFromEnv(rawEnv: Env = process.env): Promise<R
 
   const ws = await getWorkspace(db);
   const mode = env.PAYPAL_PAYMENT_MODE as "vaulted" | "supervised" | "treasury" | undefined;
-  // PAYPAL_PAYMENT_MODE seeds a fresh workspace. "vaulted" needs a saved vault_id (Setup step 2); without one
-  // every automatic payment would fail, so fall back to supervised checkout until the vault exists.
-  const seeded = mode === "vaulted" && !ws.vaultId ? "supervised" : mode;
+  // PAYPAL_PAYMENT_MODE seeds a fresh workspace. "vaulted" needs a saved vault_id (Setup step 2) and "treasury" needs
+  // TREASURY_PAYEE_EMAIL; without them every automatic payment would fail, so fall back to supervised checkout.
+  const noPayee = !env.TREASURY_PAYEE_EMAIL?.trim();
+  if (mode === "treasury" && noPayee) console.warn("[reins] PAYPAL_PAYMENT_MODE=treasury but TREASURY_PAYEE_EMAIL is not set; using supervised checkout");
+  const seeded = (mode === "vaulted" && !ws.vaultId) || (mode === "treasury" && noPayee) ? "supervised" : mode;
   if (!ws.connectedAt && seeded && seeded !== ws.paymentMode) await updateWorkspace(db, { paymentMode: seeded });
+  // the saved setting is left alone; each payment falls back to supervised checkout (executePayment) until a payee is set
+  else if (ws.paymentMode === "treasury" && noPayee) console.warn("[reins] workspace is in treasury mode but TREASURY_PAYEE_EMAIL is not set; payments use supervised checkout");
 
   const budget = claudeBudgetFromEnv(env);
   const ctx: ReinsContext = {

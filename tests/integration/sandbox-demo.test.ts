@@ -1,7 +1,7 @@
 /**
  * Public demo on the real PayPal sandbox (Render: REINS_PUBLIC_DEMO=1 + PayPal keys, supervised checkout): the seed connects
  * the workspace as "sandbox" so the labels match the HttpPayPalClient that really runs, /try approvals stop at
- * awaiting_buyer with a sandbox approve link, and "Reconcile now" never runs Transaction Search against the seeded FAKE ids.
+ * awaiting_buyer with a sandbox approve link, and "Reconcile now" leaves the recorded run's rows (real ids, shifted times) alone.
  * PayPal is a stubbed HttpPayPalClient (no network).
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createDb, getPaymentByRequest, getWorkspace, listPaymentsForReconcile, migrateDb, updatePayment, updateWorkspace, type ReinsDb } from "@reins/db";
-import { getOverview, HttpPayPalClient, reconcileNow, runPlayground, SEEDED_RECONCILE_NOTE, SIMULATED_RECONCILE_NOTE, type ReinsContext } from "@reins/core";
+import { getLedger, getOverview, HttpPayPalClient, reconcileNow, runPlayground, SEEDED_RECONCILE_NOTE, SIMULATED_RECONCILE_NOTE, type ReinsContext } from "@reins/core";
 import { createTestContext } from "@reins/core/testing";
 import { DEMO_MERCHANT_EMAIL, seedDemo, seedPayPal } from "../../scripts/seed.ts";
 import { PRESETS } from "../../apps/web/src/app/try/presets.ts";
@@ -78,12 +78,13 @@ describe("seed: the demo merchant is on the PayPal the server really uses", () =
     expect(seedPayPal({ ...CREDS, PAYPAL_ENV: "fake" })).toMatchObject({ paypalEnv: "fake" });
   });
 
-  it("a sandbox-connected seed still reads as seeded demo data: FAKE ids, overview demo note on", async () => {
+  it("a sandbox-connected seed reads as the recorded run: real payout ids, every row marked recorded, overview demo note on", async () => {
     const { db, ctx } = await sandboxDemo();
     expect(await getWorkspace(db)).toMatchObject({ paypalEnv: "sandbox", merchantEmail: DEMO_MERCHANT_EMAIL });
     const paid = await listPaymentsForReconcile(db, 0, Date.now());
     expect(paid.length).toBeGreaterThan(0);
-    expect(paid.every((p) => /^FAKE-/.test(p.captureId ?? p.paypalOrderId ?? ""))).toBe(true);
+    expect(paid.every((p) => p.strategy === "treasury" && /^[A-Z0-9]{13}$/.test(p.payoutBatchId ?? "") && !/^(FAKE|SIM)-/.test(p.captureId ?? ""))).toBe(true);
+    expect((await getLedger(ctx, { limit: 100 })).every((r) => r.recorded !== null)).toBe(true);
     const ov = await getOverview(ctx);
     expect(ov.paypal_env).toBe("sandbox");
     expect(JSON.stringify(ov)).toContain('"demo_data":true');
@@ -119,7 +120,7 @@ describe("/try on the real sandbox (supervised checkout)", () => {
 });
 
 describe("Reconcile now on the public demo with real sandbox keys", () => {
-  it("only seeded FAKE payments in the window: neutral seeded note, no Transaction Search call, nothing changed", async () => {
+  it("only recorded-run payments in the window: neutral note, no Transaction Search call, nothing changed", async () => {
     const { db, ctx, calls } = await sandboxDemo();
     const before = await listPaymentsForReconcile(db, 0, Date.now());
     const r = await reconcileNow(ctx, { start: Date.now() - 31 * 86_400_000, env: DEMO });
@@ -129,19 +130,19 @@ describe("Reconcile now on the public demo with real sandbox keys", () => {
     expect(await listPaymentsForReconcile(db, 0, Date.now())).toEqual(before);
   });
 
-  it("a real completed /try order is reconciled for real; the seeded rows are skipped and keep their seeded state", async () => {
+  it("a real completed /try order is reconciled for real; the recorded rows are skipped and keep their recorded state", async () => {
     const { db, ctx, calls } = await sandboxDemo([{ id: "8AB12345CD6789012", value: "12.98" }]);
     const r0 = await runPlayground(ctx, preset("domain").purchase);
     const pay = (await getPaymentByRequest(db, r0.row.request_id))!;
     await updatePayment(db, pay.id, { status: "completed", captureId: "8AB12345CD6789012" }); // the buyer approved and it was captured
-    const seededBefore = (await listPaymentsForReconcile(db, 0, Date.now())).filter((p) => p.captureId?.startsWith("FAKE-"));
+    const seededBefore = (await listPaymentsForReconcile(db, 0, Date.now())).filter((p) => p.requestId !== r0.row.request_id);
     expect(seededBefore.length).toBeGreaterThan(1);
 
     const r = await reconcileNow(ctx, { start: Date.now() - 31 * 86_400_000, env: DEMO });
     expect(r).toMatchObject({ mode: "paypal", checked: 1, matched: 1, mismatch: 0, skipped: seededBefore.length });
     expect(calls).toContain("GET /v1/reporting/transactions");
-    expect(reconcileBanner(r as Parameters<typeof reconcileBanner>[0])).toMatchObject({ tone: "ok", msg: expect.stringContaining(`${seededBefore.length} seeded demo payments left as seeded`) });
-    const seededAfter = (await listPaymentsForReconcile(db, 0, Date.now())).filter((p) => p.captureId?.startsWith("FAKE-"));
+    expect(reconcileBanner(r as Parameters<typeof reconcileBanner>[0])).toMatchObject({ tone: "ok", msg: expect.stringContaining(`${seededBefore.length} recorded-run payments left as recorded`) });
+    const seededAfter = (await listPaymentsForReconcile(db, 0, Date.now())).filter((p) => p.requestId !== r0.row.request_id);
     expect(seededAfter).toEqual(seededBefore);
   });
 

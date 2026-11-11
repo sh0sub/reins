@@ -62,7 +62,7 @@ async function main() {
   const r = await seedDemo(db, { connectDemoMerchant: true, env: { PAYPAL_ENV: "fake" } });
   // automatic payment path: a fake vault id makes AUTO_APPROVE pay immediately through the simulated PayPal
   await updateWorkspace(db, { paypalEnv: "fake", paymentMode: "vaulted", vaultId: "VAULT-SIM-JUDGE" });
-  console.log(`judge: ${r.requests} requests across ${r.agents} agents seeded`);
+  console.log(`judge: ${r.requests} requests across ${r.agents} agents seeded (the recorded real sandbox run, times shifted; new payments here use simulated PayPal)`);
 
   if (!existsSync(join(WEB, DIST, "BUILD_ID"))) {
     console.log("judge: building the web app (first run, about a minute)");

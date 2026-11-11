@@ -8,7 +8,7 @@ import {
   updatePayment,
   type Payment,
 } from "@reins/db";
-import { captureApprovedOrder } from "./pay/strategies.ts";
+import { PAYOUT_UNCLAIMED_NOTE, captureApprovedOrder } from "./pay/strategies.ts";
 import type { WebhookEvent, WebhookHeaders } from "./paypal/types.ts";
 import { UNKNOWN_PREFIX, notifyChannels, publishRequest, type ReinsContext } from "./service.ts";
 
@@ -147,6 +147,13 @@ async function applyEvent(ctx: ReinsContext, event: WebhookEvent): Promise<strin
         const ok = event.event_type === "PAYMENT.PAYOUTS-ITEM.SUCCEEDED";
         const req = await getRequest(ctx.db, payment.requestId);
         if (!req) return "unknown_request";
+        // UNCLAIMED is not a failure: PayPal holds the money for the payee (RETURNED follows after 30 days if unclaimed)
+        if (event.event_type === "PAYMENT.PAYOUTS-ITEM.UNCLAIMED") {
+          if (req.status !== "paying") return "no_transition";
+          await updatePayment(ctx.db, payment.id, { status: "pending", error: PAYOUT_UNCLAIMED_NOTE });
+          await publishRequest(ctx, req);
+          return "unclaimed";
+        }
         return finish(ctx, payment, ok, ok ? ["paying", "failed"] : ["paying"], {
           captureId: typeof res.transaction_id === "string" ? res.transaction_id : payment.captureId,
           error: ok ? null : event.event_type,

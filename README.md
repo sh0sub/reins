@@ -4,11 +4,11 @@
 
 A web page told an AI agent to buy a $450 logo. A shared PayPal credential would have paid it. Reins blocked it in code before any money moved: per-agent mandates, hard rules, a Claude audit, one-tap approval on web or Telegram, PayPal Orders v2 payment and an AG Grid audit ledger, served to agents as an MCP server.
 
-| 19 of 24 | $450 | 10 min |
+| 11 of 15 | $450 | 7 min |
 |---|---|---|
-| requests auto-paid | prompt-injected order blocked (3 hard rules) | of approvals saved (assumes 30 s each) |
+| requests paid without a tap (real sandbox payouts) | prompt-injected order blocked (3 hard rules) | of approvals saved (14 approvals, assumes 30 s each) |
 
-_Seeded demo month, made-up data computed from the ledger. Simulated benchmark: 9 scripted attacks, an ungated agent paid $813.96, the same attacks through Reins paid $99.98 (`pnpm attacks`)._
+_The hosted demo ledger is a recorded real run: 15 requests through the real pipeline (MCP, hard rules, real Claude audit) with 11 real PayPal sandbox payouts, nothing invented. Simulated benchmark: 9 scripted attacks, an ungated agent paid $813.96, the same attacks through Reins paid $99.98 (`pnpm attacks`)._
 
 **Try in 60 s:** `pnpm judge`
 
@@ -36,18 +36,18 @@ Every MCP session gets its own throwaway demo key for the Playground Agent, so y
 
 A shared PayPal credential would have paid the $450. Reins did not: send the $450 prompt-injected order and it is denied by 3 hard rules. Tick "Simulate a fooled auditor (always AUTO_APPROVE)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
 
-A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. A fourth preset, "Five $29 orders", splits one purchase at one merchant: three are paid, then the same-merchant 24-hour total passes the $100 per-purchase cap and the fourth and fifth are denied in code (3 unit tests and a playground test; subdomains of one site count together, different merchants do not, and orders you approved by hand do not count). Each `/try` visit is its own playground, so the tour gives these outcomes for every visitor. Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` lists the real PayPal sandbox ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as a recorded run, not live.
+A three-step **Judge tour** on `/try` walks the same path (pays, waits for you, denied by code) and ends with links to the ledger row and its audit trail. A fourth preset, "Five $29 orders", splits one purchase at one merchant: the hard rules allow the first three (under the $100 per-merchant total), then the same-merchant 24-hour total passes the $100 per-purchase cap and the fourth and fifth are denied in code. With the real Claude auditor (hosted) the auditor may itself deny or escalate some of the first three as split-order behaviour (3 unit tests and a playground test; subdomains of one site count together, different merchants do not, and orders you approved by hand do not count). Each `/try` visit is its own playground, so the tour gives these outcomes for every visitor. Requests sent from `/try` use the Playground Agent and stay out of the Overview numbers unless you tick "Include playground requests"; "Reset demo data" removes them. `/proof` says which parts are real: the hosted ledger is a recorded real sandbox run and `/try` on the hosted demo makes real sandbox payments, while `pnpm judge` is simulated. It also lists the earlier spike-run ids (order, capture, vault re-order, payouts batch, forged webhook refused) from `docs/spikes/`, labelled as recorded, not live.
 
 **Real vs simulated**
 
 | | Real | Simulated |
 |---|---|---|
-| PayPal Orders v2, vault, Payouts, webhooks | Real sandbox runs, ids in `docs/spikes/` | `pnpm judge`, the seed and the video main run use an in-memory fake PayPal (ids shown as `SIM-…`) |
+| PayPal Orders v2, vault, Payouts, webhooks | Hosted ledger: a recorded real sandbox run (11 Payouts SUCCESS, real batch and transaction ids). Hosted `/try`: real sandbox payouts (treasury mode, no buyer login). Spike runs, ids in `docs/spikes/` | `pnpm judge` and `PAYPAL_ENV=fake` use an in-memory fake PayPal for new requests (ids shown as `SIM-…`); the video main run used it too |
 | Hard rules, policy engine, ledger, MCP server | Real code, same in every mode | none |
-| Claude auditor | Real with `ANTHROPIC_API_KEY` | Offline stand-in without a key (and the "fooled auditor" toggle) |
+| Claude auditor | Real with `ANTHROPIC_API_KEY` (hosted demo; the recorded run has 15 real Claude audits) | Offline stand-in for new requests in `pnpm judge` / without a key (and the "fooled auditor" toggle) |
 | Telegram approval | Real bot with a token | Off in `pnpm judge`; web inbox approves instead |
 
-**Money protected (seeded demo month, computed from the ledger):** $410 combined worst-case exposure instead of one unlimited key; $450 blocked (1 request, 3 hard rules failed); 19 of 24 requests paid without a tap; about 10 minutes of approvals saved at an assumed 30 s each.
+**Money protected (recorded run, computed from the ledger):** $410 combined worst-case exposure instead of one unlimited key; $1,769 blocked in 3 requests (largest R-0137, a $1,295 office chair; the $450 fiverr injection is R-0143, 3 hard rules failed); 11 of 15 requests paid without a tap; about 7 minutes of approvals saved (14 approvals at an assumed 30 s each).
 
 Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, AG Grid, Render. (APIMatic is not claimed: the Context Plugin has not been used on this repo yet.)
 
@@ -57,7 +57,7 @@ Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, A
 
 Note: the ledger uses AG Grid Enterprise in trial mode (no licence key; set `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` to remove the trial watermark). A public deploy may show the watermark.
 
-- Demo video: _YouTube link (to add after upload)_. Under 3 minutes; the main run was recorded locally on a scratch database with the simulated PayPal client, the offline stand-in for the Claude auditor and Telegram off (the Telegram card is the real bot's card text, shown as a panel); one segment badged "REAL RUN" is a separate recording on the real PayPal sandbox with real Claude audits. Re-record with `node scripts/demo/record-video.mjs` (script and narration: `scripts/demo/`).
+- Demo video: _YouTube link (to add after upload)_. Under 3 minutes; the main run was recorded earlier, on the old scripted seed (before the recorded-run seed), locally on a scratch database with the simulated PayPal client, the offline stand-in for the Claude auditor and Telegram off, so its numbers (for example $176.97) differ from the current seed (the Telegram card is the real bot's card text, shown as a panel); one segment badged "REAL RUN" is a separate recording on the real PayPal sandbox with real Claude audits. Re-record with `node scripts/demo/record-video.mjs` (script and narration: `scripts/demo/`).
 - Live demo: https://reins-web.onrender.com _(to confirm after deploy; free instances sleep, first load takes about a minute)_
 - Devpost text: [docs/submission/devpost.md](docs/submission/devpost.md)
 
@@ -82,7 +82,7 @@ Phone width (390 px), same four screens, the ledger as one card per request:
 <img src="docs/img/ledger-390.png" width="180" alt="Card-style ledger at 390 px">
 </p>
 
-Screenshots come from a scratch database seeded with `pnpm seed` and the fake PayPal client (no money moves, offline stand-in for the auditor).
+Screenshots and the GIF were made earlier with the old scripted seed and the fake PayPal client (no money moves, offline stand-in for the auditor), so numbers in them differ from the current recorded-run seed.
 
 ## How it works
 
@@ -112,9 +112,9 @@ MCP tools: `get_mandate` (includes the agent's status: active or paused), `reque
 pnpm install
 cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
-pnpm seed                   # 3 agents, 24 requests: "This month $117.97 of $410" on a fresh seed (the video shows $176.97 after approving the $59 Statista request)
+pnpm seed                   # 3 agents, 15 recorded requests: "This month $43.95 of $410" on a fresh seed
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 345 tests
+pnpm test                   # 362 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
@@ -209,7 +209,7 @@ PayPal APIs used (sandbox): `POST /v1/oauth2/token`, Orders v2 (`POST /v2/checko
 
 Plan flow B runs end to end (auto-paid, human-approved on web or Telegram, denied), covered by `tests/integration/checkpoint.test.ts`. Sandbox spikes (vault auto-pay, payouts, webhook signatures) are in `docs/spikes/`. Also built: "Also allow this merchant" on approval (new mandate version), receipts (`/receipts/:id`), unusual-pattern flags (`REINS_QUIET_HOURS`, `REINS_TIMEZONE`), a DevOps cron demo agent, AI summaries, one-click "Tighten mandate".
 
-Dashboard details: a sidebar agents list with live cap use and a paused marker; a Cmd/Ctrl+K palette over pages, agents and requests; Agents KPI tile on the ledger; a mandate version dropdown (open an old version to restore it); an approval card with the mandate check (for example 3 of 4 pass), the auditor's risk and the budget left after approving, plus deny reasons and `A`/`D` keys; Pending and Decided tabs; a request drawer with the decision timeline, a hard-rule table, risk gauge, EN/KO reason and the raw MCP request (key redacted); a phone-width (390 px) layout with a card-style ledger. The weekly summary is a labelled template unless `ANTHROPIC_API_KEY` is set. The drawer's "Model" line (tokens, latency) is real only for live Claude runs; in the seed it is scripted demo data.
+Dashboard details: a sidebar agents list with live cap use and a paused marker; a Cmd/Ctrl+K palette over pages, agents and requests; Agents KPI tile on the ledger; a mandate version dropdown (open an old version to restore it); an approval card with the mandate check (for example 3 of 4 pass), the auditor's risk and the budget left after approving, plus deny reasons and `A`/`D` keys; Pending and Decided tabs; a request drawer with the decision timeline, a hard-rule table, risk gauge, EN/KO reason and the raw MCP request (key redacted); a phone-width (390 px) layout with a card-style ledger. The weekly summary is a labelled template unless `ANTHROPIC_API_KEY` is set. The drawer's "Model" line (tokens, latency) comes from real Claude calls: in the seed, from the recorded run (model claude-opus-5-5); for new requests in `pnpm judge` it is the offline stand-in.
 
 ## Prior art
 
@@ -274,24 +274,26 @@ Layout: `apps/web` (Next.js 15 UI + REST + webhooks), `apps/mcp` (MCP server), `
 
 ## Deploy
 
-Render Blueprint (`render.yaml`) on the free plan: two web services (dashboard/API and MCP HTTP), SQLite in `/tmp` (no disk), demo data re-seeded on every boot. Free instances sleep after ~15 min idle (wake in ~1 min) and sleeping resets the demo state. There are no cron jobs on Render; run the DevOps agent and reconcile by hand (commands in the `render.yaml` header).
+Render Blueprint (`render.yaml`) on the free plan: two web services (dashboard/API and MCP HTTP), SQLite in `/tmp` (no disk), demo data re-seeded on every boot (`--if-empty`, replays the recorded run). The hosted dashboard runs `PAYPAL_PAYMENT_MODE=treasury`: an approved `/try` request pays a real sandbox payout with no buyer login, settled by reading the payout and the `PAYMENT.PAYOUTS-ITEM.*` webhook. It needs `TREASURY_PAYEE_EMAIL` (set by hand in Render); without it the server logs a warning and falls back to supervised checkout. `GET /api/health?detail=1` shows `payment_mode` and `treasury_payee_configured` (booleans only). A payout PayPal reports as UNCLAIMED shows as "Payout unclaimed" (still committed, not failed). Free instances sleep after ~15 min idle (wake in ~1 min) and sleeping resets the demo state. There are no cron jobs on Render; run the DevOps agent and reconcile by hand (commands in the `render.yaml` header).
 Step-by-step (Korean), env vars, PayPal/Telegram webhook URLs and smoke checks: [docs/deploy.md](docs/deploy.md).
 
 ## Demo data
 
 ```bash
-pnpm seed                        # 3 agents, 3 mandates, 24 requests in apps/web/.local/reins.db (what `pnpm dev:web` uses)
+pnpm seed                        # 3 agents, 3 mandates, 15 recorded requests in apps/web/.local/reins.db (what `pnpm dev:web` uses)
 pnpm seed -- --db ./scratch.db   # another file; point the app at it with DATABASE_URL=file:./scratch.db
 pnpm seed -- --force             # also run against a DB that has real data (only the seed rows are replaced)
 pnpm seed -- --if-empty          # every boot (Render start command, /tmp starts empty): seed only if the DB has no agents, never forces
+pnpm seed -- --config-only       # agents and mandates only, no requests (used before re-recording)
 ```
 
-Matches the plan's flow C on a fresh seed: "This month $117.97 of $410 across 3 agents" (limits $150 / $100 / $160), with auto-paid, human-approved,
-human-rejected, hard-rule-blocked (the $450 fiverr.com injection, R-0143), a declined card, an expired approval and 1 pending approval (R-0142):
-24 requests this month, Auto 19 · Human 4 · Blocked 1, and a current ISO week of 6 purchases for $84.98. (The demo video shows $176.97 of $410 because the $59 Statista request is approved live on camera; the seed alone reads $117.97.) Research Scout has mandate versions v1, v2, v3.
-No PayPal or Claude calls (fake `FAKE-ORDER-*` / `FAKE-CAPTURE-*` ids; the auditor verdicts, tokens and latencies are scripted demo data). Seed agents use `rk_demo_` keys that are never stored or printed, so create
-a fresh agent for live MCP runs. Re-running replaces only seed rows and refuses a DB with other data unless `--force`. Pending approvals
-expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before a demo.
+The seed has no scripted or made-up history. `scripts/seed.ts` replays `scripts/demo/fixtures/real-sandbox-run.json`, recorded by `scripts/demo/real-run.mjs` and `scripts/demo/export-fixture.mjs`: 15 requests (R-0129..R-0143) through the real pipeline (MCP `request_purchase`, hard rules, real Claude audit with model claude-opus-5-5, 15 Claude-audited calls including advisory explanations of hard-rule denials) on the real PayPal sandbox in treasury mode (Payouts API, payee a sandbox personal account, address not stored). 11 payouts, all SUCCESS, with real batch ids (like `H7LNJFK5HG4EQ`) and transaction ids. Transaction Search returned 0 transactions at record time (sandbox lag), so all 11 show "Not checked yet"; nothing claims "matched". Nobody approved anything: no approval clicks, no Q&A thread.
+
+Contents: 11 paid automatically (risk 1, $43.95 in total: namecheap.com $12.98, statista $0.99, amazon $3.49, anthropic $4.99, huggingface $2.49, staples $2.99, vercel $3.50, gartner $1.49, render.com $7.00, amazon $1.99, grandviewresearch $2.04); 3 denied (R-0137 hermanmiller.com $1,295 office chair: per-purchase and monthly cap; R-0139 render.com $24 "team lunch catering": denied by the Claude auditor, risk 9, off-purpose; R-0143 fiverr.com $450 prompt-injected logo: per-purchase cap, monthly cap and allowlist fail, Claude advisory risk 10); 1 pending (R-0142 statista.com $59 report, Claude ASK_HUMAN risk 3, over the $25 auto limit; approve it yourself). Fresh seed Overview: "This month $43.95 of $410.00 across 3 agents" (DevOps $28.47 of $150, Research Scout $7.01 of $100, Desk Restock Bot $8.47 of $160, paused); decisions 15 total, 11 auto, 1 human (pending), 3 blocked; $1,769 blocked in 3 requests; 14 approvals saved. Research Scout has mandate versions v1, v2 (adds huggingface.co, used in the run) and v3 (blocks fiverr.com, configured after the run); Desk Restock Bot is paused after the run (configuration, not an event).
+
+Times are shifted by one offset so the run ends about 3 minutes before boot. Every row shows a "recorded run" chip whose tooltip gives the real recorded time and the shift. Reconcile leaves recorded rows alone. In `pnpm judge` and with `PAYPAL_ENV=fake` the seeded ledger is the same recorded run (real ids, labelled recorded), but new requests use the in-memory fake PayPal (SIM ids) and the offline stand-in auditor. Seed agents use `rk_demo_` keys that are never stored or printed, so create a fresh agent for live MCP runs. Re-running replaces only seed rows and refuses a DB with other data unless `--force`. Pending approvals expire after `REINS_APPROVAL_TTL_MINUTES` (default 30), so re-seed right before a demo.
+
+Re-record (needs sandbox and Anthropic keys in `.env`; moves sandbox money only): `node --env-file=.env scripts/demo/real-run.mjs --work <scratch>`, then `node --env-file=.env scripts/demo/export-fixture.mjs --db <scratch>/reins-real.db --out scripts/demo/fixtures/real-sandbox-run.json` to rewrite the fixture.
 
 ## Demo agent A (Claude Desktop / Claude Code)
 

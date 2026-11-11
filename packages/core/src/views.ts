@@ -125,6 +125,27 @@ export interface LedgerRow extends RequestView {
     error: string | null;
   } | null;
   messages: Array<{ role: RequestMessage["role"]; body: string; actor: string | null; created_at: string }>;
+  /** Set on rows replayed from the recorded real sandbox run (scripts/seed.ts): when it really happened, and the time shift. */
+  recorded: RecordedInfo | null;
+}
+
+export interface RecordedInfo {
+  /** Real time of the request's first decision in the recorded run. */
+  recorded_at: string;
+  /** How far every time of the run was moved so it ends just before the demo booted. */
+  time_shift_ms: number;
+  /** Something happened on this demo after the recorded part (a person decided, or the approval expired): that part is live. */
+  live_after: boolean;
+}
+
+/**
+ * The seed stamps `recorded_at` and `time_shift_ms` on a replayed request's first decision. The fixture has no human or
+ * system decisions, so one of those means a live action on top of the recorded request (its payment is live too).
+ */
+export function recordedInfo(decisions: Array<Pick<Decision, "details" | "stage">>): RecordedInfo | null {
+  const d = decisions[0]?.details as { recorded_at?: unknown; time_shift_ms?: unknown } | null | undefined;
+  if (!d || typeof d.recorded_at !== "string" || typeof d.time_shift_ms !== "number") return null;
+  return { recorded_at: d.recorded_at, time_shift_ms: d.time_shift_ms, live_after: decisions.some((x) => x.stage === "human" || x.stage === "system") };
 }
 
 export function toLedgerRow(
@@ -166,6 +187,7 @@ export function toLedgerRow(
         }
       : null,
     messages: messages.map((m) => ({ role: m.role, body: m.body, actor: m.actor, created_at: new Date(m.createdAt).toISOString() })),
+    recorded: recordedInfo(decisions),
   };
 }
 

@@ -2,7 +2,7 @@ import { getAgent, getMandate, getPaymentByRequest, getRequest, getRequestBySeq,
 import { centsToValue } from "./money.ts";
 import { displayId } from "./pay/strategies.ts";
 import { ReinsError, type ReinsContext } from "./service.ts";
-import { receiptUrl } from "./views.ts";
+import { receiptUrl, recordedInfo, type RecordedInfo } from "./views.ts";
 
 /** Feature S4: what the receipt page (/receipts/:id) shows. No vault id, no raw PayPal payloads, no agent free text beyond items. */
 export interface Receipt {
@@ -26,6 +26,8 @@ export interface Receipt {
     reconciled: "unchecked" | "matched" | "mismatch";
   };
   receipt_url: string | null;
+  /** Replayed from the recorded real sandbox run (times shifted); null for a live payment. */
+  recorded: RecordedInfo | null;
 }
 
 /** "R-0143" / "r-143" -> 143; anything else (an internal id) -> null. */
@@ -71,5 +73,6 @@ export async function getReceipt(ctx: ReinsContext, requestId: string): Promise<
       reconciled: payment.reconciled,
     },
     receipt_url: receiptUrl(ctx.config.publicBaseUrl, r.id),
+    recorded: recordedInfo(decisions),
   };
 }

@@ -93,7 +93,7 @@ export interface Protection {
   /** (auto + blocked) x SECONDS_PER_APPROVAL, in minutes (1 decimal). */
   minutes_saved: number;
   seconds_per_approval: number;
-  /** True for the seeded sandbox demo data, so the card says it is not live traffic. */
+  /** True for the demo seed (a recorded sandbox run with shifted times), so the card says it is not live traffic. */
   demo_data: boolean;
 }
 

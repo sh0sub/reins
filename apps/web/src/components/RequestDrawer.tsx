@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { RequestDetail, TimelineStep } from "@reins/core";
 import { api } from "@/lib/api";
-import { showKo, statusChip } from "@/lib/format";
+import { recordedChip, showKo, statusChip } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 
 /** "13:58:02.104" (local), with "Nov 10 " in front when the step is on another day than the request. */
@@ -93,7 +93,7 @@ function focusables(root: HTMLElement): HTMLElement[] {
 /** S6 "Model: Claude · 412 tokens · 1.9 s": the model name, then tokens and latency when they were recorded. */
 export function modelLine(a: { provider: string | null; tokens: number | null; latency_ms: number | null }): string {
   const p = a.provider ?? "";
-  // a real run records "claude:<model id>": show the model next to the name; seeded rows keep the plain "Claude"
+  // a real run records "claude:<model id>" (the recorded demo run too): show the model next to the name
   const name = p.startsWith("claude") ? (p.includes(":") ? `Claude (${p.slice(p.indexOf(":") + 1)})` : "Claude") : p === "mock" ? "demo auditor (offline stand-in)" : p;
   return [`Model: ${name}`, a.tokens ? `${a.tokens} tokens` : null, a.latency_ms != null ? `${(a.latency_ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(" · ");
 }
@@ -176,6 +176,7 @@ export function RequestDrawer({ requestId, onClose, onChanged }: { requestId: st
 
   const row = detail?.row;
   const chip = row ? statusChip(row) : null;
+  const recorded = recordedChip(row?.recorded);
   const failed = detail?.hard_rules.filter((r) => !r.ok) ?? [];
   const mainRules = detail?.hard_rules.filter((r) => !r.ok || MAIN_RULES.has(r.rule)) ?? [];
   const basicRules = detail?.hard_rules.filter((r) => r.ok && !MAIN_RULES.has(r.rule)) ?? [];
@@ -195,6 +196,11 @@ export function RequestDrawer({ requestId, onClose, onChanged }: { requestId: st
                 {row?.display_id ?? "Request"}
               </h2>
               {chip && <span className={chip.className}>{chip.label}</span>}
+              {recorded && (
+                <span className="status status-info" title={recorded.title}>
+                  {recorded.label}
+                </span>
+              )}
             </div>
             {row && (
               <p className="caption drawer-sub">

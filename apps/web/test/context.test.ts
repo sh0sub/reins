@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getWorkspace } from "@reins/db";
 import { createContextFromEnv, publicBaseUrlFromEnv, telegramMode } from "../src/server/context.ts";
 
@@ -11,8 +11,15 @@ describe("runtime context from env", () => {
     expect((await getWorkspace(ctx.db)).paymentMode).toBe("supervised");
   });
   it("other modes are seeded as given", async () => {
-    const ctx = await createContextFromEnv({ ...base, PAYPAL_PAYMENT_MODE: "treasury" });
+    const ctx = await createContextFromEnv({ ...base, PAYPAL_PAYMENT_MODE: "treasury", TREASURY_PAYEE_EMAIL: "payee@personal.example.com" });
     expect((await getWorkspace(ctx.db)).paymentMode).toBe("treasury");
+  });
+  it("hosted fail-safe: PAYPAL_PAYMENT_MODE=treasury without TREASURY_PAYEE_EMAIL runs supervised and warns (no crash)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const ctx = await createContextFromEnv({ ...base, PAYPAL_PAYMENT_MODE: "treasury" });
+    expect((await getWorkspace(ctx.db)).paymentMode).toBe("supervised");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("TREASURY_PAYEE_EMAIL"));
+    warn.mockRestore();
   });
   it("Telegram uses long polling locally and webhooks behind https", () => {
     expect(telegramMode({ PUBLIC_BASE_URL: "http://localhost:3000" })).toBe("polling");

@@ -1,4 +1,4 @@
-import { getWorkspace, listPaymentsForReconcile, updatePayment, type Payment } from "@reins/db";
+import { getWorkspace, listPaymentsForReconcile, listRecordedRequestIds, updatePayment, type Payment } from "@reins/db";
 import { centsToValue, toCents } from "./money.ts";
 import type { TransactionDetail } from "./paypal/types.ts";
 import { playgroundEnabled } from "./playground.ts";
@@ -22,18 +22,22 @@ export interface ReconcileResult {
   mismatch: number;
   pending: number;
   pages: number;
-  /** Seeded demo payments (FAKE-…/SIM-… ids) left out on a real-PayPal workspace: they were never sent to PayPal. */
+  /**
+   * Payments left out: the recorded sandbox run the demo is seeded from (its state is what PayPal said when it was
+   * recorded; its times are shifted, so a search window around them would be wrong) and, on a real-PayPal workspace,
+   * simulated FAKE-…/SIM-… ids that were never sent to PayPal.
+   */
   skipped: number;
 }
 
 /** Real = PayPal Transaction Search was queried; simulated = a demo instance where nothing was queried and nothing changed. */
 export type ReconcileMode = "paypal" | "simulated";
 
-export const SIMULATED_RECONCILE_NOTE = "Reconciliation runs against real PayPal Transaction Search; simulated here. The seeded match states are left as they are.";
+export const SIMULATED_RECONCILE_NOTE = "Reconciliation runs against real PayPal Transaction Search; simulated here. Match states are left as they are.";
 
-/** Public demo on the real sandbox where every payment in the window is seeded demo data: nothing to ask PayPal about. */
+/** Public demo on the real sandbox where every payment in the window comes from the recorded run: nothing new to ask PayPal about. */
 export const SEEDED_RECONCILE_NOTE =
-  "Seeded demo payments (FAKE- ids) were never sent to PayPal, so Transaction Search is not run on them; their match states are left as they are. Orders you complete on PayPal from /try are reconciled for real.";
+  "The ledger's payments come from a recorded sandbox run. Their match state is the one recorded (Transaction Search had not listed them yet, so: not checked), and their times are shifted, so they are not searched here. Payments made live on this demo are reconciled for real.";
 
 /** Ids that only exist in Reins: the seed's FAKE-… and the in-memory fake PayPal's SIM-…. PayPal can never list them. */
 export const isSimulatedPayPalId = (id: string | null | undefined): boolean => Boolean(id && /^(FAKE|SIM)-/.test(id));
@@ -61,7 +65,8 @@ export async function reconcileNow(
     // querying PayPal; with real /try orders, reconcile those for real (reconcilePayments skips the seeded rows).
     const { start, end } = reconcileWindow(ctx, opts);
     const payments = await listPaymentsForReconcile(ctx.db, start, end);
-    if (!payments.some((p) => !isSimulatedPayment(p))) return { mode: "simulated", note: SEEDED_RECONCILE_NOTE };
+    const recorded = await listRecordedRequestIds(ctx.db);
+    if (!payments.some((p) => !isSimulatedPayment(p) && !recorded.has(p.requestId))) return { mode: "simulated", note: SEEDED_RECONCILE_NOTE };
   }
   return { mode: "paypal", ...(await reconcilePayments(ctx, { start: opts.start, end: opts.end })) };
 }
@@ -82,9 +87,11 @@ export async function reconcilePayments(
   const { start, end } = reconcileWindow(ctx, opts);
   const missingAfterMs = opts.missingAfterMs ?? DAY;
   const all = await listPaymentsForReconcile(ctx.db, start, end);
-  // On a real-PayPal workspace the seeded FAKE-… rows can never be in Transaction Search: leave their seeded state alone.
+  // Recorded-run rows keep the state PayPal gave them when recorded; on a real-PayPal workspace FAKE-…/SIM-… rows can
+  // never be in Transaction Search. Both are left alone.
   const real = (await getWorkspace(ctx.db)).paypalEnv !== "fake";
-  const payments = real ? all.filter((p) => !isSimulatedPayment(p)) : all;
+  const recorded = await listRecordedRequestIds(ctx.db);
+  const payments = all.filter((p) => !recorded.has(p.requestId) && !(real && isSimulatedPayment(p)));
 
   // Search slightly wider than the payment window: capture time can trail order creation.
   const window = { start: new Date(start - 60 * 60_000).toISOString(), end: new Date(Math.min(end + 60 * 60_000, ctx.now())).toISOString() };

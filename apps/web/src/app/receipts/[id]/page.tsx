@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Receipt } from "@reins/core";
 import { api } from "@/lib/api";
-import { fullTime, isSimId, simId } from "@/lib/format";
+import { fullTime, isSimId, recordedChip, simId } from "@/lib/format";
 
 const MODE: Record<Receipt["payment"]["strategy"], string> = {
   vaulted: "Automatic (saved PayPal)",
@@ -43,6 +43,7 @@ export default function ReceiptPage() {
   if (!receipt) return <div className="skeleton" style={{ maxWidth: 560, minHeight: 320 }} aria-busy="true" aria-label="Loading receipt" />;
 
   const paypalId = receipt.payment.capture_id ?? receipt.payment.payout_batch_id ?? receipt.payment.order_id ?? "—";
+  const recorded = recordedChip(receipt.recorded);
   return (
     <article className="panel stack-l" style={{ maxWidth: 560 }} aria-labelledby="receipt-title">
       <header className="stack-s">
@@ -72,9 +73,20 @@ export default function ReceiptPage() {
         <dd className="mono">
           {simId(paypalId)}
           {isSimId(paypalId) && <span className="status status-info" style={{ marginLeft: 8 }}>simulated</span>}
+          {recorded && (
+            <span className="status status-info" style={{ marginLeft: 8 }} title={recorded.title}>
+              {recorded.label}
+            </span>
+          )}
         </dd>
         <dt>Reconciled</dt>
         <dd>{receipt.payment.reconciled === "matched" ? "Matched in PayPal Transaction Search" : receipt.payment.reconciled === "mismatch" ? "Mismatch, check the ledger" : "Not checked yet"}</dd>
+        {recorded && (
+          <>
+            <dt>Recorded</dt>
+            <dd title={recorded.title}>{fullTime(receipt.recorded!.recorded_at)} (real time; times on this demo are shifted)</dd>
+          </>
+        )}
         <dt>Requested</dt>
         <dd>{fullTime(receipt.requested_at)}</dd>
       </dl>

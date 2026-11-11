@@ -18,7 +18,7 @@ import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule,
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
 import { LedgerSkeleton } from "./LedgerSkeleton";
-import { bucketTotal, decisionClass, decisionLabel, fullTime, hardRules, isSimId, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
+import { bucketTotal, decisionClass, decisionLabel, fullTime, hardRules, isSimId, recordedChip, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
 // Community for filter/sort/CSV/row selection; Enterprise for row grouping (agent), master/detail (row expansion), set filters and the status bar.
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -154,6 +154,16 @@ function ReconCell(p: CustomCellRendererProps<LedgerRow>) {
   );
 }
 
+/** "recorded run" chip (tooltip: real recorded time and the shift) on rows replayed from the recorded sandbox run. */
+function RecordedChip({ row }: { row: LedgerRow }) {
+  const c = recordedChip(row.recorded);
+  return c ? (
+    <span className="status status-info" style={{ marginLeft: 8 }} title={c.title}>
+      {c.label}
+    </span>
+  ) : null;
+}
+
 /** Row expansion (S4/S6 lite): rules, auditor reason EN/KO, mandate version, capture id, reconciliation. */
 const showId = (id: string | null) => (id ? simId(id) : "—");
 function Detail(p: ICellRendererParams<LedgerRow>) {
@@ -188,8 +198,9 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         <dd>v{row.mandate_version ?? "—"}</dd>
         <dt>PayPal</dt>
         <dd className="mono">
-          {row.payment ? `${row.payment.strategy} · order ${showId(row.payment.order_id)} · capture ${showId(row.payment.capture_id ?? row.payment.payout_batch_id)}` : "not charged"}
+          {row.payment ? (row.payment.strategy === "treasury" ? `treasury payout · batch ${showId(row.payment.payout_batch_id)} · transaction ${showId(row.payment.capture_id)}` : `${row.payment.strategy} · order ${showId(row.payment.order_id)} · capture ${showId(row.payment.capture_id ?? row.payment.payout_batch_id)}`) : "not charged"}
           {row.payment && isSimId(row.payment.capture_id ?? row.payment.order_id) && <span className="status status-info" style={{ marginLeft: 8 }}>simulated</span>}
+          {row.payment && <RecordedChip row={row} />}
         </dd>
         <dt>Txn Search</dt>
         <dd>

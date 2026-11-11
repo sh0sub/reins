@@ -1,5 +1,5 @@
 import { getPaymentByRequest, getRequest, insertDecision, listRequests, transitionRequest, updatePayment, type Payment, type PurchaseRequest } from "@reins/db";
-import { captureApprovedOrder, type StrategyResult } from "./pay/strategies.ts";
+import { PAYOUT_UNCLAIMED_NOTE, captureApprovedOrder, type StrategyResult } from "./pay/strategies.ts";
 import { firstCapture } from "./paypal/types.ts";
 import { ReinsError, UNKNOWN_PREFIX, executePayment, notifyChannels, publishRequest, requestViewOf, type ReinsContext } from "./service.ts";
 import type { RequestView } from "./views.ts";
@@ -93,7 +93,9 @@ export async function cancelCheckout(ctx: ReinsContext, requestId: string, token
  * - supervised order with an id: GET order -> COMPLETED is paid, APPROVED is captured (same PayPal-Request-Id)
  * - no payment row (crash between claim and PayPal) or an "unknown" vaulted/supervised create: re-run the strategy,
  *   which is idempotent through `reins-create-<id>` / `reins-capture-<id>`
- * - treasury payouts and PENDING captures wait for their webhook
+ * - treasury payout: GET the batch (read only, never re-sent): SUCCESS is paid, a definite failure is failed, UNCLAIMED
+ *   stays committed with a note (PayPal holds the money for the payee); the payout webhook settles it the same way
+ * - PENDING captures wait for their webhook
  */
 async function resolvePayment(ctx: ReinsContext, r: PurchaseRequest, payment: Payment | undefined, opts: { readOnly?: boolean } = {}): Promise<CheckoutOutcome["outcome"]> {
   const unknown = payment?.error?.startsWith(UNKNOWN_PREFIX) ?? false;
@@ -104,13 +106,38 @@ async function resolvePayment(ctx: ReinsContext, r: PurchaseRequest, payment: Pa
     const v = await executePayment(ctx, r);
     return v.status === "paid" ? "paid" : v.status === "failed" ? "failed" : "pending";
   }
-  if (payment.strategy === "treasury" || !payment.paypalOrderId) return "pending";
+  if (payment.strategy === "treasury") return opts.readOnly ? "pending" : resolvePayout(ctx, payment);
+  if (!payment.paypalOrderId) return "pending";
   const order = await ctx.paypal.getOrder(payment.paypalOrderId).catch(() => null);
   if (!order) return "pending";
   const cap = firstCapture(order);
   if (order.status === "COMPLETED" && cap?.status === "COMPLETED") return applyCapture(ctx, payment, { status: "completed", orderId: order.id, captureId: cap.id });
   if (order.status === "APPROVED") return opts.readOnly ? "pending" : applyCapture(ctx, payment, await captureApprovedOrder(ctx.paypal, payment.paypalOrderId, r.id));
   if (cap && (cap.status === "DECLINED" || cap.status === "FAILED")) return applyCapture(ctx, payment, { status: "failed", orderId: order.id, error: `Capture ${cap.status}` });
+  return "pending";
+}
+
+/** Payout item states that mean the money did not reach the payee and will not (PayPal Payouts transaction_status). */
+const PAYOUT_FAILED = new Set(["FAILED", "DENIED", "BLOCKED", "RETURNED", "REFUNDED", "REVERSED"]);
+
+/** An unclaimed payout can wait 30 days: ask PayPal about it at most this often. */
+const UNCLAIMED_RECHECK_MS = 60 * 60_000;
+
+async function resolvePayout(ctx: ReinsContext, payment: Payment): Promise<CheckoutOutcome["outcome"]> {
+  if (!payment.payoutBatchId || !ctx.paypal.getPayout) return "pending";
+  if (payment.error === PAYOUT_UNCLAIMED_NOTE && ctx.now() - payment.updatedAt < UNCLAIMED_RECHECK_MS) return "pending";
+  const batch = await ctx.paypal.getPayout(payment.payoutBatchId).catch(() => null);
+  const item = batch?.items?.[0];
+  const s = item?.transaction_status ?? "";
+  if (s === "SUCCESS") return applyCapture(ctx, payment, { status: "completed", captureId: item?.transaction_id ?? undefined });
+  if (PAYOUT_FAILED.has(s)) return applyCapture(ctx, payment, { status: "failed", error: `Payout ${s}` });
+  // the whole batch was refused (for example not enough balance): no item ever pays
+  const batchStatus = batch?.batch_header?.batch_status ?? "";
+  if (!s && (batchStatus === "DENIED" || batchStatus === "CANCELED")) return applyCapture(ctx, payment, { status: "failed", error: `Payout batch ${batchStatus}` });
+  if (s === "UNCLAIMED" && (await getRequest(ctx.db, payment.requestId))?.status === "paying") {
+    // also stamps updated_at, which spaces out the next look (UNCLAIMED_RECHECK_MS)
+    await updatePayment(ctx.db, payment.id, { status: "pending", error: PAYOUT_UNCLAIMED_NOTE });
+  }
   return "pending";
 }
 

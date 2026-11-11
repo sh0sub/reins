@@ -67,7 +67,8 @@ export function bucketTotal(rows: Array<Pick<LedgerRow, "decisions" | "decision"
 }
 
 /** Status chip: label text + colour (never colour alone). */
-export function statusChip(row: Pick<LedgerRow, "status">): { label: string; className: string } {
+export function statusChip(row: Pick<LedgerRow, "status"> & { payment?: { error?: string | null } | null }): { label: string; className: string } {
+  if (row.status === "paying" && isUnclaimedPayout(row.payment)) return { label: "Payout unclaimed", className: "status status-warn" };
   switch (row.status) {
     case "paid":
       return { label: "Paid", className: "status status-ok" };
@@ -133,6 +134,28 @@ export function linkedRequest<P extends Pick<LedgerRow, "display_id" | "request_
   return d ? { kind: "decided", row: d } : { kind: "missing" };
 }
 
+/**
+ * Rows replayed from the recorded real sandbox run (the demo seed): a "recorded run" chip whose tooltip says when it
+ * really happened and how far its times were moved, so a shifted time never passes for live traffic.
+ */
+export function recordedChip(rec: { recorded_at: string; time_shift_ms: number; live_after?: boolean } | null | undefined): { label: string; title: string } | null {
+  if (!rec) return null;
+  if (rec.live_after) {
+    const at = new Date(rec.recorded_at).toISOString().replace("T", " ").slice(0, 16);
+    return { label: "recorded + live", title: `Requested and audited in a recorded real PayPal sandbox + Claude run (${at} UTC; its times are shifted). The decision and any payment after that happened live on this demo.` };
+  }
+  const when = new Date(rec.recorded_at).toISOString().replace("T", " ").slice(0, 16);
+  const h = Math.abs(rec.time_shift_ms) / 3_600_000;
+  const shift = h >= 48 ? `${Math.round(h / 24)} days` : h >= 1 ? `${h.toFixed(1)} h` : `${Math.round(h * 60)} min`;
+  return {
+    label: "recorded run",
+    title: `Recorded real PayPal sandbox + Claude run (${when} UTC). Ids, amounts and auditor text are as recorded; times are shifted ${rec.time_shift_ms >= 0 ? "forward" : "back"} by ${shift} so the run ends just before this demo started. Not live traffic.`,
+  };
+}
+
+/** A treasury payout PayPal sent that the payee has not claimed yet (not a failure; the request stays committed). */
+export const isUnclaimedPayout = (payment: { error?: string | null } | null | undefined): boolean => Boolean(payment?.error?.startsWith("unclaimed"));
+
 /** Offline demo ids (seed "FAKE-…", fake PayPal "SIM-…") are shown as SIM-… with a "simulated" chip so they never pass for sandbox ids. */
 export const isSimId = (id: string | null | undefined): boolean => Boolean(id && /^(FAKE|SIM)-/.test(id));
 export const simId = (id: string): string => id.replace(/^FAKE-/, "SIM-");
@@ -148,7 +171,7 @@ export type BannerTone = "ok" | "warn" | "bad" | "info";
 /** Ledger banner after "Reconcile now": green only when nothing is off; any mismatch is a warning; a demo instance gets a neutral note. */
 export function reconcileBanner(r: ReconcileResponse): { tone: BannerTone; msg: string } {
   if (r.mode === "simulated") return { tone: "info", msg: r.note };
-  const seeded = r.skipped ? ` · ${r.skipped} seeded demo ${r.skipped === 1 ? "payment" : "payments"} left as seeded` : "";
+  const seeded = r.skipped ? ` · ${r.skipped} recorded-run ${r.skipped === 1 ? "payment" : "payments"} left as recorded` : "";
   const msg = `Transaction Search: ${r.transactions} PayPal transactions · ${r.matched} matched · ${r.mismatch} mismatch · ${r.pending} not listed yet${seeded}`;
   return { tone: r.mismatch > 0 ? "warn" : "ok", msg: r.mismatch > 0 ? `${msg}. Expand a row with a red mark for the reason.` : msg };
 }

@@ -267,7 +267,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
                 </p>
               )}
               <p className="caption">
-                Want the real PayPal ids behind the simulated receipts? <Link href="/proof">See the recorded sandbox run</Link>.
+                The seeded ledger is a recorded real sandbox run (times shifted). The spike runs that proved each PayPal call: <Link href="/proof">sandbox proof</Link>.
               </p>
               <p className="caption">Playground only: the velocity rule (3 requests per 10 minutes) is relaxed so you can click freely. Every other rule is the real one.</p>
             </section>
@@ -621,7 +621,7 @@ function JudgeTour({ open, done, busy, onOpen, onSend }: { open: boolean; done: 
             <Icon name="shield" className="ico" />
             <span>
               Done: one paid, one asked a person, one denied by code. See the <Link href={`/ledger?r=${done[2]}`}>ledger row</Link> and its <Link href={`/ledger?r=${done[2]}&drawer=1`}>audit trail</Link>, or the{" "}
-              <Link href="/proof">recorded PayPal sandbox run</Link>.
+              <Link href="/proof">PayPal sandbox proof</Link>.
             </span>
           </p>
         )}
@@ -673,7 +673,7 @@ function JudgeTour({ open, done, busy, onOpen, onSend }: { open: boolean; done: 
           <Icon name="shield" className="ico" />
           <span>
             Done: one paid, one asked a person, one denied by code. See the{" "}
-            <Link href={`/ledger?r=${done[2]}`}>ledger row</Link> and its <Link href={`/ledger?r=${done[2]}&drawer=1`}>audit trail</Link>, or the <Link href="/proof">recorded PayPal sandbox run</Link>.
+            <Link href={`/ledger?r=${done[2]}`}>ledger row</Link> and its <Link href={`/ledger?r=${done[2]}&drawer=1`}>audit trail</Link>, or the <Link href="/proof">PayPal sandbox proof</Link>.
           </span>
         </p>
       )}

@@ -1,6 +1,7 @@
 /**
  * Video DB prep (used by scripts/demo/record-video.mjs). Takes a freshly seeded scratch DB (`pnpm seed -- --db <file>`)
- * and makes it ready for live takes:
+ * and makes it ready for live takes. Written for the earlier scripted seed (the recorded video): with the recorded-run seed
+ * it still finds the three rows below, but the month total afterwards is the recorded run's, not $117.97.
  *  - removes the three seeded requests the video re-creates live over MCP (reins.dev $12.98, statista $59, fiverr $450),
  *    so the month total ends at the plan's "$117.97 of $410" again after the takes
  *  - rolls every agent back to mandate v1: the seed gives Research Scout v2 and v3, but the video saves "version two"
@@ -48,6 +49,14 @@ export function prepVideoDb(dbFile, scratchRoot) {
     delete from mandates where version > 1;
     insert or ignore into workspace(id) values (1);
     update workspace set paypal_env='fake', payment_mode='vaulted', vault_id='VAULT-FAKE-VIDEO', connected_at=${Date.now()} where id=1;`);
+  return rotateKeys(abs, scratchRoot);
+}
+
+/** Gives every agent in a scratch DB a fresh `rk_live_` key and returns the raw keys by agent name (never printed). */
+export function rotateKeys(dbFile, scratchRoot) {
+  const abs = path.resolve(dbFile);
+  if (!abs.startsWith(path.resolve(scratchRoot) + path.sep)) throw new Error(`refusing to touch a DB outside ${scratchRoot}: ${abs}`);
+  const sql = (q) => execFileSync("/usr/bin/sqlite3", [abs, q], { encoding: "utf8" }).trim();
   const keys = {};
   for (const line of sql("select id || '|' || name from agents").split("\n")) {
     const [id, name] = line.split("|");

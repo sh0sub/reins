@@ -119,6 +119,12 @@ export const supervisedStrategy: PaymentStrategy = {
     }),
 };
 
+/**
+ * A payout PayPal sent but the payee has not claimed yet (sandbox: the address has no PayPal account). The request stays
+ * committed, not failed: PayPal returns the money after 30 days (PAYMENT.PAYOUTS-ITEM.RETURNED then fails it).
+ */
+export const PAYOUT_UNCLAIMED_NOTE = "unclaimed: PayPal sent the payout, the payee has not claimed it yet (returned after 30 days if never claimed)";
+
 /** Treasury fallback (M8'): pay the merchant from the prefunded business balance via Payouts. */
 export const treasuryStrategy: PaymentStrategy = {
   mode: "treasury",
@@ -144,6 +150,14 @@ export const treasuryStrategy: PaymentStrategy = {
       return { status: "pending", payoutBatchId: batch.batch_header.payout_batch_id };
     }),
 };
+
+/**
+ * The mode that can really pay: treasury without a payee address (TREASURY_PAYEE_EMAIL) would fail every payment, so it
+ * falls back to supervised checkout instead. Callers log the fallback.
+ */
+export function usablePaymentMode(mode: PaymentMode, treasuryPayeeEmail: string | null | undefined): PaymentMode {
+  return mode === "treasury" && !treasuryPayeeEmail?.trim() ? "supervised" : mode;
+}
 
 export const STRATEGIES: Record<PaymentMode, PaymentStrategy> = {
   vaulted: vaultedStrategy,

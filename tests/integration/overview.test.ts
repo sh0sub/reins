@@ -1,4 +1,4 @@
-/** S1 overview dashboard: aggregation against the seeded demo DB, and the AI weekly summary fallback/caching. */
+/** S1 overview dashboard: aggregation against the seeded demo DB (the recorded sandbox run), and the AI weekly summary fallback/caching. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,42 +31,39 @@ beforeAll(async () => {
 });
 
 describe("S1 overview aggregation (seeded demo)", () => {
-  it("shows the plan's flow C numbers, per-agent caps, categories and the fiverr block", async () => {
+  it("shows the recorded run's numbers, per-agent caps, categories and the blocks", async () => {
     const o = await getOverview(await createTestContext({ db }));
-    expect(`This month ${formatUsd(o.totals.spent_cents)} of ${formatUsd(o.totals.limit_cents)} across ${o.totals.agents} agents`).toBe("This month $117.97 of $410.00 across 3 agents");
-    expect(o.totals.pct).toBe(29);
+    expect(`This month ${formatUsd(o.totals.spent_cents)} of ${formatUsd(o.totals.limit_cents)} across ${o.totals.agents} agents`).toBe("This month $43.95 of $410.00 across 3 agents");
+    expect(o.totals.pct).toBe(11);
     expect(o.agents.map((a) => [a.name, formatUsd(a.spent_cents), formatUsd(a.limit_cents!)])).toEqual([
-      ["Claude Code – DevOps", "$94.95", "$150.00"],
-      ["Research Scout", "$9.00", "$100.00"],
-      ["Desk Restock Bot", "$14.02", "$160.00"],
+      ["Claude Code – DevOps", "$28.47", "$150.00"],
+      ["Research Scout", "$7.01", "$100.00"],
+      ["Desk Restock Bot", "$8.47", "$160.00"],
     ]);
-    expect(o.agents.map((a) => a.pct)).toEqual([63, 9, 9]);
-    // the seed pauses one agent: the headline must say so instead of claiming everything is fine
+    expect(o.agents.map((a) => a.pct)).toEqual([19, 7, 5]);
+    // the seed pauses one agent (configuration after the run): the headline must say so
     expect(o.status.level).toBe("warn");
     expect(o.status.message).toMatch(/is paused$/);
 
-    // plan flow C: 24 requests this month, Auto 19 (incl. the declined card) · Human 4 (1 pending) · Blocked 1
-    expect(o.decisions).toEqual({ total: 24, auto: 19, human: 4, blocked: 1, pending: 1 });
-    expect(o.approvals_saved).toBe(20);
+    // recorded run: 15 requests, 11 auto-paid, 1 waiting for a person, 3 blocked (2 by hard rules, 1 by Claude)
+    expect(o.decisions).toEqual({ total: 15, auto: 11, human: 1, blocked: 3, pending: 1 });
+    expect(o.approvals_saved).toBe(14);
 
     // S2 "Money protected": every figure derives from the ledger above, the only assumption is 30 s per approval
-    expect(o.protection).toMatchObject({ exposure_cents: 41000, exposure_agents: 3, blocked_cents: 45000, blocked_count: 1, auto_paid: 19, requests: 24, minutes_saved: 10, seconds_per_approval: 30, demo_data: true });
-    expect(o.protection.blocked_top).toMatchObject({ display_id: "R-0143", merchant: "fiverr.com", amount_cents: 45000 });
-    expect(o.protection.blocked_top!.rules_failed).toBe(3);
+    expect(o.protection).toMatchObject({ exposure_cents: 41000, exposure_agents: 3, blocked_cents: 176900, blocked_count: 3, auto_paid: 11, requests: 15, minutes_saved: 7, seconds_per_approval: 30, demo_data: true });
+    expect(o.protection.blocked_top).toMatchObject({ display_id: "R-0137", merchant: "hermanmiller.com", amount_cents: 129500, rules_failed: 2 });
 
     expect(o.categories).toEqual([
-      { category: "infrastructure", cents: 9495 },
-      { category: "office", cents: 1402 },
-      { category: "research", cents: 900 },
+      { category: "infrastructure", cents: 2847 },
+      { category: "office", cents: 847 },
+      { category: "research", cents: 701 },
     ]);
     expect(o.categories.reduce((s, c) => s + c.cents, 0)).toBe(o.totals.spent_cents);
 
     expect(o.recent).toHaveLength(8);
-    expect(o.recent[0]).toMatchObject({ merchant: "fiverr.com", display_id: "R-0143" });
+    expect(o.recent[0]).toMatchObject({ merchant: "fiverr.com", display_id: "R-0143", amount_cents: 45000, outcome: "blocked", via: "hard rules", agent_name: "Research Scout" });
     expect(o.recent[1]).toMatchObject({ merchant: "statista.com", status: "pending_human", display_id: "R-0142" });
-    const fiverr = o.recent.find((r) => r.merchant === "fiverr.com")!;
-    expect(fiverr).toMatchObject({ amount_cents: 45000, outcome: "blocked", via: "hard rules", agent_name: "Research Scout" });
-    expect(o.recent.find((r) => r.merchant === "vercel.com" && r.status === "paid")).toMatchObject({ outcome: "human", via: "approved via telegram", status: "paid" });
+    expect(o.recent.find((r) => r.display_id === "R-0139")).toMatchObject({ merchant: "render.com", outcome: "blocked", via: "auditor" });
   });
 
   it("is served by GET /api/overview", async () => {
@@ -74,7 +71,7 @@ describe("S1 overview aggregation (seeded demo)", () => {
     const res = await createRouter(async () => ctx)(new Request("http://localhost/api/overview"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { totals: { spent_cents: number } };
-    expect(body.totals.spent_cents).toBe(11797);
+    expect(body.totals.spent_cents).toBe(4395);
   });
 
   it("period toggle: last 30 days widens spend, decisions and categories; caps and status stay month to date", async () => {
@@ -93,7 +90,7 @@ describe("S1 overview aggregation (seeded demo)", () => {
     expect(rolling.categories.reduce((s, c) => s + c.cents, 0)).toBe(rolling.totals.spent_cents);
     // (a month longer than 30 days can lose its first days in the rolling window, so only sanity-check the totals)
     expect(rolling.decisions.total).toBeGreaterThan(0);
-    expect(rolling.decisions.total).toBeLessThanOrEqual(24);
+    expect(rolling.decisions.total).toBeLessThanOrEqual(15);
 
     const res = await createRouter(async () => ctx)(new Request("http://localhost/api/overview?period=30d"));
     expect(((await res.json()) as { period: { kind: string } }).period.kind).toBe("30d");
@@ -145,8 +142,8 @@ describe("S1 AI weekly summary", () => {
     // hours (see the "any day" seed test), so the week figures equal the month figures that day.
     const now = new Date();
     if (now.getUTCDate() !== 1 || now.getUTCDay() === 1) {
-      expect(s.summary).toMatch(/^This week your agents spent \$84\.98 across 6 purchases\. Claude Code – DevOps is closest to its cap at 63%\./);
-      expect(s.stats).toMatchObject({ week_spent_cents: 8498, week_purchases: 6 });
+      expect(s.summary).toMatch(/^This week your agents spent \$43\.95 across 11 purchases\. Claude Code – DevOps is closest to its cap at 19%\./);
+      expect(s.stats).toMatchObject({ week_spent_cents: 4395, week_purchases: 11 });
     }
     expect(s.action).toMatchObject({ display_id: "R-0143", merchant: "fiverr.com" });
   });

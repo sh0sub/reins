@@ -93,6 +93,11 @@ describe("D4 REST API", () => {
     expect(JSON.stringify(ws.body)).not.toContain("VAULT-SECRET");
     expect((await call("POST", "/api/workspace/mode", { mode: "treasury" })).body.payment_mode).toBe("treasury");
     expect((await call("POST", "/api/workspace/mode", { mode: "card" })).status).toBe(400);
+    // /api/health?detail=1 says which mode really runs and whether a payee is set (a boolean, never the address)
+    const health = await call("GET", "/api/health?detail=1");
+    expect(health.body).toEqual({ ok: true, payment_mode: "treasury", treasury_payee_configured: true });
+    expect(JSON.stringify(health.body)).not.toContain("@");
+    expect((await call("GET", "/api/health")).body).toEqual({ ok: true });
   });
 
   it("fake connect without an email still shows a demo sandbox merchant", async () => {

@@ -90,6 +90,12 @@ export interface PayoutBatch {
   links?: Link[];
 }
 
+/** GET /v1/payments/payouts/{id}: the batch plus its items (Reins sends one item per batch). */
+export interface PayoutBatchDetail extends PayoutBatch {
+  /** transaction_status: SUCCESS, PENDING, UNCLAIMED, ONHOLD, FAILED, DENIED, BLOCKED, RETURNED, REFUNDED, REVERSED, NEW. */
+  items?: Array<{ payout_item_id?: string; transaction_id?: string; transaction_status?: string }>;
+}
+
 /** Headers PayPal sends with each webhook delivery (lower-cased). */
 export interface WebhookHeaders {
   "paypal-auth-algo": string;
@@ -141,6 +147,8 @@ export interface PayPalClient {
   getOrder(orderId: string): Promise<Order>;
   captureOrder(orderId: string, requestId: string): Promise<Order>;
   createPayout(body: CreatePayoutBody): Promise<PayoutBatch>;
+  /** GET /v1/payments/payouts/{id} (read only): lets the sweeper settle a treasury payout when no webhook arrives. */
+  getPayout?(batchId: string): Promise<PayoutBatchDetail>;
   /** POST /v1/notifications/verify-webhook-signature -> verification_status */
   verifyWebhookSignature(headers: WebhookHeaders, event: unknown, webhookId: string): Promise<"SUCCESS" | "FAILURE">;
   /** GET /v1/reporting/transactions (M11 nightly reconciliation). */

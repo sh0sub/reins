@@ -31,6 +31,7 @@ import {
   updatePayment,
   updateRequest,
   PLAYGROUND_SCOPE_PREFIX,
+  RECORDED_REQUEST_PREFIX,
   type Agent,
   type Mandate,
   type PurchaseRequest,
@@ -46,7 +47,7 @@ import { generateApiKey, hashApiKey, parseBearer } from "./keys.ts";
 import { lookupDemoKey } from "./demoKeys.ts";
 import { InvalidMerchantError, isPublicSuffix, merchantInList, normalizeMerchant, parseMerchant, registrableDomain } from "./merchant.ts";
 import { centsToValue, toCents } from "./money.ts";
-import { STRATEGIES, type PaymentMode, type StrategyResult } from "./pay/strategies.ts";
+import { STRATEGIES, usablePaymentMode, type PaymentMode, type StrategyResult } from "./pay/strategies.ts";
 import type { PayPalClient } from "./paypal/types.ts";
 import type { CategorySuggester } from "./policy/categories.ts";
 import type { WeeklySummarizer } from "./weeklySummary.ts";
@@ -320,6 +321,10 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
   if (input.client_request_id?.startsWith(PLAYGROUND_SCOPE_PREFIX) && !opts.scope) {
     throw new ReinsError(400, "invalid_input", `client_request_id must not start with "${PLAYGROUND_SCOPE_PREFIX}" (reserved for the /try playground)`);
   }
+  // reserved for rows the demo seed replays from the recorded run (reconcile leaves those alone)
+  if (input.client_request_id?.startsWith(RECORDED_REQUEST_PREFIX)) {
+    throw new ReinsError(400, "invalid_input", `client_request_id must not start with "${RECORDED_REQUEST_PREFIX}" (reserved for the recorded demo run)`);
+  }
   const now = ctx.now();
   const mandate = await getActiveMandate(ctx.db, agent.id);
   // H5: abandoned PayPal checkouts stop holding this agent's budget before the new request is checked
@@ -564,7 +569,10 @@ async function pay(ctx: ReinsContext, r: PurchaseRequest, from: RequestStatus[],
 async function executePayment(ctx: ReinsContext, claimed: PurchaseRequest): Promise<RequestView> {
   const ws = await getWorkspace(ctx.db);
   const existing = await getPaymentByRequest(ctx.db, claimed.id);
-  const mode = (existing?.strategy ?? ws.paymentMode) as PaymentMode;
+  const wanted = (existing?.strategy ?? ws.paymentMode) as PaymentMode;
+  // fail safe: treasury with no payee address pays through supervised checkout rather than failing (a retry keeps its strategy)
+  const mode = existing ? wanted : usablePaymentMode(wanted, ctx.config.treasuryPayeeEmail);
+  if (mode !== wanted) console.warn("[reins] treasury payment mode needs TREASURY_PAYEE_EMAIL; using supervised checkout");
   const result = await STRATEGIES[mode].execute(claimed, {
     paypal: ctx.paypal,
     publicBaseUrl: ctx.config.publicBaseUrl,

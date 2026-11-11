@@ -11,12 +11,15 @@ export default function ProofPage() {
         <div>
           <h1>PayPal sandbox proof</h1>
           <p className="tagline">
-            Real sandbox ids from the runs that proved the payment path. <span className="status status-info">recorded sandbox run, not live</span>
+            Real sandbox ids from the spike runs that first proved each payment path. <span className="status status-info">recorded, not live</span>
           </p>
         </div>
       </div>
       <p className="muted proof-lead">
-        The receipts you get from <Link href="/try">/try</Link> are simulated and say so. These are the real PayPal sandbox calls behind them, copied from the spike logs in the repository. Nothing here talks to PayPal when you open it.
+        On the hosted demo the seeded ledger is a recorded real sandbox run (PayPal Payouts plus Claude audits, every row marked
+        &quot;recorded run&quot;, times shifted to now) and <Link href="/try">/try</Link> makes real sandbox payments. A local{" "}
+        <code>pnpm judge</code> uses simulated PayPal (SIM ids) and says so. Below are the spike runs behind each PayPal API, copied
+        from the spike logs in the repository. Nothing here talks to PayPal when you open it.
       </p>
       <ul className="proof-list">
         {PROOF_ITEMS.map((p) => (

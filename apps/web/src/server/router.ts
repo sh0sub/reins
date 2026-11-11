@@ -1,8 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { webhookCallback, type Bot } from "grammy";
-import { getActiveMandate, getAgent, getRequest, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
+import { getActiveMandate, getAgent, getRequest, getWorkspace, listAgents, listMandateVersions, REQUEST_STATUSES, type RequestStatus } from "@reins/db";
 import {
   HttpPayPalClient,
+  usablePaymentMode,
   PLAYGROUND_AGENT,
   PLAYGROUND_COOKIE,
   ReinsError,
@@ -191,7 +192,12 @@ const statusFilter = (url: URL): RequestStatus[] | undefined => {
 };
 
 const routes: Route[] = [
-  toRoute("GET", "/api/health", "public", async () => json({ ok: true })),
+  // ?detail=1 adds booleans only (never the values): which payment mode really runs and whether a treasury payee is set
+  toRoute("GET", "/api/health", "public", async (_req, ctx, _p, url) =>
+    url.searchParams.get("detail") === "1"
+      ? json({ ok: true, payment_mode: usablePaymentMode((await getWorkspace(ctx.db)).paymentMode, ctx.config.treasuryPayeeEmail), treasury_payee_configured: Boolean(ctx.config.treasuryPayeeEmail?.trim()) })
+      : json({ ok: true }),
+  ),
 
   // ---- agent API (MCP server calls these with the agent's Bearer key) ----
   toRoute("GET", "/api/mandate", "agent", async (req, ctx) => {
@@ -334,6 +340,7 @@ const routes: Route[] = [
   toRoute("POST", "/api/workspace/mode", "admin", async (req, ctx) => {
     const { mode } = (await readJson(req)) as { mode?: string };
     if (mode !== "vaulted" && mode !== "supervised" && mode !== "treasury") throw new ReinsError(400, "invalid_input", "mode must be vaulted, supervised or treasury");
+    if (mode === "treasury" && !ctx.config.treasuryPayeeEmail?.trim()) throw new ReinsError(409, "treasury_unavailable", "Treasury mode needs TREASURY_PAYEE_EMAIL on the server");
     const ws = await setPaymentMode(ctx, mode);
     return json({ payment_mode: ws.paymentMode });
   }),

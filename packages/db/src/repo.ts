@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, max, notInArray, sql, count } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lte, max, notInArray, sql, count } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { ReinsDb } from "./client.ts";
 import {
@@ -578,8 +578,28 @@ export async function countRequestsOutside(db: ReinsDb, agentIds: string[]): Pro
 }
 
 /** Repo updates stamp updatedAt with Date.now(); this restores a believable timeline for seeded history. */
-export async function setTimestamps(db: ReinsDb, target: { request?: string; payment?: string; agent?: string }, ts: number): Promise<void> {
+export async function setTimestamps(
+  db: ReinsDb,
+  target: { request?: string; payment?: string; agent?: string; /** payment created_at when it differs from `ts` (its updated_at) */ paymentCreatedAt?: number },
+  ts: number,
+): Promise<void> {
   if (target.agent) await db.update(agents).set({ createdAt: ts }).where(eq(agents.id, target.agent));
   if (target.request) await db.update(requests).set({ updatedAt: ts }).where(eq(requests.id, target.request));
-  if (target.payment) await db.update(payments).set({ createdAt: ts, updatedAt: ts }).where(eq(payments.id, target.payment));
+  if (target.payment) await db.update(payments).set({ createdAt: target.paymentCreatedAt ?? ts, updatedAt: ts }).where(eq(payments.id, target.payment));
+}
+
+/** Requests replayed from a recorded run (client_request_id "recorded:…", scripts/seed.ts; agents cannot use the prefix). */
+export const RECORDED_REQUEST_PREFIX = "recorded:";
+/**
+ * Recorded requests whose payment (if any) is the recorded one: reconcile leaves them alone. A recorded pending request
+ * that someone decided on this demo (human or system decision added live) is left out, so its live payment is reconciled.
+ * The fixture holds no human or system decisions (tests/integration/seed.test.ts).
+ */
+export async function listRecordedRequestIds(db: ReinsDb): Promise<Set<string>> {
+  const live = db.select({ id: decisions.requestId }).from(decisions).where(inArray(decisions.stage, ["human", "system"]));
+  const rows = await db
+    .select({ id: requests.id })
+    .from(requests)
+    .where(and(like(requests.clientRequestId, `${RECORDED_REQUEST_PREFIX}%`), notInArray(requests.id, live)));
+  return new Set(rows.map((r) => r.id));
 }

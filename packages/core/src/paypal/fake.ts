@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import {
   firstCapture,
+  PayPalApiError,
   type CreateOrderBody,
   type CreatePayoutBody,
   type Order,
   type PayPalClient,
   type PayoutBatch,
+  type PayoutBatchDetail,
   type TransactionDetail,
   type TransactionSearchParams,
   type TransactionSearchResponse,
@@ -114,6 +116,19 @@ export class FakePayPalClient implements PayPalClient {
     return { batch_header: { payout_batch_id: id, batch_status: "PENDING", sender_batch_header: body.sender_batch_header } };
   }
 
+  /** Item status getPayout reports per batch id (tests set it); a batch not listed here is still PENDING. */
+  readonly payoutItemStatus = new Map<string, string>();
+
+  async getPayout(batchId: string): Promise<PayoutBatchDetail> {
+    this.calls.push("getPayout");
+    if (!this.payouts.has(batchId)) throw new PayPalApiError(404, undefined, "INVALID_RESOURCE_ID", "Payout batch not found");
+    const status = this.payoutItemStatus.get(batchId) ?? "PENDING";
+    return {
+      batch_header: { payout_batch_id: batchId, batch_status: status === "SUCCESS" ? "SUCCESS" : "PENDING" },
+      items: [{ payout_item_id: `${batchId}-1`, transaction_id: status === "SUCCESS" ? `${batchId}-TXN` : undefined, transaction_status: status }],
+    };
+  }
+
   /** Extra rows tests inject (e.g. an amount mismatch); merged with captures from completed orders. */
   readonly extraTransactions: TransactionDetail[] = [];
   /** Set to make the next searchTransactions throw (e.g. HTTP 429). */
@@ -174,12 +189,12 @@ export class FakePayPalClient implements PayPalClient {
     };
   }
 
-  payoutItemEvent(batchId: string, status: "SUCCEEDED" | "FAILED" = "SUCCEEDED"): WebhookEvent {
+  payoutItemEvent(batchId: string, status: "SUCCEEDED" | "FAILED" | "UNCLAIMED" | "RETURNED" = "SUCCEEDED"): WebhookEvent {
     return {
       id: `WH-${pid()}`,
       event_type: `PAYMENT.PAYOUTS-ITEM.${status}`,
       resource_type: "payouts_item",
-      resource: { payout_item_id: pid(13), payout_batch_id: batchId, transaction_id: pid(), transaction_status: status === "SUCCEEDED" ? "SUCCESS" : "FAILED" },
+      resource: { payout_item_id: pid(13), payout_batch_id: batchId, transaction_id: pid(), transaction_status: status === "SUCCEEDED" ? "SUCCESS" : status },
     };
   }
 }

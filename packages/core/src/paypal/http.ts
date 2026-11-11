@@ -8,6 +8,7 @@ import {
   type PayPalClient,
   type PayPalEnv,
   type PayoutBatch,
+  type PayoutBatchDetail,
   type TransactionSearchParams,
   type TransactionSearchResponse,
   type WebhookHeaders,
@@ -125,6 +126,10 @@ export class HttpPayPalClient implements PayPalClient {
 
   createPayout(body: CreatePayoutBody): Promise<PayoutBatch> {
     return this.call("POST", "/v1/payments/payouts", body);
+  }
+
+  getPayout(batchId: string): Promise<PayoutBatchDetail> {
+    return this.call("GET", `/v1/payments/payouts/${encodeURIComponent(batchId)}`);
   }
 
   searchTransactions(p: TransactionSearchParams): Promise<TransactionSearchResponse> {
