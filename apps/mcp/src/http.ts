@@ -195,7 +195,11 @@ export function createMcpHttpHandler(apiBaseUrl: string, fetchImpl?: FetchLike, 
 
   async function handle(req: Request, remoteAddress?: string): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/health") return new Response("ok");
+    if (url.pathname === "/health") {
+      // ?detail=1: whether keyless sessions are on and the shared mint secret is present (never its value)
+      if (url.searchParams.get("detail") !== "1") return new Response("ok");
+      return Response.json({ ok: true, keyless_demo: keyless, mint_secret: !!mintSecret, sessions: sessions.size });
+    }
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
     const auth = req.headers.get("authorization") ?? "";
     if (!auth && keyless) return keylessRequest(req, remoteAddress);
@@ -245,5 +249,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     } catch {
       res.writeHead(500).end();
     }
-  }).listen(port, () => console.error(`[reins-mcp] Streamable HTTP on :${port}/mcp`));
+  }).listen(port, () => {
+    console.error(`[reins-mcp] Streamable HTTP on :${port}/mcp`);
+    // presence only, never the value: without the shared secret every keyless mint shares reins-web's per-IP limit
+    if (keylessDemoFromEnv(process.env)) console.error(`[reins-mcp] keyless demo sessions on; mint secret ${process.env.REINS_MCP_MINT_SECRET ? "set" : "MISSING (set REINS_MCP_MINT_SECRET on reins-web and reins-mcp)"}`);
+  });
 }

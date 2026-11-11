@@ -84,6 +84,8 @@ describe("keyless MCP sessions on the public demo", () => {
     const { c, transport } = await client();
     expect(transport.sessionId).toMatch(/^[0-9a-f-]{36}$/);
     expect(webCalls).toEqual(["GET /api/try/connect"]);
+    expect(await (await mcp(new Request("https://reins-mcp.test/health?detail=1"))).json()).toEqual({ ok: true, keyless_demo: true, mint_secret: true, sessions: 1 });
+    expect(await (await mcp(new Request("https://reins-mcp.test/health"))).text()).toBe("ok");
     const m = sc(await c.callTool({ name: "get_mandate", arguments: {} }));
     expect((m.agent as { name: string }).name).toBe("Playground Agent");
     expect(mcp.sessionCount()).toBe(1);
@@ -176,6 +178,16 @@ describe("keyless MCP sessions on the public demo", () => {
     const noSecret = await stack({ mintSecret: "" }, { mintSecret: SECRET, limiter: tight() });
     expect((await noSecret.mcp(post(init, { "cf-connecting-ip": "192.0.2.10" }))).status).toBe(200);
     expect((await noSecret.mcp(post(init, { "cf-connecting-ip": "192.0.2.11" }))).status).toBe(503);
+  });
+
+  it("with the web's real per-IP connect limit, 30 judges on different IPs all get sessions; one IP alone is limited", async () => {
+    // default RATE_LIMITS (connect: 10 burst) on the web side: every mint comes from the one reins-mcp address
+    const { mcp } = await stack({}, { mintSecret: SECRET, limiter: new RateLimiter(undefined, () => 0) });
+    for (let i = 0; i < 30; i++) expect((await mcp(post(init, { "cf-connecting-ip": `198.18.0.${i}` }))).status).toBe(200);
+    const one: number[] = [];
+    for (let i = 0; i < 8; i++) one.push((await mcp(post(init, { "cf-connecting-ip": "198.18.1.1", "x-forwarded-for": `10.9.9.${i}` }))).status);
+    expect(one.slice(0, 5)).toEqual([200, 200, 200, 200, 200]);
+    expect(one.slice(5)).toEqual([429, 429, 429]);
   });
 
   it("a keyless session renews its demo key once if the web API forgot it (restart)", async () => {
