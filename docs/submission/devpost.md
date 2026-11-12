@@ -32,7 +32,7 @@ Reins gives every agent its own mandate, hard rules in code, a Claude audit, one
 | Agent Toolkit capture (`pay_order`) | Not completed |
 | Demo video | Recorded on the live flow with real Claude audits and real sandbox payouts |
 
-Video: https://youtu.be/CrJeTvZiWKw
+Video: https://youtu.be/lNSpeRAQxZA
 
 ---
 
@@ -122,7 +122,7 @@ The Overview "Money protected" card is computed from the ledger, not typed in. W
 
 **Payments.** Orders v2 with a vault for unattended purchases (the buyer approves once, later purchases reorder with the saved `vault_id`), a supervised mode where the buyer approves each order, and a prefunded Payouts treasury mode used by the hosted demo. Every webhook is signature-verified, requests carry `PayPal-Request-Id` idempotency, and Transaction Search reconciles against PayPal's records.
 
-**MCP server, 4 tools** (Streamable HTTP and stdio): `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`. Verified with a real Claude Code session against the hosted endpoint: a $12.98 namecheap.com request was auto-approved by the real auditor and settled as a real sandbox payout, and the session saw "paid" on its third status check. `@reins/mcp` is in the repo but not published to npm. `request_purchase` is idempotent per agent and `client_request_id`, so retries never pay twice.
+**MCP server, 4 tools** (Streamable HTTP and stdio): `get_mandate`, `request_purchase`, `get_request_status`, `list_transactions`. Verified with a real Claude Code session against the hosted endpoint: a $12.98 namecheap.com request was auto-approved by the real auditor and settled as a real sandbox payout, and the session saw "paid" on its second status check (a status check waits while the payout settles). `@reins/mcp` is in the repo but not published to npm. `request_purchase` is idempotent per agent and `client_request_id`, so retries never pay twice.
 
 **Render.** A Blueprint (`render.yaml`) deploys two web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and the recorded run is re-seeded on every boot, so the demo always starts clean.
 
@@ -164,7 +164,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 - Code: https://github.com/sh0sub/reins
 - Live demo: https://reins-web.onrender.com (try: https://reins-web.onrender.com/try)
 - MCP endpoint: https://reins-mcp.onrender.com/mcp
-- Video: https://youtu.be/CrJeTvZiWKw
+- Video: https://youtu.be/lNSpeRAQxZA
 
 ## For judges: try it in 2 minutes
 

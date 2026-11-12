@@ -49,9 +49,9 @@ export const SEGMENTS = [
     lines: [
       ["One command connects Claude Code to the hosted Reins MCP server. No key needed.", "One command connects Claude Code to the hosted Reins M C P server. No key needed."],
       ["I ask Claude to renew a domain for $12.98.", "I ask Claude to renew a domain for twelve ninety-eight."],
-      "It reads its mandate, requests the purchase, and checks back while PayPal pays.",
+      "It reads its mandate, requests the purchase, and checks the status until PayPal has paid.",
       "Hard rules passed, Claude's audit scored it risk one, and it was under the auto-approve limit, so it paid on its own.",
-      ["The same request, R-0147, is in the Reins dashboard with its PayPal ID.", "The same request, R one forty-seven, is in the Reins dashboard with its PayPal I D."],
+      ["The same request, R-0146, is in the Reins dashboard with its PayPal ID.", "The same request, R one forty-six, is in the Reins dashboard with its PayPal I D."],
     ],
     prep: [{ term: "load" }],
     actions: [

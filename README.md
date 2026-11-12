@@ -59,7 +59,7 @@ Built for the PayPal AI Hackathon 2026. Targets: Best Use of Agentic Commerce, A
 
 Note: the ledger uses AG Grid Enterprise in trial mode (no licence key; set `NEXT_PUBLIC_AG_GRID_LICENSE_KEY` to remove the trial watermark). A public deploy may show the watermark.
 
-- Demo video: https://youtu.be/CrJeTvZiWKw. Recorded on the live flow: real Claude audits and real PayPal sandbox payouts.
+- Demo video: https://youtu.be/lNSpeRAQxZA. Recorded on the live flow: real Claude audits and real PayPal sandbox payouts.
 - Live demo: https://reins-web.onrender.com
 - MCP endpoint: https://reins-mcp.onrender.com/mcp
 - Devpost text: [docs/submission/devpost.md](docs/submission/devpost.md)
