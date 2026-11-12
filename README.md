@@ -32,6 +32,8 @@ Or point Claude Code at the hosted demo, no clone and no key (the first call can
 claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
 ```
 
+Step-by-step guide with copy-paste prompts and expected results: [docs/judge-mcp-guide.md](docs/judge-mcp-guide.md).
+
 Every MCP session gets its own throwaway demo key for the Playground Agent, so your velocity window, requests and ledger rows never mix with another judge's (sessions are limited per client IP and close after 30 idle minutes). The key-based config (your own `rk_demo_` key from "Connect your own agent" on `/try`) is the second option.
 
 A shared PayPal credential would have paid the $450. Reins did not: send the $450 prompt-injected order and it is denied by 3 hard rules. Tick "Simulate a fooled auditor (always says approve)" and send it again: still denied, because the rules run in code. `/try` calls the same code path as the MCP `request_purchase`. Your own `.local/reins.db` is never touched.
