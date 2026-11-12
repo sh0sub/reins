@@ -34,7 +34,7 @@ Reins gives every agent its own mandate, hard rules in code, a Claude audit, one
 | Agent Toolkit capture (`pay_order`) | Not completed |
 | Demo video | Recorded on the live flow with real Claude audits and real sandbox payouts |
 
-Video: [YouTube URL, to add after upload]
+Video: https://youtu.be/CrJeTvZiWKw
 
 ---
 
@@ -166,7 +166,7 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 - Code: https://github.com/sh0sub/reins
 - Live demo: https://reins-web.onrender.com (try: https://reins-web.onrender.com/try)
 - MCP endpoint: https://reins-mcp.onrender.com/mcp
-- Video: [YouTube URL, to add after upload]
+- Video: https://youtu.be/CrJeTvZiWKw
 
 ## For judges: try it in 2 minutes
 

@@ -88,6 +88,7 @@ export function termHtml({ jsonlPath, setupCmd, runCmd, mcpUrl, w, h }) {
   .res{color:#9aa6c4;padding-left:26px}.res.ok{color:#4ade80}.res.warn{color:#fbbf24}.res.bad{color:#f87171}
   .txt{color:#f1f5f9}.txt b{color:#e2e8f0}
   .hidden{display:none}
+  .hl{background:rgba(74,222,128,.14);outline:1px solid rgba(74,222,128,.55);border-radius:6px;padding:2px 8px;margin-left:-8px}
   .cur{display:inline-block;width:9px;height:19px;background:#e5e9f5;vertical-align:-3px;animation:bl 1s steps(1) infinite}
   @keyframes bl{50%{opacity:0}}
   .tag{position:absolute;right:16px;top:7px;padding:7px 14px !important;background:rgba(22,29,51,.95);border:1px solid #3b4a78;color:#c7d2fe;border-radius:999px;font:600 14px/1 -apple-system,Helvetica,Arial,sans-serif}
@@ -116,16 +117,14 @@ export function termHtml({ jsonlPath, setupCmd, runCmd, mcpUrl, w, h }) {
   function type(el, text, sec) { return new Promise((r) => { let i = 0; const step = Math.max(1, Math.round(text.length / (sec * 30)));
     const t = setInterval(() => { i = Math.min(text.length, i + step); el.textContent = text.slice(0, i); follow(); if (i >= text.length) { clearInterval(t); r(); } }, 33); }); }
   const wait = (s) => new Promise((r) => setTimeout(r, s * 1000));
-  window.play = async ({ cmd2At, eventsAt, endAt }) => {
-    const t0 = performance.now(); const until = (s) => wait(Math.max(0, s - (performance.now() - t0) / 1000));
-    await type($("c1"), C1, 1.8); $("c1n").classList.remove("hidden"); $("c1m").classList.remove("hidden");
-    await until(cmd2At); $("cur1").classList.add("hidden"); $("l2").classList.remove("hidden"); $("cur2").classList.remove("hidden");
-    await type($("c2"), C2, 1.6); $("cur2").classList.add("hidden");
-    const evs = [...document.querySelectorAll("[data-ev]")];
-    await until(eventsAt);
-    const step = (endAt - eventsAt) / evs.length;
-    for (const [i, el] of evs.entries()) { await until(eventsAt + step * (i + 1)); el.classList.remove("hidden"); follow(); }
-    window.done = true;
-  };
+  // step API (the recorder calls each step when its narration line starts)
+  window.typeSetup = async () => { await type($("c1"), C1, 1.8); $("c1n").classList.remove("hidden"); $("c1m").classList.remove("hidden"); };
+  window.typeRun = async () => { $("cur1").classList.add("hidden"); $("l2").classList.remove("hidden"); $("cur2").classList.remove("hidden");
+    await type($("c2"), C2, 1.6); $("cur2").classList.add("hidden"); };
+  window.reveal = async (sec) => { const evs = [...document.querySelectorAll("[data-ev]")]; const step = sec / evs.length;
+    for (const el of evs) { await wait(step); el.classList.remove("hidden"); follow(); } window.done = true; };
+  // the paid status line and Claude's final line stay highlighted while the narration explains them
+  window.highlightPaid = () => { const evs = [...document.querySelectorAll("[data-ev]")]; const paid = evs.filter((e) => e.classList.contains("ok")).at(-1);
+    for (const el of [paid, evs.at(-1)]) if (el) el.classList.add("hl"); follow(); };
   </script></body></html>`;
 }

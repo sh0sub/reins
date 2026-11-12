@@ -34,7 +34,7 @@ const PORT = Number(args.port ?? 3927);
 const BASE = `http://localhost:${PORT}`;
 if (!args.work) throw new Error("--work <scratch dir> is required");
 const WORK = path.resolve(args.work);
-const OUT = path.resolve(args.out ?? path.join(ROOT, ".local/video/reins-demo-v2.mp4"));
+const OUT = path.resolve(args.out ?? path.join(ROOT, ".local/video/reins-demo-v3.mp4"));
 const SESSION = path.resolve(args.session ?? path.join(ROOT, ".local/video/claude-session-r0147.jsonl"));
 const DB_FILE = path.join(WORK, "reins-video.db");
 const DIST = ".next-video2";
@@ -59,6 +59,7 @@ const HI = 1.4;
 const LEAD = 0.4, GAP = 0.25, TAIL = 0.6;
 const TEMPO = 1.09; // the TTS voice reads ~2.3 words/s; 1.09x keeps it natural and fits 2:30
 const L3_TO = 1.8;
+const SIDEBAR = 216; // CSS width of the app sidebar at 1280 px
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(`[rec ${new Date().toISOString().slice(11, 19)}]`, ...a);
@@ -100,50 +101,59 @@ async function tts(text, file) {
   writeFileSync(file, Buffer.from(await res.arrayBuffer()));
 }
 
+const silenceWav = (sec, f) => run(FFMPEG, ["-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", Math.max(0.001, sec).toFixed(3), "-c:a", "pcm_s16le", f]);
+
+/** TTS per line (trimmed, 1.09x); card segments get their cue times here, screen segments while recording ({ say }). */
 async function buildAudio() {
   const dir = path.join(WORK, "audio");
   const cache = path.join(WORK, "tts");
   mkdirSync(dir, { recursive: true });
   mkdirSync(cache, { recursive: true });
-  const silence = (sec, f) => run(FFMPEG, ["-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", sec.toFixed(3), "-c:a", "pcm_s16le", f]);
   for (const seg of SEGMENTS) {
-    const parts = [];
-    const cues = [];
-    let t = LEAD;
-    const lead = path.join(dir, `${seg.id}-lead.wav`);
-    silence(LEAD, lead);
-    parts.push(lead);
+    seg.lineFiles = [];
+    seg.lineDur = [];
     for (const [i, line] of seg.lines.entries()) {
       const say = lineSay(line);
       const hash = createHash("sha256").update(`${TTS_MODEL}|${TTS_VOICE}|${TTS_INSTRUCTIONS}|${say}`).digest("hex").slice(0, 16);
       const raw = path.join(cache, `${hash}.wav`);
       await tts(say, raw);
       const wav = path.join(dir, `${seg.id}-${i}.wav`);
-      // trim leading/trailing silence so cue timing matches the voice; 48 kHz mono
-      run(FFMPEG, ["-y", "-v", "error", "-i", raw, "-af", `silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.03,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,atempo=${TEMPO}`, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", wav]);
-      const d = probe(wav);
-      cues.push({ start: t, end: t + d, text: lineText(line) });
-      parts.push(wav);
-      t += d;
-      if (i < seg.lines.length - 1) {
-        const g = path.join(dir, `${seg.id}-gap${i}.wav`);
-        silence(seg.gaps?.[i] ?? GAP, g);
-        parts.push(g);
-        t += seg.gaps?.[i] ?? GAP;
-      }
+      run(FFMPEG, ["-y", "-v", "error", "-i", raw, "-af", `silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.03,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,atempo=${seg.tempo ?? TEMPO}`, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", wav]);
+      seg.lineFiles.push(wav);
+      seg.lineDur.push(probe(wav));
     }
-    const tail = path.join(dir, `${seg.id}-tail.wav`);
-    silence(seg.tail ?? TAIL, tail);
-    parts.push(tail);
-    const list = path.join(dir, `${seg.id}-list.txt`);
-    writeFileSync(list, parts.map((p) => `file '${p}'`).join("\n"));
-    seg.audio = path.join(dir, `${seg.id}.wav`);
-    run(FFMPEG, ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", list, "-c:a", "pcm_s16le", seg.audio]);
-    seg.cues = cues;
-    seg.audioDur = probe(seg.audio);
-    log(`audio ${seg.id}: ${seg.audioDur.toFixed(2)}s, ${seg.lines.map(lineText).join(" ").split(/\s+/).length} words`);
+    if (seg.card) {
+      let t = LEAD;
+      seg.cues = seg.lineDur.map((d, i) => {
+        const c = { start: t, end: t + d, text: lineText(seg.lines[i]) };
+        t += d + (seg.gaps?.[i] ?? GAP);
+        return c;
+      });
+      seg.duration = seg.cues.at(-1).end + (seg.tail ?? TAIL);
+    }
+    log(`audio ${seg.id}: ${seg.lineDur.reduce((x, y) => x + y, 0).toFixed(2)}s speech (${seg.lineDur.map((d) => d.toFixed(1)).join(", ")}), ${seg.lines.map(lineText).join(" ").split(/\s+/).length} words`);
   }
   log(`TTS: ${ttsStats.requests} new requests, ${ttsStats.cached} cached`);
+}
+
+/** Segment narration track: each line placed at its cue start, silence between, padded to the segment duration. */
+function segAudio(seg) {
+  const dir = path.join(WORK, "audio");
+  const parts = [];
+  let t = 0;
+  seg.cues.forEach((c, i) => {
+    const g = path.join(dir, `${seg.id}-sil${i}.wav`);
+    silenceWav(c.start - t, g);
+    parts.push(g, seg.lineFiles[i]);
+    t = c.start + seg.lineDur[i];
+  });
+  const tail = path.join(dir, `${seg.id}-siltail.wav`);
+  silenceWav(seg.duration - t + 0.05, tail);
+  parts.push(tail);
+  const list = path.join(dir, `${seg.id}-list.txt`);
+  writeFileSync(list, parts.map((p) => `file '${p}'`).join("\n"));
+  seg.audio = path.join(dir, `${seg.id}.wav`);
+  run(FFMPEG, ["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", list, "-c:a", "pcm_s16le", seg.audio]);
 }
 
 /* ── CDP plumbing ──────────────────────────────────────────────────────────── */
@@ -219,19 +229,30 @@ function cardHtml(seg, ci) {
     .who div{border:2px solid #2c4485;border-radius:18px;padding:18px 24px;font-size:28px;line-height:1.3;color:#dbe6ff}
     .who b{display:block;color:#fff;font-size:30px;margin-bottom:4px}
     .url{font-size:40px;font-weight:700;color:#93c5fd;font-family:Menlo,monospace}
+    .facts{display:flex;flex-direction:column;gap:14px}
+    .facts div{font-size:38px;line-height:1.25;font-weight:600;color:#dbe6ff}
+    .facts span{display:inline-block;min-width:270px;margin-right:22px;color:#93c5fd;font-family:Menlo,monospace;font-size:32px}
+    .cta{font-size:96px;line-height:1.05;font-weight:800;letter-spacing:-.02em;color:#93c5fd;font-family:Menlo,monospace}
     .src{position:absolute;left:170px;right:170px;bottom:44px;font-size:20px;color:#8ea3d1}
     .sub{position:absolute;left:120px;right:120px;bottom:96px;display:flex;justify-content:center}
     .sub span{max-width:1560px;text-align:center;font-size:36px;line-height:1.3;font-weight:600;color:#fff;background:rgba(5,12,32,.6);border-radius:14px;padding:10px 26px 12px}
     </style></head><body>${inner}<div class="sub"><span>${sub}</span></div></body></html>`;
-  if (seg.card === "hook")
-    return shell(`<div class="wrap"><div class="brand"><i></i>Reins</div><h1>${esc(HOOK_HEAD[ci])}</h1>${ci === 2 ? `<div class="tag">Spending controls for AI agents on PayPal.</div>` : ""}</div>${ci === 1 ? `<div class="src">${esc(HOOK_SRC)}</div>` : ""}`);
-  return shell(`<div class="wrap" style="gap:30px"><div class="brand"><i></i>Reins</div><h1 style="font-size:92px">Hold the reins on AI spending.</h1>
-    ${ci === 0 ? `<div class="who"><div><b>A company</b>Each agent gets a card with a limit and an approval line.</div><div><b>A solo founder</b>Agents run on auto-approve, inside a mandate.</div></div>` : ""}
-    ${ci >= 1 ? `<div class="row"><span class="pill">Payouts</span><span class="pill">Transaction Search</span><span class="pill">Orders v2 + Vault</span><span class="pill">Webhooks</span><span class="pill">Open-source MCP server</span></div>` : ""}
-    ${ci >= 2 ? `<div class="url">reins-web.onrender.com/try</div><div class="url" style="font-size:34px;color:#c7d4f3">github.com/sh0sub/reins</div>` : ""}</div>`);
+  if (seg.card === "hook") {
+    const head = ["$450 logo, no questions asked?", "Agents are getting wallets.", "Agents are getting wallets.", "Who sets the limit?"][ci];
+    const facts = ci === 1 || ci === 2
+      ? `<div class="facts"><div><span>Sept 8, 2026</span>Meta's Muse can pay through Stripe Link (US)</div>${ci === 2 ? `<div><span>Sept 16, 2025</span>PayPal supports Google's AP2</div><div><span>Oct 28, 2025</span>PayPal launches Agentic Commerce Services</div>` : ""}</div>`
+      : "";
+    return shell(`<div class="wrap"><div class="brand"><i></i>Reins</div><h1>${esc(head)}</h1>${facts}${ci === 3 ? `<div class="tag">Spending controls for AI agents on PayPal.</div>` : ""}</div>${ci === 1 || ci === 2 ? `<div class="src">${esc(HOOK_SRC)}</div>` : ""}`);
+  }
+  // close: one card, everything visible for the whole card; the /try URL is the call to action
+  return shell(`<div class="wrap" style="top:70px;bottom:200px;gap:26px"><div class="brand"><i></i>Reins · Hold the reins on AI spending.</div>
+    <div class="cta">reins-web.onrender.com/try</div>
+    <div class="who"><div><b>Companies</b>Each agent gets a card with a limit and an approval line.</div><div><b>Solo founders</b>Agents run on auto-approve, inside a mandate.</div></div>
+    <div class="row"><span class="pill">Payouts</span><span class="pill">Transaction Search</span><span class="pill">Orders v2 + Vault</span><span class="pill">Webhooks</span><span class="pill">Open-source MCP server</span></div>
+    <div class="url" style="font-size:40px;color:#c7d4f3">github.com/sh0sub/reins</div></div>`);
 }
 
-function stageHtml(seg, { text, l3, big }) {
+function stageHtml(seg, { text, l3, big, top }) {
   const bottom = H - (SCR_Y + SCR_H);
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;width:${W}px;height:${H}px;background:transparent;overflow:hidden;font-family:${FONT};color:#0f172a;-webkit-font-smoothing:antialiased}
@@ -251,9 +272,9 @@ function stageHtml(seg, { text, l3, big }) {
   .big span{font-size:76px;font-weight:800;letter-spacing:-.02em;color:#fff}
   </style></head><body>
   <div class="hole"></div>
-  <div class="foot"><b><i></i>Reins</b><span>${esc(SOURCE[seg.source ?? "card"])}</span><span class="c"><i></i>${esc(CORNER)}</span></div>
+  <div class="foot"><b><i></i>Reins</b><span>${esc(SOURCE[seg.source ?? "card"])}</span><span class="c"${seg.corner ? ' style="color:#92400e"' : ""}><i${seg.corner ? ' style="background:#f59e0b"' : ""}></i>${esc(seg.corner ?? CORNER)}</span></div>
   ${l3 ? `<div class="l3"><div class="k">${esc(seg.kicker)}</div><h1>${esc(seg.heading)}</h1><span class="c">${esc(seg.chip)}</span></div>` : ""}
-  ${big ? `<div class="big"><span>${esc(text)}</span></div>` : text ? `<div class="sub"${seg.capTop ? ` style="bottom:auto;top:${SCR_Y + 70}px"` : ""}><span>${esc(text)}</span></div>` : ""}
+  ${big ? `<div class="big"><span>${esc(text)}</span></div>` : text ? `<div class="sub"${top ? ` style="bottom:auto;top:${SCR_Y + 70}px"` : ""}><span>${esc(text)}</span></div>` : ""}
   </body></html>`;
 }
 
@@ -264,29 +285,37 @@ async function renderStage(cdp) {
   await cdp.send("Page.enable");
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
+  let n = 0;
   for (const seg of SEGMENTS) {
     seg.stage = [];
-    const shoot = async (name, html, start) => {
-      const f = path.join(dir, `${name}.html`);
-      const png = path.join(dir, `${name}.png`);
+    const shoot = async (html, start) => {
+      const f = path.join(dir, `${seg.id}-${++n}.html`);
+      const png = path.join(dir, `${seg.id}-${n}.png`);
       writeFileSync(f, html);
       await cdp.send("Page.navigate", { url: `file://${f}` });
-      await sleep(250);
+      await sleep(220);
       writeFileSync(png, Buffer.from((await cdp.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
       seg.stage.push({ png, start });
     };
-    for (const [ci, cue] of seg.cues.entries()) {
-      const start = ci === 0 ? 0 : cue.start;
-      if (seg.card) await shoot(`${seg.id}-${ci}`, cardHtml(seg, ci), start);
-      else if (seg.bigLast && ci === seg.cues.length - 1) await shoot(`${seg.id}-${ci}`, stageHtml(seg, { text: cue.text, big: true }), start);
-      else if (ci === 0) {
-        await shoot(`${seg.id}-${ci}-l3`, stageHtml(seg, { text: cue.text, l3: true }), 0);
-        if (!seg.cues[1] || seg.cues[1].start > L3_TO + 0.05) await shoot(`${seg.id}-${ci}`, stageHtml(seg, { text: cue.text }), L3_TO);
-      } else await shoot(`${seg.id}-${ci}`, stageHtml(seg, { text: cue.text }), start);
+    if (seg.card) {
+      for (const [ci, cue] of seg.cues.entries()) await shoot(cardHtml(seg, ci), ci === 0 ? 0 : cue.start);
+      continue;
+    }
+    // a caption shows only while its line is spoken; the lower third for the first L3_TO seconds
+    const times = [...new Set([0, L3_TO, ...seg.cues.flatMap((c) => [c.start, c.end])].map((t) => +t.toFixed(3)))].filter((t) => t < seg.duration).sort((x, y) => x - y);
+    let prev = "";
+    for (const t of times) {
+      const ci = seg.cues.findIndex((c) => t >= c.start - 0.001 && t < c.end - 0.001);
+      const cue = seg.cues[ci];
+      const state = { text: cue?.text, top: cue?.top, l3: t < L3_TO, big: !!cue && !!seg.bigLast && ci === seg.cues.length - 1 };
+      const key = JSON.stringify(state);
+      if (key === prev) continue;
+      prev = key;
+      await shoot(stageHtml(seg, state), t);
     }
   }
   await cdp.send("Emulation.setDefaultBackgroundColorOverride", {});
-  log(`stage graphics: ${SEGMENTS.reduce((n, s) => n + s.stage.length, 0)} PNGs`);
+  log(`stage graphics: ${SEGMENTS.reduce((k, x) => k + x.stage.length, 0)} PNGs`);
 }
 
 /* ── 3. scratch DB + server (real mode) ────────────────────────────────────── */
@@ -383,7 +412,7 @@ function cardText(view, agentName, budget) {
 }
 
 /* ── in-page overlays ──────────────────────────────────────────────────────── */
-const TG_CSS = `position:fixed;inset:auto;margin:0;right:24px;bottom:24px;width:520px;padding:0;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;color:#0f172a;box-shadow:0 18px 48px rgba(15,23,42,.3);font:15px/1.45 -apple-system,Helvetica,Arial,sans-serif;z-index:2147483647`;
+const TG_CSS = `position:fixed;inset:auto;margin:0;right:24px;top:72px;width:520px;padding:0;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;color:#0f172a;box-shadow:0 18px 48px rgba(15,23,42,.3);font:15px/1.45 -apple-system,Helvetica,Arial,sans-serif;z-index:2147483647`;
 const tgHtml = (title, card) => `<style>
   #demo-tg .h{padding:11px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;font-size:13px;letter-spacing:.03em;color:#475569}
   #demo-tg pre{margin:0;padding:12px 16px 4px;white-space:pre-wrap;font:14px/1.45 Menlo,Monaco,monospace;color:#0f172a}
@@ -501,9 +530,14 @@ async function record(cdp) {
       await cdp.send("Page.navigate", { url: /^https?:/.test(url) ? url : BASE + url });
       await sleep(300);
       if (a.wait) await pollUntil(a.wait, a.timeout ?? 30000, seg);
-      // hard cut: frames while the next page loads (blank page, skeletons) are dropped; the previous frame holds
-      cut.w1 = Date.now() + 120;
-      if (recording) (seg.cuts ??= []).push(cut);
+      // hard cut: the load time is removed from the timeline (a warp into 0.1 s) and its frames (blank page,
+      // skeletons) are dropped, except the last one, which shows the loaded page at the cut
+      await sleep(250);
+      cut.w1 = Date.now();
+      if (recording) {
+        (seg.cuts ??= []).push(cut);
+        warps.push({ w0: cut.w0, w1: cut.w1, into: 0.1 });
+      }
     } else if (a.tap) {
       const sel = fill(a.tap.sel);
       await find(sel, a.tap.text);
@@ -526,26 +560,27 @@ async function record(cdp) {
       }
       await sleep((a.dur ?? 1) * 1000);
     } else if (a.zoom) {
-      const r = await evaluate(`(() => { const re = ${a.zoom.text ? `new RegExp(${JSON.stringify(a.zoom.text)}, 'i')` : "null"};
-        const els = [...document.querySelectorAll(${JSON.stringify(fill(a.zoom.sel))})].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 1 && b.height > 1 && (!re || re.test(e.innerText || '')); });
-        const pick = ${a.zoom.all ? "els" : "els.slice(0, 1)"}; if (!pick.length) return null;
-        const bs = pick.map((e) => e.getBoundingClientRect());
-        const l = Math.max(0, Math.min(...bs.map((b) => b.left))), t = Math.max(0, Math.min(...bs.map((b) => b.top)));
-        const rr = Math.min(innerWidth, Math.max(...bs.map((b) => b.right))), bb = Math.min(innerHeight, Math.max(...bs.map((b) => b.bottom)));
-        return { x: l, y: t, w: rr - l, h: ${a.zoom.top ? `Math.min(bb - t, ${a.zoom.top})` : 'bb - t'} }; })()`);
+      // main-region punch-in: the crop's left edge sits on the sidebar border and its right edge on the viewport edge,
+      // so no word or card is cut at the sides; vertically the window starts just above the target (or centres on it)
+      const r = await evaluate(`(() => { const el = [...document.querySelectorAll(${JSON.stringify(fill(a.zoom.sel))})].find((e) => { const b = e.getBoundingClientRect(); return b.width > 1 && b.height > 1; });
+        if (!el) return null; const b = el.getBoundingClientRect(); return { y: b.top, h: b.height }; })()`);
       if (!r) throw new Error(`zoom target not found: ${a.zoom.sel}`);
-      const fit = Math.min(VW / r.w, VH / r.h) * 0.94;
-      const z = Math.max(1.12, Math.min(a.zoom.z ?? 1.3, fit, HI));
+      const left = a.zoom.left ?? SIDEBAR;
+      const z = VW / (VW - left);
+      const winH = VH / z;
+      const cyCss = Math.min(VH - winH / 2, Math.max(winH / 2, a.zoom.center ? r.y + r.h / 2 : r.y - 14 + winH / 2));
       const t0 = visible();
-      (seg.zooms ??= []).push({ a: t0, b: t0 + a.zoom.dur, cx: (r.x + r.w / 2) * K, cy: (r.y + r.h / 2) * K, z });
-      log(`  zoom ${a.zoom.sel} x${z.toFixed(2)} ${t0.toFixed(1)}-${(t0 + a.zoom.dur).toFixed(1)}s (box ${Math.round(r.w)}x${Math.round(r.h)})`);
-      await sleep(a.zoom.dur * 1000);
+      const zm = { a: t0, b: t0 + a.zoom.dur, cx: ((left + VW) / 2) * K, cy: cyCss * K, z };
+      if (a.zoom.async) seg.openZoom = zm; // held until the next { hold } (or the end of the segment)
+      (seg.zooms ??= []).push(zm);
+      log(`  zoom ${a.zoom.sel} x${z.toFixed(3)} ${t0.toFixed(1)}-${(t0 + a.zoom.dur).toFixed(1)}s`);
+      if (!a.zoom.async) await sleep(a.zoom.dur * 1000);
     } else if (a.node) {
       await a.node(vars, BASE, evaluate);
     } else if (a.warp) {
       const w = { w0: Date.now(), into: a.warp.into };
       if (recording) warps.push(w);
-      await overlay("demo-tag", seg.capTop ? TAG_CSS.replace("top:70px", "top:auto;bottom:70px") : TAG_CSS, `${esc(a.warp.label)} · sped up`);
+      await overlay("demo-tag", TAG_CSS, `${esc(a.warp.label)} · sped up`);
       const t0 = Date.now();
       for (;;) {
         const ok = typeof a.warp.until === "function" ? await a.warp.until(vars, BASE) : await evaluate(`!!(${fill(a.warp.until)})`).catch(() => false);
@@ -563,6 +598,22 @@ async function record(cdp) {
       await sleep(300);
       w.w1 = Date.now();
       log(`  warp "${a.warp.label}": ${((w.w1 - w.w0) / 1000).toFixed(1)}s real -> ${a.warp.into}s`);
+    } else if (a.say !== undefined) {
+      // a narration line starts now (never before the previous line ended + GAP, never before LEAD)
+      const i = a.say;
+      const prevEnd = i === 0 ? LEAD : seg.cues[i - 1].end + (seg.gaps?.[i - 1] ?? GAP);
+      while (visible() < prevEnd) await sleep(20);
+      const t = visible();
+      seg.cues[i] = { start: t, end: t + seg.lineDur[i], text: lineText(seg.lines[i]), top: !!a.top };
+    } else if (a.hold !== undefined) {
+      const target = seg.cues[a.hold].end + (a.plus ?? 0);
+      while (visible() < target) await sleep(20);
+      if (seg.openZoom) {
+        seg.openZoom.b = Math.max(seg.openZoom.a + 1.0, visible());
+        seg.openZoom = null;
+      }
+    } else if (a.js) {
+      await evaluate(a.js);
     } else if (a.term !== undefined) {
       if (a.term === "load") {
         await cdp.send("Page.navigate", { url: `file://${termFile}` });
@@ -588,24 +639,32 @@ async function record(cdp) {
   }
 
   for (const seg of SEGMENTS) {
-    if (seg.card) {
-      seg.duration = seg.audioDur;
-      continue;
-    }
+    if (seg.card) continue;
+    seg.cues = [];
     for (const a of seg.prep ?? []) await act(a, seg, false);
     await sleep(300);
     warps = [];
     segStart = Date.now();
     const seed = frames.at(-1);
     for (const a of seg.actions) await act(a, seg, true);
-    const target = seg.audioDur;
-    if (visible() > target + 0.05) log(`  WARN ${seg.id}: actions took ${visible().toFixed(2)}s > narration ${target.toFixed(2)}s (silence padded)`);
+    if (seg.cues.length !== seg.lines.length || seg.cues.some((c) => !c)) throw new Error(`${seg.id}: not every line has a { say }`);
+    const target = seg.cues.at(-1).end + (seg.tail ?? TAIL);
+    if (visible() > target + 0.05) log(`  WARN ${seg.id}: actions ran ${(visible() - seg.cues.at(-1).end).toFixed(2)}s past the last line`);
     while (visible() < target) await sleep(30);
+    if (seg.openZoom) {
+      seg.openZoom.b = visible() - 0.05;
+      seg.openZoom = null;
+    }
     const end = Date.now();
     seg.duration = Math.max(target, visible(end));
     const segFrames = [];
     if (seed) segFrames.push({ file: seed.file, v: 0 });
-    for (const f of frames) if (f.wall >= segStart && f.wall <= end && !(seg.cuts ?? []).some((c) => f.wall >= c.w0 && f.wall < c.w1)) segFrames.push({ file: f.file, v: Math.max(0, visible(f.wall)) });
+    const inSeg = frames.filter((f) => f.wall >= segStart && f.wall <= end);
+    for (const f of inSeg) {
+      const c = (seg.cuts ?? []).find((x) => f.wall >= x.w0 && f.wall < x.w1);
+      if (!c) segFrames.push({ file: f.file, v: Math.max(0, visible(f.wall)) });
+      else if (f === inSeg.filter((g) => g.wall >= c.w0 && g.wall < c.w1).at(-1)) segFrames.push({ file: f.file, v: Math.max(0, visible(c.w1)) });
+    }
     seg.frames = segFrames;
     seg.warps = warps.map((w) => ({ realSeconds: (w.w1 - w.w0) / 1000, into: w.into }));
     log(`segment ${seg.id}: ${seg.duration.toFixed(2)}s, ${segFrames.length} frames`);
@@ -630,7 +689,7 @@ function concatList(file, items, total) {
 function zoomFilter(zooms) {
   const even = (n) => 2 * Math.round(n / 2);
   if (!zooms.length) return `[1:v]scale=${SCR_W}:${SCR_H}:flags=lanczos,setsar=1,fps=${FPS}[scr]`;
-  const R = 0.4;
+  const R = 0.35;
   const env = zooms.map((zm) => {
     const e = `clip(min((it-${zm.a.toFixed(3)})/${R},(${zm.b.toFixed(3)}-it)/${R}),0,1)`;
     return `(${e}*${e}*(3-2*${e}))`;
@@ -711,14 +770,15 @@ try {
   log(`work=${WORK} out=${OUT}`);
   await buildAudio();
   if (args["audio-only"]) {
-    log(`narration total ${SEGMENTS.reduce((s, x) => s + x.audioDur, 0).toFixed(1)}s`);
+    log(`narration total ${SEGMENTS.reduce((s, x) => s + x.lineDur.reduce((a, b) => a + b, 0), 0).toFixed(1)}s`);
     await shutdown(0);
   }
   const cdp = await launchChrome();
-  await renderStage(cdp);
   prepareDb();
   await startServer();
   const vars = await record(cdp);
+  await renderStage(cdp);
+  for (const seg of SEGMENTS) segAudio(seg);
   const total = encode();
   writeFileSync(
     path.join(WORK, "summary.json"),
