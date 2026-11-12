@@ -1,6 +1,6 @@
 # Devpost submission text (paste by field)
 
-Tests: 392 passing (`pnpm test`); `pnpm typecheck` and `pnpm lint` clean.
+Tests: 396 passing (`pnpm test`); `pnpm typecheck` and `pnpm lint` clean.
 
 ---
 
@@ -10,13 +10,11 @@ Tests: 392 passing (`pnpm test`); `pnpm typecheck` and `pnpm lint` clean.
 
 Reins gives every agent its own mandate, hard rules in code, a Claude audit, one-tap human approval and an audit ledger, served as an open-source MCP server on PayPal. It runs two web services (reins-web, reins-mcp) from one render.yaml Blueprint.
 
-**Try it in 60 seconds, no keys, no install:**
-1. Open the live demo: https://reins-web.onrender.com/try (the first load can take up to a minute if an instance is asleep). Click a preset and watch the Decision panel follow a real PayPal sandbox payout to "Paid".
-2. Or connect your own Claude Code to the hosted server (no key; each session gets its own throwaway demo key for the Playground Agent, with its own rate and spend scope; sessions are limited per IP):
-   ```bash
-   claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
-   ```
-   Then ask: "Request a purchase at namecheap.com for $12.98, domain renewal." A real Claude audit approves it and PayPal's sandbox pays it in under a minute, with a receipt URL.
+**Try it in 60 seconds, no keys, no login, no install** (the hosted dashboard, including the approval inbox, is a public demo):
+1. Open the live demo: https://reins-web.onrender.com/try. Click a preset and watch the Decision panel follow a real PayPal sandbox payout to "Paid".
+2. Or connect your own Claude Code to the hosted server (no key; each session gets its own throwaway demo key for the Playground Agent, with its own rate and spend scope; sessions are limited per IP): `claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp`
+   Then ask: "Using Reins, request a purchase at namecheap.com for $12.98, domain renewal, then check the status." A real Claude audit approves it and PayPal's sandbox pays it in under a minute, with a receipt URL.
+   Step-by-step MCP guide with copy-paste prompts and expected results: https://github.com/sh0sub/reins/blob/main/docs/judge-mcp-guide.md
 3. Offline option: `pnpm judge` runs everything locally with simulated PayPal.
 
 **Numbers** (hosted ledger, a recorded real sandbox run): 11 of 15 requests paid without a tap; $1,769 blocked in 3 requests, including the $450 injection. In a simulated benchmark of 9 scripted attacks (`pnpm attacks`, auditor set to approve everything) an ungated agent paid $813.96 and the same attacks through Reins paid $99.98, the part that was inside the mandate.
@@ -128,7 +126,7 @@ The Overview "Money protected" card is computed from the ledger, not typed in. W
 
 **Render.** A Blueprint (`render.yaml`) deploys two web services: `reins-web` (dashboard, API, webhooks) and `reins-mcp` (MCP Streamable HTTP, calling the web service by public URL). SQLite lives in `/tmp` and the recorded run is re-seeded on every boot, so the demo always starts clean.
 
-**Testing.** 392 tests, including policy unit tests, webhook signatures, reconciliation and end-to-end tests for the three flows (auto-paid, human-approved, denied). Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs, so the app works with no credentials.
+**Testing.** 396 tests, including policy unit tests, webhook signatures, reconciliation and end-to-end tests for the three flows (auto-paid, human-approved, denied). Without `ANTHROPIC_API_KEY` a deterministic mock auditor runs, so the app works with no credentials.
 
 ## Challenges we ran into
 
@@ -173,11 +171,8 @@ paypal, paypal-orders-v2, paypal-payouts, paypal-webhooks, paypal-transaction-se
 No Telegram, no PayPal account, no keys needed.
 
 1. **Fastest.** Open https://reins-web.onrender.com/try. Five presets plus a free-form request, all calling the same code path as the MCP `request_purchase`: $12.98 domain (paid), $59 report (waits for you), $450 injected order (denied, with the failing hard-rule table), "Five $29 orders" to one merchant (the hard rules allow the first three and deny the fourth and fifth by the same-merchant total; with the real Claude auditor the auditor may itself deny or escalate some of the first three), and "Start a $20/month subscription" (waits for you, shows $240 a year). Approved requests pay real sandbox payouts and the Decision panel follows them to "Paid". Tick "Simulate a fooled auditor (always says approve)": the $450 order is still denied by code. The Judge tour on the page walks these in order.
-2. **Connect your own Claude Code**, no key:
-   ```bash
-   claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
-   ```
-   Each MCP session gets its own throwaway demo key for the Playground Agent, so your ledger rows never mix with another judge's. Ask: "Check my Reins mandate, then request a purchase at namecheap.com for $12.98 (item: Domain renewal, reason: production domain expires this week)." Small and allowed: paid. Then try an amount above the auto-approve limit and approve it in `/inbox`. Then try $450 at fiverr.com: denied.
+2. **Connect your own Claude Code**, no key: `claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp`
+   Each MCP session gets its own throwaway demo key for the Playground Agent, so your ledger rows never mix with another judge's. Ask: "Check my Reins mandate, then request a purchase at namecheap.com for $12.98 (item: Domain renewal, reason: production domain expires this week)." Small and allowed: paid. Then try an amount above the auto-approve limit and approve it in `/inbox`. For the $450 fiverr.com injection, use the test prompt in the [MCP guide](https://github.com/sh0sub/reins/blob/main/docs/judge-mcp-guide.md): asked plainly, Claude Code refuses to send that order at all, so you would not see Reins deny it.
 3. `/overview` shows the recorded run: "This month $43.95 of $410.00 across 3 agents" (11 paid, 3 denied, R-0142 $59 pending, which you can approve yourself).
 4. `/ledger` shows every decision in AG Grid: group by agent, expand a row for the audit detail. Reconciliation shows all 11 payouts as Matched.
 5. `/proof` lists the sandbox ids, each with a run log.

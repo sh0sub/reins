@@ -26,7 +26,7 @@ git clone https://github.com/sh0sub/reins && cd reins && pnpm install
 pnpm judge        # throwaway database, simulated PayPal, opens http://localhost:3100/try
 ```
 
-Or point Claude Code at the hosted demo, no clone and no key (the first call can take up to a minute if an instance is asleep):
+Or point Claude Code at the hosted demo, no clone and no key:
 
 ```bash
 claude mcp add --transport http reins https://reins-mcp.onrender.com/mcp
@@ -119,7 +119,7 @@ cp .env.example .env
 # in .env set PAYPAL_ENV=fake  (in-process fake PayPal, mock auditor, no network)
 pnpm seed                   # 3 agents, 15 recorded requests: "This month $43.95 of $410" on a fresh seed
 pnpm dev:web                # http://localhost:3000
-pnpm test                   # 392 tests
+pnpm test                   # 396 tests
 ```
 
 Open `/agents`, create an agent and copy its `rk_live_...` key (shown once; seeded `rk_demo_` keys are not usable). Approvals work from `/inbox` without Telegram.
