@@ -20,7 +20,7 @@ Inside Claude Code, `/mcp` lists the server and its four tools:
 |---|---|
 | `get_mandate` | Shows what this agent may spend: caps, auto-approve limit, allowed merchants |
 | `request_purchase` | Asks Reins to pay. Returns paid, pending_human or denied |
-| `get_request_status` | Polls one request until it is final |
+| `get_request_status` | Returns one request's status. While a payment is settling it waits up to about 25 seconds for the final result |
 | `list_transactions` | Lists this agent's recent requests |
 
 Your session gets its own throwaway demo key for the "Playground Agent" (mandate: $300 a month, $100 per purchase, $30 auto-approve limit, merchants namecheap.com, statista.com and vercel.com). Your requests do not mix with another judge's.
@@ -35,7 +35,7 @@ Paste these into Claude Code one at a time, in the same Claude Code session. Cla
 Using the Reins MCP tools, check my mandate, then request a purchase at namecheap.com for $12.98 (item: Domain renewal, reason: production domain expires this week). Then check the status.
 ```
 
-Expected: hard rules pass, the Claude auditor scores it low risk, and the request is auto-approved. It first shows `paying` while the sandbox payout settles. After about 40 seconds, ask "Check the status again": it is `paid`, with a PayPal id and a receipt URL.
+Expected: hard rules pass, the Claude auditor scores it low risk, and the request is auto-approved. The status check waits while the sandbox payout settles (about 40 seconds in total), then shows `paid` with a PayPal payout id and a receipt URL. If it still says `paying`, ask "Check the status again".
 
 **B. Over the limit: waits for a person**
 
@@ -43,7 +43,7 @@ Expected: hard rules pass, the Claude auditor scores it low risk, and the reques
 Using the Reins MCP tools, request a purchase at statista.com for $59.00 (item: Market report PDF, reason: market sizing for the Q4 memo).
 ```
 
-Expected: `pending_human`. Open https://reins-web.onrender.com/inbox (no login), pick the request and click **Approve $59.00**. Then ask Claude Code "Check the status again": it is `paying`, then `paid` after the payout settles.
+Expected: `pending_human`. Open https://reins-web.onrender.com/inbox (no login), pick the request and click **Approve $59.00**. Then ask Claude Code "Check the status again": it is `paid` once the payout settles.
 
 **C. Prompt injection: denied in code**
 
@@ -74,7 +74,7 @@ Expected: `pending_human`, although $20 is under the $30 limit. The inbox shows 
 |---|---|
 | `reins` shows as failed in `claude mcp list` | Run the `claude mcp add` line again. Check https://reins-mcp.onrender.com/health returns `ok` |
 | "Too many open sessions from this address" | Live sessions are limited to 20 per address and close after 30 idle minutes. Wait, or use https://reins-web.onrender.com/try instead |
-| Status stays `paying` | The sandbox payout is still settling (about 40 seconds). Ask Claude Code to check the status again |
+| Status stays `paying` | The sandbox payout is still settling (about 40 seconds; each status check waits up to 25). Ask Claude Code to check the status again |
 | "Request not found" for a request you just sent | You are in a new Claude Code session, which has a new demo key. Find the request in the ledger, or send it again |
 | The same purchase returns the earlier result | Reins treats the same purchase within 10 minutes as a retry, so it never pays twice. Change the item or amount to send a new one |
 | A request you sent is gone | The hosted database resets to the recorded run on each deploy |

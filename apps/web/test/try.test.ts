@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { updateWorkspace } from "@reins/db";
 import { createTestContext } from "@reins/core/testing";
-import { getOverview, resetPlayground, runPlayground } from "@reins/core";
+import { getInbox, getOverview, resetPlayground, runPlayground } from "@reins/core";
 import { usd, usdAmount } from "../src/lib/format.ts";
 import { PROOF_ITEMS, proofLogUrl } from "../src/app/proof/proof.ts";
 import { createRouter } from "../src/server/router.ts";
@@ -33,6 +33,16 @@ describe("/try playground", () => {
     expect(denied.failed_rules.sort()).toEqual(["allowlist", "monthly_limit", "per_tx_cap"]);
     expect(denied.row.payment).toBeNull();
     expect(ctx.paypal.calls.filter((c) => c === "createOrder")).toHaveLength(1);
+  });
+
+  it("the inbox budget on a visitor's card counts that visitor's spend only, like the hard rules did", async () => {
+    await runPlayground(ctx, preset("domain"), { visitor: "budget-visitor-1" }); // $12.98 paid by visitor 1
+    const mine = await runPlayground(ctx, preset("report"), { visitor: "budget-visitor-1" });
+    const theirs = await runPlayground(ctx, preset("report"), { visitor: "budget-visitor-2" });
+    const inbox = await getInbox(ctx);
+    const spent = (id: string) => inbox.find((r) => r.request_id === id)!.budget.month_spent_cents;
+    expect(spent(mine.row.request_id)).toBe(1298);
+    expect(spent(theirs.row.request_id)).toBe(0);
   });
 
   it("subscription preset: $20/month to vercel.com is under the $30 limit and still waits for a person; once approved and paid, the next one pays", async () => {

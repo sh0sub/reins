@@ -28,14 +28,15 @@ export function summarize(v: Record<string, unknown>): string {
     case "paid": {
       const r = v.receipt as { capture_id?: string | null; payout_batch_id?: string | null; receipt_url?: string | null } | null;
       const link = r?.receipt_url ? ` Receipt: ${r.receipt_url}` : "";
-      return `Paid ${amount} to ${merchant} (${id}, capture ${r?.capture_id ?? r?.payout_batch_id ?? "n/a"}).${link}`;
+      const pay = r?.capture_id ? `capture ${r.capture_id}` : r?.payout_batch_id ? `payout ${r.payout_batch_id}` : "capture n/a";
+      return `Paid ${amount} to ${merchant} (${id}, ${pay}).${link}`;
     }
     case "pending_human":
       return `${id} is waiting for human approval (${amount} to ${merchant}). Call get_request_status later; do not retry the purchase.`;
     case "awaiting_buyer":
       return `${id} was approved; the user is finishing PayPal checkout. Check get_request_status later.`;
     case "paying":
-      return `${id} is being paid. Check get_request_status shortly.`;
+      return `${id} is approved and PayPal is settling the payment (usually under a minute). Call get_request_status again; it waits for the payment to settle.`;
     case "denied":
       return `${id} was denied: ${String(v.reason ?? "no reason").replace(/\.+$/, "")}. Do not retry with the same request.`;
     case "expired":
@@ -61,8 +62,14 @@ export function defaultIdempotencyKey(args: { merchant: string; amount: string; 
   return `mcp-${createHash("sha256").update(body).digest("hex").slice(0, 32)}`;
 }
 
-export function createReinsMcpServer(api: ReinsApi, opts: { now?: () => number } = {}): McpServer {
+/** get_request_status holds a "paying" request this long, so one call usually returns the final "paid". */
+export const SETTLE_WAIT_MS = 25_000;
+const SETTLE_POLL_MS = 2_500;
+
+export function createReinsMcpServer(api: ReinsApi, opts: { now?: () => number; settleWaitMs?: number; sleep?: (ms: number) => Promise<void> } = {}): McpServer {
   const now = opts.now ?? Date.now;
+  const settleWaitMs = opts.settleWaitMs ?? SETTLE_WAIT_MS;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const server = new McpServer({ name: "reins", version: "0.1.0" });
 
   server.registerTool(
@@ -119,7 +126,7 @@ export function createReinsMcpServer(api: ReinsApi, opts: { now?: () => number }
     {
       title: "Get purchase request status",
       description:
-        "Returns the current status, decision, reason and receipt of a purchase request created by this agent. If needs_clarification is true, the user asked a question (clarification.question): call this tool again with `answer` to reply in one or two sentences.",
+        "Returns the current status, decision, reason and receipt of a purchase request created by this agent. While a payment is settling (status paying) the call waits up to about 25 seconds for the final status, so call it again instead of sleeping. If needs_clarification is true, the user asked a question (clarification.question): call this tool again with `answer` to reply in one or two sentences.",
       inputSchema: {
         request_id: z.string().min(1).max(64).describe("request_id returned by request_purchase"),
         answer: z.string().min(1).max(500).optional().describe("Your answer when needs_clarification is true"),
@@ -128,7 +135,17 @@ export function createReinsMcpServer(api: ReinsApi, opts: { now?: () => number }
     },
     async ({ request_id, answer }) => {
       try {
-        const v = answer ? await api.answerClarification(request_id, answer) : await api.getRequestStatus(request_id);
+        let v = answer ? await api.answerClarification(request_id, answer) : await api.getRequestStatus(request_id);
+        // an approved payment settles in well under a minute: wait for it here so the agent does not have to sleep and poll.
+        // Read-only polling; if a poll fails, the last good status is returned.
+        for (let waited = 0; v.status === "paying" && waited < settleWaitMs; waited += SETTLE_POLL_MS) {
+          await sleep(SETTLE_POLL_MS);
+          try {
+            v = await api.getRequestStatus(request_id);
+          } catch {
+            break;
+          }
+        }
         return ok(v, summarize(v));
       } catch (e) {
         return fail(e);

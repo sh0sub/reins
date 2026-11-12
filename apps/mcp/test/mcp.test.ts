@@ -141,3 +141,51 @@ describe("#38 MCP HTTP on Render: web API base URL", () => {
     expect(apiBaseUrlFromEnv({})).toBe("http://localhost:3000");
   });
 });
+
+describe("get_request_status waits for a settling payment", () => {
+  const paying = { request_id: "req_1", display_id: "R-0001", status: "paying", merchant: "namecheap.com", amount: "12.98", receipt: null };
+  const settled = { ...paying, status: "paid", receipt: { capture_id: null, payout_batch_id: "BATCH9" } };
+  async function run(answers: Array<Record<string, unknown> | Error>, settleWaitMs?: number) {
+    let calls = 0;
+    const sleeps: number[] = [];
+    const api = {
+      getRequestStatus: async () => {
+        const a = answers[Math.min(calls++, answers.length - 1)]!;
+        if (a instanceof Error) throw a;
+        return a;
+      },
+    } as unknown as ReinsApi;
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await createReinsMcpServer(api, { settleWaitMs, sleep: async (ms) => void sleeps.push(ms) }).connect(a);
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(b);
+    const res = await client.callTool({ name: "get_request_status", arguments: { request_id: "req_1" } });
+    return { res, text: (res.content as Array<{ text: string }>)[0]!.text, calls: () => calls, sleeps };
+  }
+
+  it("returns paid in one call once the payout settles, and names it a payout", async () => {
+    const r = await run([paying, paying, settled]);
+    expect(r.res.structuredContent).toMatchObject({ status: "paid" });
+    expect(r.text).toContain("Paid $12.98 to namecheap.com (R-0001, payout BATCH9)");
+    expect(r.calls()).toBe(3);
+    expect(r.sleeps).toHaveLength(2);
+  });
+
+  it("gives up after the wait and says to call again", async () => {
+    const r = await run([paying], 5_000);
+    expect(r.res.structuredContent).toMatchObject({ status: "paying" });
+    expect(r.text).toContain("Call get_request_status again");
+    expect(r.sleeps).toHaveLength(2);
+    expect(r.calls()).toBe(3);
+  });
+
+  it("does not wait for other statuses, and keeps the last good status if a poll fails", async () => {
+    const pending = { ...paying, status: "pending_human" };
+    const p = await run([pending]);
+    expect(p.sleeps).toHaveLength(0);
+    expect(p.calls()).toBe(1);
+    const f = await run([paying, new Error("network")]);
+    expect(f.res.isError).toBeFalsy();
+    expect(f.res.structuredContent).toMatchObject({ status: "paying" });
+  });
+});

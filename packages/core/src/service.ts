@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   CLAIM_STATUSES,
+  COMMITTED_STATUSES,
   MERCHANT_RESERVED_STATUSES,
   RESERVED_STATUSES,
   claimForPayment,
@@ -827,10 +828,13 @@ export async function getInbox(ctx: ReinsContext) {
   return Promise.all(
     rows.map(async (row) => {
       const m = await getActiveMandate(ctx.db, row.agent_id);
+      // same scope the hard rules used: a playground visitor's card counts that visitor's spend, not every visitor's
+      const req = await getRequest(ctx.db, row.request_id);
+      const scope = req ? spendScopeOf(req.clientRequestId) : null;
       return {
         ...row,
         budget: {
-          month_spent_cents: await spendSinceCents(ctx.db, row.agent_id, since),
+          month_spent_cents: await reservedSpendSinceCents(ctx.db, row.agent_id, since, { scope, statuses: COMMITTED_STATUSES }),
           monthly_limit_cents: m?.monthlyLimitCents ?? null,
           auto_approve_limit_cents: m?.autoApproveLimitCents ?? null,
         },
