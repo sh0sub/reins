@@ -1,7 +1,7 @@
 # Render Blueprint for Reins (#38 D11). Steps for a first deploy: docs/deploy.md
 # Spec: https://render.com/docs/blueprint-spec
 #
-# Free plan, no cost:
+# Starter plan ($7 per service per month, covered by hackathon credits): always on, no sleep. Works on the free plan too:
 # reins-web  Next.js dashboard + REST API + PayPal/Telegram webhooks. SQLite (libsql) in /tmp: free instances have no
 #            disk, so every boot starts from the seeded demo state: 3 agents and the ledger of a recorded real sandbox
 #            run (scripts/demo/fixtures/real-sandbox-run.json, times shifted to the boot). That is what a judge-facing
@@ -21,7 +21,7 @@ services:
     name: reins-web
     runtime: node
     region: oregon
-    plan: free
+    plan: starter
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @reins/web build
     # Each boot seeds the demo data (3 agents + the recorded sandbox run) because /tmp starts empty; --if-empty never overwrites.
     startCommand: cd apps/web && node --import tsx ../../scripts/seed.ts --if-empty --db "$DATABASE_URL" && exec node node_modules/next/dist/bin/next start -H 0.0.0.0
@@ -91,7 +91,7 @@ services:
     name: reins-mcp
     runtime: node
     region: oregon
-    plan: free
+    plan: starter
     buildCommand: corepack enable && pnpm install --frozen-lockfile
     startCommand: node --import tsx apps/mcp/src/http.ts
     healthCheckPath: /health
