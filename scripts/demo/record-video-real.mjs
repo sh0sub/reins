@@ -21,7 +21,7 @@
  */
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SEGMENTS } from "./video-shots-real.mjs";
 import { sessionEvents, termHtml } from "./term-replay.mjs";
