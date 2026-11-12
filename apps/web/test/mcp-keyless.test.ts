@@ -185,9 +185,10 @@ describe("keyless MCP sessions on the public demo", () => {
     const { mcp } = await stack({}, { mintSecret: SECRET, limiter: new RateLimiter(undefined, () => 0) });
     for (let i = 0; i < 30; i++) expect((await mcp(post(init, { "cf-connecting-ip": `198.18.0.${i}` }))).status).toBe(200);
     const one: number[] = [];
-    for (let i = 0; i < 8; i++) one.push((await mcp(post(init, { "cf-connecting-ip": "198.18.1.1", "x-forwarded-for": `10.9.9.${i}` }))).status);
-    expect(one.slice(0, 5)).toEqual([200, 200, 200, 200, 200]);
-    expect(one.slice(5)).toEqual([429, 429, 429]);
+    // one address: the new-session burst (10) is what stops it, before the live-session limit (20)
+    for (let i = 0; i < 13; i++) one.push((await mcp(post(init, { "cf-connecting-ip": "198.18.1.1", "x-forwarded-for": `10.9.9.${i}` }))).status);
+    expect(one.slice(0, 10)).toEqual(Array(10).fill(200));
+    expect(one.slice(10)).toEqual([429, 429, 429]);
   });
 
   it("a keyless session renews its demo key once if the web API forgot it (restart)", async () => {

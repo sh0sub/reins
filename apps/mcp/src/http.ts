@@ -22,8 +22,8 @@ export const KEYLESS_LIMITS = {
   maxSessions: 300,
   /** A session nobody used for this long is closed; the client then gets 404 and starts a new one. */
   idleMs: 30 * 60_000,
-  /** Live sessions per client address, so a few clients cannot hold every slot by pinging. */
-  perIpSessions: 5,
+  /** Live sessions per client address, so a few clients cannot hold every slot by pinging. 20, not 5: judges can share one office address, and a headless `claude -p` run leaves its session open until it goes idle. */
+  perIpSessions: 20,
   /** Absolute lifetime: even a session kept busy is closed after this. */
   maxAgeMs: 6 * 3_600_000,
 };

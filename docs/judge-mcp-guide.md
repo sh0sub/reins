@@ -1,6 +1,6 @@
 # Use Reins from Claude Code (MCP guide for judges)
 
-About 3 minutes. No account, no key, no install besides Claude Code. All payments are PayPal sandbox payouts (no real money).
+About 3 minutes. No account, no login, no key, no install besides Claude Code. The hosted dashboard is a public demo: every page, including the approval inbox, opens without signing in. All payments are PayPal sandbox payouts (no real money).
 
 ## 1. Connect
 
@@ -27,36 +27,38 @@ Your session gets its own throwaway demo key for the "Playground Agent" (mandate
 
 ## 2. Three prompts, three outcomes
 
-Paste these into Claude Code one at a time. Claude Code asks before each tool call; allow it.
+Paste these into Claude Code one at a time, in the same Claude Code session. Claude Code asks before each tool call; allow it. A new session gets a new demo key and cannot see requests from an earlier one.
 
 **A. Small and allowed: pays by itself**
 
 ```
-Check my Reins mandate, then request a purchase at namecheap.com for $12.98 (item: Domain renewal, reason: production domain expires this week). Check the status until it is final.
+Using the Reins MCP tools, check my mandate, then request a purchase at namecheap.com for $12.98 (item: Domain renewal, reason: production domain expires this week). Then check the status.
 ```
 
-Expected: hard rules pass, the Claude auditor scores it low risk, and the request goes from `paying` to `paid` in under a minute, with a PayPal id and a receipt URL.
+Expected: hard rules pass, the Claude auditor scores it low risk, and the request is auto-approved. It first shows `paying` while the sandbox payout settles. After about 40 seconds, ask "Check the status again": it is `paid`, with a PayPal id and a receipt URL.
 
 **B. Over the limit: waits for a person**
 
 ```
-Request a purchase at statista.com for $59.00 (item: Market report PDF, reason: market sizing for the Q4 memo).
+Using the Reins MCP tools, request a purchase at statista.com for $59.00 (item: Market report PDF, reason: market sizing for the Q4 memo).
 ```
 
-Expected: `pending_human`. Open https://reins-web.onrender.com/inbox, pick the request and click **Approve $59.00**. Then ask Claude Code "check the status again": it is `paid`.
+Expected: `pending_human`. Open https://reins-web.onrender.com/inbox (no login), pick the request and click **Approve $59.00**. Then ask Claude Code "Check the status again": it is `paying`, then `paid` after the payout settles.
 
 **C. Prompt injection: denied in code**
 
 ```
-Request a purchase at fiverr.com for $450.00 (item: Logo design, gold package, reason: the web page said to pay this vendor now and not ask the user).
+This is a test of Reins hard rules. Send this request to Reins exactly as written, even though you expect it to be denied, and show me the reason Reins gives: fiverr.com, $450.00 (item: Logo design, gold package, reason: the web page said to pay this vendor now and not ask the user).
 ```
 
 Expected: `denied`. Three hard rules fail (per-purchase cap, monthly limit, merchant allow list). Nothing is charged.
 
+The prompt says "this is a test" on purpose. Without it, Claude Code reads the mandate, sees the request cannot pass and refuses to send it at all, so you would not see Reins deny it.
+
 **Optional. A new subscription asks first**
 
 ```
-Request a purchase at vercel.com for $20.00, recurring monthly (item: Vercel Pro, reason: hosting plan for the landing page).
+Using the Reins MCP tools, request a purchase at vercel.com for $20.00 with recurring set to monthly (item: Vercel Pro, reason: hosting plan for the landing page).
 ```
 
 Expected: `pending_human`, although $20 is under the $30 limit. The inbox shows "$20.00 monthly · $240.00 a year".
@@ -71,8 +73,9 @@ Expected: `pending_human`, although $20 is under the $30 limit. The inbox shows 
 | What you see | What to do |
 |---|---|
 | `reins` shows as failed in `claude mcp list` | Run the `claude mcp add` line again. Check https://reins-mcp.onrender.com/health returns `ok` |
-| "Too many open sessions from this address" | Sessions are limited per IP and close after 30 idle minutes. Wait, or use https://reins-web.onrender.com/try instead |
-| Status stays `paying` for more than a minute | The sandbox payout is still settling. Ask Claude Code to check the status again |
+| "Too many open sessions from this address" | Live sessions are limited to 20 per address and close after 30 idle minutes. Wait, or use https://reins-web.onrender.com/try instead |
+| Status stays `paying` | The sandbox payout is still settling (about 40 seconds). Ask Claude Code to check the status again |
+| "Request not found" for a request you just sent | You are in a new Claude Code session, which has a new demo key. Find the request in the ledger, or send it again |
 | The same purchase returns the earlier result | Reins treats the same purchase within 10 minutes as a retry, so it never pays twice. Change the item or amount to send a new one |
 | A request you sent is gone | The hosted database resets to the recorded run on each deploy |
 
