@@ -72,6 +72,25 @@ describe("D4 REST API", () => {
     expect(r).toMatchObject({ status: 400, body: { error: "invalid_input" } });
   });
 
+  it("subscription guard: accepts recurring monthly/yearly, rejects other values, returns the field", async () => {
+    const a = (await call("POST", "/api/agents", { name: "A", mandate })).body;
+    const h = { authorization: `Bearer ${a.api_key}` };
+    const body = { merchant: "statista.com", amount: "12.00", items: "Data subscription", reason: "market research data", category: "research" };
+    const bad = await call("POST", "/api/requests", { ...body, recurring: "weekly" }, h);
+    expect(bad).toMatchObject({ status: 400, body: { error: "invalid_input" } });
+    expect(bad.body.message).toContain("recurring");
+    const ok = await call("POST", "/api/requests", { ...body, recurring: "monthly" }, h);
+    expect(ok.status).toBe(201);
+    // $12 is under the $25 auto-approve limit, yet the first charge of a new subscription waits for a person
+    expect(ok.body).toMatchObject({ status: "pending_human", recurring: "monthly", annual_amount: "144.00" });
+    expect(ok.body.reason).toMatch(/^New subscription: \$12\.00 monthly = \$144\.00 a year\. A person approves the first charge\./);
+    expect((await call("GET", `/api/requests/${ok.body.request_id}`, undefined, h)).body.recurring).toBe("monthly");
+    const yearly = await call("POST", "/api/requests", { ...body, items: "Data plan, yearly", recurring: "yearly" }, h);
+    expect(yearly.body).toMatchObject({ status: "pending_human", recurring: "yearly", annual_amount: "12.00" });
+    const ledger = await call("GET", "/api/ledger");
+    expect(ledger.body.rows.map((r: { recurring: string | null }) => r.recurring).sort()).toEqual(["monthly", "yearly"]);
+  });
+
   it("inbox -> decision (web) and 409 on a second decision", async () => {
     await updateWorkspace(ctx.db, { paymentMode: "vaulted", vaultId: "V" });
     const a = (await call("POST", "/api/agents", { name: "A", mandate })).body;

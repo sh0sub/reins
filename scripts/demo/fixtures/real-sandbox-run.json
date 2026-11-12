@@ -17,9 +17,10 @@
       }
     },
     "transaction_search": {
-      "matched": 0,
+      "matched": 11,
       "mismatch": 0,
-      "unchecked": 11
+      "unchecked": 0,
+      "checked_at": "2026-11-12T09:26:59.752Z"
     }
   },
   "requests": [
@@ -158,9 +159,9 @@
         "amount_cents": 1298,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931456,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 6Y412580GH7713740",
         "created_at": 1794407090664,
         "updated_at": 1794407931456
       }
@@ -300,9 +301,9 @@
         "amount_cents": 99,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931463,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 09S01004A6692615B",
         "created_at": 1794407096636,
         "updated_at": 1794407931463
       }
@@ -442,9 +443,9 @@
         "amount_cents": 349,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931467,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 84D17765GW731580H",
         "created_at": 1794407102556,
         "updated_at": 1794407931467
       }
@@ -584,9 +585,9 @@
         "amount_cents": 499,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931470,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 1TP895031E168550F",
         "created_at": 1794407108847,
         "updated_at": 1794407931470
       }
@@ -726,9 +727,9 @@
         "amount_cents": 249,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931473,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 2WB04326N8712633A",
         "created_at": 1794407114659,
         "updated_at": 1794407931473
       }
@@ -868,9 +869,9 @@
         "amount_cents": 299,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931475,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 21J00781VT090564D",
         "created_at": 1794407121139,
         "updated_at": 1794407931475
       }
@@ -1010,9 +1011,9 @@
         "amount_cents": 350,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931478,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 7NP35416GY1001802",
         "created_at": 1794407126978,
         "updated_at": 1794407931478
       }
@@ -1152,9 +1153,9 @@
         "amount_cents": 149,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931480,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 8FF088578M9957806",
         "created_at": 1794407134535,
         "updated_at": 1794407931480
       }
@@ -1423,9 +1424,9 @@
         "amount_cents": 700,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931482,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 3LW71715WT958111P",
         "created_at": 1794407779411,
         "updated_at": 1794407931482
       }
@@ -1693,9 +1694,9 @@
         "amount_cents": 199,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931484,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 55129246EV927621K",
         "created_at": 1794407791790,
         "updated_at": 1794407931484
       }
@@ -1835,9 +1836,9 @@
         "amount_cents": 204,
         "currency": "USD",
         "error": null,
-        "reconciled": "unchecked",
-        "reconciled_at": 1794407931485,
-        "reconcile_note": "not in Transaction Search yet",
+        "reconciled": "matched",
+        "reconciled_at": 1794475619752,
+        "reconcile_note": "matched 7FG58986A9312231N",
         "created_at": 1794407797758,
         "updated_at": 1794407931485
       }

@@ -139,11 +139,14 @@ export function loadFixture(path = FIXTURE_PATH): RecordedRun {
   return run;
 }
 
-/** Latest timestamp anywhere in the run (request, decision or payment): the shift puts it END_BEFORE_NOW_MS before now. */
+/**
+ * Latest timestamp anywhere in the run (request, decision or payment): the shift puts it END_BEFORE_NOW_MS before now.
+ * Not reconciled_at: that is a later re-check of the recorded payouts (reconcile-fixture.ts), not part of the run.
+ */
 function runEnd(run: RecordedRun): number {
   let end = 0;
   for (const r of run.requests) {
-    end = Math.max(end, r.created_at, r.updated_at, ...r.decisions.map((d) => d.created_at), r.payment?.updated_at ?? 0, r.payment?.reconciled_at ?? 0);
+    end = Math.max(end, r.created_at, r.updated_at, ...r.decisions.map((d) => d.created_at), r.payment?.updated_at ?? 0);
   }
   return end;
 }
@@ -264,7 +267,7 @@ export async function seedDemo(db: ReinsDb, opts: SeedOptions = {}): Promise<See
       if (!key) throw new Error(`fixture request ${rec.display_id}: unknown agent ${rec.agent}`);
       const mandate = mandates.get(key)!.find((m) => m.version === rec.mandate_version);
       if (!mandate) throw new Error(`fixture request ${rec.display_id}: ${rec.agent} has no mandate v${rec.mandate_version}`);
-      await replayRecorded(db, agents.get(key)!, mandate, rec, shift, fixedSeq ? Number(rec.display_id.slice(2)) : undefined);
+      await replayRecorded(db, agents.get(key)!, mandate, rec, shift, now, fixedSeq ? Number(rec.display_id.slice(2)) : undefined);
       n++;
     }
     // Configuration after the run (not events): Research Scout v3 blocks fiverr.com for new requests, Desk Restock Bot is
@@ -289,7 +292,7 @@ export async function seedDemo(db: ReinsDb, opts: SeedOptions = {}): Promise<See
 }
 
 /** One recorded request, as recorded, with every time moved by `shift`. Its first decision carries `recorded_at`. */
-async function replayRecorded(db: ReinsDb, agent: Agent, mandate: Mandate, rec: RecordedRequest, shift: number, seq?: number) {
+async function replayRecorded(db: ReinsDb, agent: Agent, mandate: Mandate, rec: RecordedRequest, shift: number, now: number, seq?: number) {
   const at = (t: number) => t + shift;
   const { request } = await insertRequest(db, {
     agentId: agent.id,
@@ -324,7 +327,7 @@ async function replayRecorded(db: ReinsDb, agent: Agent, mandate: Mandate, rec: 
     currency: p.currency,
     error: p.error,
   });
-  await updatePayment(db, payment.id, { reconciled: p.reconciled, reconciledAt: p.reconciled_at == null ? null : at(p.reconciled_at), reconcileNote: p.reconcile_note });
+  await updatePayment(db, payment.id, { reconciled: p.reconciled, reconciledAt: p.reconciled_at == null ? null : Math.min(at(p.reconciled_at), now), reconcileNote: p.reconcile_note });
   await setTimestamps(db, { payment: payment.id, paymentCreatedAt: at(p.created_at) }, at(p.updated_at));
 }
 

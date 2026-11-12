@@ -25,6 +25,8 @@ export interface HardRuleRow {
   limit: string | null;
   ok: boolean;
   detail: string;
+  /** Passed, but a person decides (first charge of a new subscription). */
+  ask?: boolean;
 }
 
 export const HARD_RULE_LABELS: Record<string, string> = {
@@ -40,6 +42,7 @@ export const HARD_RULE_LABELS: Record<string, string> = {
   blocked_merchant: "Block list",
   allowlist: "Merchant allowlist",
   velocity: "Velocity",
+  recurring_first: "Subscription",
 };
 
 export interface RequestDetail {
@@ -83,7 +86,7 @@ export async function getRequestDetail(ctx: ReinsContext, requestId: string): Pr
   const results = ((hardDec?.details as { results?: HardRuleResult[] } | null)?.results ?? []) as HardRuleResult[];
   const failed = results.filter((x) => !x.ok);
   if (hardDec) {
-    add("hard_rules", failed.length ? `Hard rules · ${failed.length} failed` : `Hard rules · ${results.length} of ${results.length} passed`, hardDec.createdAt, failed.length ? "bad" : "ok", failed.map((f) => f.detail).join("; ") || null);
+    add("hard_rules", failed.length ? `Hard rules · ${failed.length} failed` : `Hard rules · ${results.length} of ${results.length} passed`, hardDec.createdAt, failed.length ? "bad" : hardDec.decision === "ASK_HUMAN" ? "wait" : "ok", failed.map((f) => f.detail).join("; ") || (hardDec.decision === "ASK_HUMAN" ? hardDec.reasonEn : null));
   }
   const paused = failed.some((f) => f.rule === "agent_paused");
   let auditor: RequestDetail["auditor"] = null;
@@ -130,7 +133,7 @@ export async function getRequestDetail(ctx: ReinsContext, requestId: string): Pr
     row,
     agent: { id: r.agentId, name: agent?.name ?? r.agentId, status: agent ? agentStatus(agent) : "revoked" },
     timeline: steps,
-    hard_rules: results.map((x) => ({ rule: x.rule, label: HARD_RULE_LABELS[x.rule] ?? x.rule, value: x.value ?? null, limit: x.limit ?? null, ok: x.ok, detail: x.detail })),
+    hard_rules: results.map((x) => ({ rule: x.rule, label: HARD_RULE_LABELS[x.rule] ?? x.rule, value: x.value ?? null, limit: x.limit ?? null, ok: x.ok, detail: x.detail, ...(x.ask ? { ask: true } : {}) })),
     auditor,
     mandate: mandate ? mandateView(mandate) : null,
     raw_request: {
@@ -142,6 +145,7 @@ export async function getRequestDetail(ctx: ReinsContext, requestId: string): Pr
         items: r.items,
         reason: r.reason,
         ...(r.category ? { category: r.category } : {}),
+        ...(r.recurring ? { recurring: r.recurring } : {}),
         client_request_id: r.clientRequestId,
       },
       agent_id: r.agentId,

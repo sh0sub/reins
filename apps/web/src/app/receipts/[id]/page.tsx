@@ -61,6 +61,14 @@ export default function ReceiptPage() {
         <dd>{receipt.merchant}</dd>
         <dt>Item</dt>
         <dd>{receipt.items}</dd>
+        {receipt.recurring && (
+          <>
+            <dt>Billing</dt>
+            <dd>
+              <span className="status status-info">Subscription</span> ${receipt.amount} {receipt.recurring.cadence} · ${receipt.recurring.annual_amount} a year
+            </dd>
+          </>
+        )}
         <dt>Agent</dt>
         <dd>{receipt.agent_name}</dd>
         <dt>Approved by</dt>

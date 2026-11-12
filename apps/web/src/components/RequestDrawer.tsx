@@ -40,7 +40,7 @@ function RiskGauge({ risk }: { risk: number | null }) {
 }
 
 /** The mandate rules people tune; the basic checks (key, mandate, dates, amount, currency) fold away when they pass. */
-const MAIN_RULES = new Set(["per_tx_cap", "monthly_limit", "allowlist", "blocked_merchant", "velocity", "agent_paused"]);
+const MAIN_RULES = new Set(["per_tx_cap", "monthly_limit", "allowlist", "blocked_merchant", "velocity", "agent_paused", "recurring_first"]);
 
 function RulesTable({ rows, caption }: { rows: RequestDetail["hard_rules"]; caption: string }) {
   return (
@@ -70,7 +70,7 @@ function RulesTable({ rows, caption }: { rows: RequestDetail["hard_rules"]; capt
                 {r.value ?? r.detail}
               </td>
               <td className="res">
-                <span className={r.ok ? "status status-ok" : "status status-bad"}>{r.ok ? "pass" : "FAIL"}</span>
+                <span className={r.ask ? "status status-warn" : r.ok ? "status status-ok" : "status status-bad"}>{r.ask ? "ask" : r.ok ? "pass" : "FAIL"}</span>
               </td>
             </tr>
           ))}

@@ -21,7 +21,7 @@ export const PLAYGROUND_MANDATE = {
   per_purchase_cap: "100.00",
   allowed_merchants: ["namecheap.com", "statista.com", "vercel.com"],
   categories: ["infrastructure", "research"],
-  purpose: "Buy a domain and market research reports for a small team",
+  purpose: "Buy a domain, hosting and market research reports for a small team",
 };
 
 /** Simulates a prompt-injected or careless auditor: approves everything with low risk. Code-level rules must still hold. */

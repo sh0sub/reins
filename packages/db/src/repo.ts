@@ -199,7 +199,7 @@ export async function listMandateVersions(db: ReinsDb, agentId: string): Promise
 export type NewRequestInput = Pick<
   PurchaseRequest,
   "agentId" | "mandateId" | "clientRequestId" | "merchant" | "amountCents" | "currency" | "items" | "reason" | "category"
-> & { createdAt?: number; /** Fixed display number (the demo seed starts at R-0120); default is max + 1. */ seq?: number };
+> & { recurring?: PurchaseRequest["recurring"]; createdAt?: number; /** Fixed display number (the demo seed starts at R-0120); default is max + 1. */ seq?: number };
 
 export async function findRequestByClientId(
   db: ReinsDb,
@@ -414,6 +414,29 @@ export async function spendAtMerchantSinceCents(
     .from(requests)
     .where(and(...conds));
   return Number(row?.total ?? 0);
+}
+
+/**
+ * Subscription guard: does this agent already have a subscription at this merchant group (registrable `domain`) with the
+ * same cadence that a person approved and that was paid, for at least `amountCents`? Then a later charge of it follows the
+ * normal policy path. A higher price than the one a person approved counts as a new subscription again.
+ */
+export async function hasApprovedPaidSubscription(
+  db: ReinsDb,
+  agentId: string,
+  domain: string,
+  recurring: NonNullable<PurchaseRequest["recurring"]>,
+  amountCents: number,
+  excludeId?: string,
+  opts: { scope?: SpendScope } = {},
+): Promise<boolean> {
+  const conds = [eq(requests.agentId, agentId), eq(requests.status, "paid"), eq(requests.recurring, recurring), gte(requests.amountCents, amountCents), merchantGroupCond(domain),
+    sql`exists (select 1 from ${decisions} where ${decisions.requestId} = ${requests.id} and ${decisions.stage} = 'human' and ${decisions.decision} = 'APPROVE')`];
+  if (excludeId) conds.push(sql`${requests.id} <> ${excludeId}`);
+  const sc = scopeCond(opts.scope);
+  if (sc) conds.push(sc);
+  const [row] = await db.select({ n: count() }).from(requests).where(and(...conds));
+  return Number(row?.n ?? 0) > 0;
 }
 
 /** Every request created at or after `since`, newest first (overview dashboard: month-to-date, no row limit). */

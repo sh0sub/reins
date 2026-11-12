@@ -102,6 +102,10 @@ export const REQUEST_STATUSES = [
 ] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
+/** Cadences a purchase request may declare (`recurring`); absent = one-off. */
+export const RECURRING_CADENCES = ["monthly", "yearly"] as const;
+export type RecurringCadence = (typeof RECURRING_CADENCES)[number];
+
 export interface RequestAnomaly {
   code: "repeat_merchant" | "late_night" | "off_mandate_category";
   /** Risk points added on top of the auditor's score. */
@@ -127,6 +131,8 @@ export const requests = sqliteTable(
     items: text("items").notNull(),
     reason: text("reason").notNull(),
     category: text("category"),
+    /** Subscription cadence ("monthly" / "yearly"); null = one-off purchase. */
+    recurring: text("recurring", { enum: RECURRING_CADENCES }),
     status: text("status", { enum: REQUEST_STATUSES }).notNull().default("reviewing"),
     finalDecision: text("final_decision", { enum: ["AUTO_APPROVE", "ASK_HUMAN", "DENY"] }),
     risk: integer("risk"),

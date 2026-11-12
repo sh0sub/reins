@@ -19,6 +19,8 @@ export interface PurchaseArgs {
   items: string;
   reason: string;
   category?: string;
+  /** Subscription cadence; omit for a one-off purchase. */
+  recurring?: "monthly" | "yearly";
   client_request_id?: string;
 }
 

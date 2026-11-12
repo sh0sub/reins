@@ -14,6 +14,7 @@ import {
   getPaymentByRequest,
   getRequest,
   getWorkspace,
+  hasApprovedPaidSubscription,
   insertAgent,
   insertDecision,
   insertPayment,
@@ -32,6 +33,7 @@ import {
   updateRequest,
   PLAYGROUND_SCOPE_PREFIX,
   RECORDED_REQUEST_PREFIX,
+  RECURRING_CADENCES,
   type Agent,
   type Mandate,
   type PurchaseRequest,
@@ -41,6 +43,7 @@ import {
 import { buildAuditInput, runAudit, RECENT_LIMIT, type AuditProvider } from "./policy/audit.ts";
 import { evaluateHardRules, MERCHANT_WINDOW_MS, monthStartUtc, VELOCITY_WINDOW_MS, type HardRuleOutcome } from "./policy/hardRules.ts";
 import { anomalySummary, applyAnomalies, detectAnomalies, type QuietHours } from "./policy/anomalies.ts";
+import { applyRecurring, evaluateRecurring } from "./policy/recurring.ts";
 import { writeRuleSentence, type RuleWriter } from "./policy/ruleWriter.ts";
 import { summarizeAnswer, type AnswerSummarizer } from "./policy/answerSummary.ts";
 import { generateApiKey, hashApiKey, parseBearer } from "./keys.ts";
@@ -135,6 +138,8 @@ export const PurchaseInputSchema = z.object({
   items: z.string().trim().min(1).max(500),
   reason: z.string().trim().min(1).max(1000),
   category: z.string().trim().min(1).max(64).optional(),
+  /** Subscription cadence; absent (or null) = one-off. The first charge of a new subscription always asks a person. */
+  recurring: z.enum(RECURRING_CADENCES).nullish(),
   client_request_id: z.string().trim().min(1).max(128).optional(),
 });
 export type PurchaseInput = z.input<typeof PurchaseInputSchema>;
@@ -341,11 +346,12 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     items: input.items,
     reason: input.reason,
     category: input.category ?? null,
+    recurring: input.recurring ?? null,
     createdAt: now,
   });
   if (!created) {
     // M5: the same idempotency key with a different purchase is a client bug, not a retry
-    if (request.merchant !== input.merchant || request.amountCents !== input.amount || request.currency !== input.currency || request.items !== input.items) {
+    if (request.merchant !== input.merchant || request.amountCents !== input.amount || request.currency !== input.currency || request.items !== input.items || request.recurring !== (input.recurring ?? null)) {
       throw new ReinsError(409, "idempotency_conflict", "client_request_id was already used for a different purchase");
     }
     return viewOf(ctx, request);
@@ -374,14 +380,26 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
     velocityMax: ctx.config.velocityMax,
   });
   const failedText = hard.failed.map((f) => f.detail).join("; ");
+  // Subscription guard (deterministic): the first charge of a new subscription at this merchant asks a person.
+  // Only evaluated once every other hard rule passed; a failed rule still denies.
+  const sub =
+    hard.pass && request.recurring
+      ? evaluateRecurring({
+          recurring: request.recurring,
+          amountCents: request.amountCents,
+          merchant: request.merchant,
+          approvedBefore: await hasApprovedPaidSubscription(ctx.db, agent.id, registrableDomain(request.merchant), request.recurring, request.amountCents, request.id, { scope }),
+        })
+      : null;
+  const escalate = sub?.escalate === true;
   await insertDecision(ctx.db, {
     requestId: request.id,
     stage: "hard_rules",
-    decision: hard.pass ? "PASS" : "DENY",
+    decision: !hard.pass ? "DENY" : escalate ? "ASK_HUMAN" : "PASS",
     risk: null,
-    reasonEn: hard.pass ? "All hard rules passed" : failedText,
-    reasonKo: null,
-    details: { results: hard.results },
+    reasonEn: !hard.pass ? failedText : escalate ? sub!.reasonEn : "All hard rules passed",
+    reasonKo: escalate ? sub!.reasonKo : null,
+    details: { results: sub ? [...hard.results, sub.result] : hard.results, ...(escalate ? { escalated: "recurring_first" } : {}) },
     actor: "policy",
   });
 
@@ -451,18 +469,20 @@ export async function submitPurchase(ctx: ReinsContext, agent: Agent, raw: unkno
   });
 
   // S3: patterns weigh the risk and turn AUTO into ASK_HUMAN, recorded as their own step in the decision trail.
-  const weighed = applyAnomalies(audit.final, audit.risk, anomalies);
-  let reasonEn = audit.reasonEn;
-  let reasonKo = audit.reasonKo;
+  const patterns = applyAnomalies(audit.final, audit.risk, anomalies);
+  // Subscription guard, enforced in code after the auditor: a new subscription's first charge is never AUTO_APPROVE.
+  const weighed = { ...patterns, final: applyRecurring(patterns.final, escalate) };
+  let reasonEn = escalate && weighed.final === "ASK_HUMAN" ? `${sub!.reasonEn} ${audit.reasonEn}` : audit.reasonEn;
+  let reasonKo = escalate && weighed.final === "ASK_HUMAN" ? `${sub!.reasonKo} ${audit.reasonKo}` : audit.reasonKo;
   if (anomalies.length) {
     await insertDecision(ctx.db, {
       requestId: request.id,
       stage: "system",
-      decision: weighed.final,
-      risk: weighed.risk,
+      decision: patterns.final,
+      risk: patterns.risk,
       reasonEn: anomalySummary(anomalies, "en"),
       reasonKo: anomalySummary(anomalies, "ko"),
-      details: { anomalies, escalated: weighed.escalated, auditor_risk: audit.risk },
+      details: { anomalies, escalated: patterns.escalated, auditor_risk: audit.risk },
       actor: "patterns",
     });
     reasonEn = `${reasonEn} ${anomalySummary(anomalies, "en")}`;

@@ -6,6 +6,13 @@ export const usd = (cents: number) => USD.format(cents / 100);
 /** Same format for an amount already in dollars. */
 export const usdAmount = (dollars: number) => USD.format(dollars);
 
+/** Subscription guard: "$20.00 monthly · $240.00 a year"; null for a one-off purchase. */
+export function cadenceText(r: { amount: string; recurring?: string | null; annual_amount?: string | null }): string | null {
+  if (!r.recurring) return null;
+  const cents = (v: string) => Math.round(Number(v) * 100);
+  return `${usd(cents(r.amount))} ${r.recurring} · ${usd(cents(r.annual_amount ?? r.amount))} a year`;
+}
+
 export function ago(iso: string, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
   if (s < 45) return "just now";

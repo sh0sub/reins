@@ -1,6 +1,7 @@
 import type { Decision, Mandate, Payment, PurchaseRequest, RequestAnomaly, RequestMessage } from "@reins/db";
 import { centsToValue } from "./money.ts";
 import { displayId } from "./pay/strategies.ts";
+import { annualCents } from "./policy/recurring.ts";
 
 /** What agents (MCP) and the UI see for a request. Never includes vault ids or raw PayPal payloads. */
 export interface RequestView {
@@ -16,6 +17,10 @@ export interface RequestView {
   amount: string;
   currency: string;
   items: string;
+  /** Subscription cadence ("monthly" / "yearly"); null = one-off purchase. */
+  recurring: PurchaseRequest["recurring"];
+  /** What the subscription costs a year ("240.00"); null for a one-off purchase. Information only: caps compare `amount`. */
+  annual_amount: string | null;
   /** The agent's own justification as submitted (shown to the human; never fed back as the decision reason). */
   agent_reason: string;
   created_at: string;
@@ -84,6 +89,8 @@ export function toRequestView(r: PurchaseRequest, payment?: Payment | null, mess
     amount: centsToValue(r.amountCents),
     currency: r.currency,
     items: r.items,
+    recurring: r.recurring ?? null,
+    annual_amount: r.recurring ? centsToValue(annualCents(r.amountCents, r.recurring)) : null,
     agent_reason: r.reason,
     created_at: new Date(r.createdAt).toISOString(),
     updated_at: new Date(r.updatedAt).toISOString(),

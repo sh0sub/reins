@@ -35,6 +35,8 @@ export interface AuditInput {
     items: string;
     reason: string;
     category: string | null;
+    /** Present only for a subscription: it charges again every month or year (Reins code decides the first-charge escalation). */
+    recurring?: "monthly" | "yearly";
   };
   month_spent: string;
   recent: Array<{ merchant: string; amount: string; status: string; created_at: string }>;
@@ -52,7 +54,7 @@ export const RECENT_LIMIT = 10;
 
 export function buildAuditInput(
   mandate: Mandate,
-  request: Pick<PurchaseRequest, "merchant" | "amountCents" | "currency" | "items" | "reason" | "category">,
+  request: Pick<PurchaseRequest, "merchant" | "amountCents" | "currency" | "items" | "reason" | "category"> & { recurring?: PurchaseRequest["recurring"] },
   recent: Array<Pick<PurchaseRequest, "merchant" | "amountCents" | "status" | "createdAt">>,
   monthSpentCents: number,
   signals: Array<{ code: string; detail_en: string }> = [],
@@ -84,6 +86,7 @@ export function buildAuditInput(
       created_at: new Date(r.createdAt).toISOString(),
     })),
   };
+  if (request.recurring) input.request.recurring = request.recurring;
   if (signals.length) input.signals = signals.map((a) => ({ code: a.code, detail: a.detail_en }));
   return input;
 }

@@ -73,6 +73,8 @@ function body(view: RequestView, agentName: string, opts: CardOptions): string[]
     `Item: ${view.items}`,
     `Merchant: ${view.merchant} · $${view.amount} ${view.currency ?? "USD"}`,
   ];
+  // subscription guard: the first charge of a new subscription always lands here; show what it costs a year
+  if (view.recurring) lines.push(`[Subscription] $${view.amount} ${view.recurring} · $${view.annual_amount ?? view.amount} a year`);
   if (view.agent_reason) lines.push(`Why (agent): "${oneLine(view.agent_reason, 120)}"`);
   if (opts.budget?.monthlyLimitCents != null) {
     const left = opts.budget.monthlyLimitCents - opts.budget.monthSpentCents - amountCents;

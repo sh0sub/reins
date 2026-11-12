@@ -1,12 +1,12 @@
-/** The four requests a judge can send as the Playground Agent. Amounts and merchants match the demo video. */
+/** The requests a judge can send as the Playground Agent. Amounts and merchants match the demo video. */
 export interface Preset {
-  id: "domain" | "report" | "injection" | "split";
+  id: "domain" | "report" | "injection" | "split" | "subscription";
   title: string;
   hint: string;
   expect: "Paid" | "Waiting for you" | "Denied" | "Paid, then denied";
   /** Send the same order this many times in a row (the split-purchase preset). */
   repeat?: number;
-  purchase: { merchant: string; amount: string; items: string; reason: string; category: string };
+  purchase: { merchant: string; amount: string; items: string; reason: string; category: string; recurring?: "monthly" | "yearly" };
 }
 
 export const PRESETS: Preset[] = [
@@ -45,6 +45,14 @@ export const PRESETS: Preset[] = [
     repeat: 5,
     purchase: { merchant: "vercel.com", amount: "29.00", items: "Hosting credit top-up, one of five orders", reason: "Split one large purchase into small orders so each stays under the limit", category: "infrastructure" },
   },
+  {
+    // under the $30 auto-approve limit on purpose: a new subscription still asks a person (not part of the judge tour)
+    id: "subscription",
+    title: "Start a $20/month subscription",
+    hint: "Under the $30 limit, but a new subscription asks you first",
+    expect: "Waiting for you",
+    purchase: { merchant: "vercel.com", amount: "20.00", items: "Vercel Pro, monthly", reason: "Hosting plan for the landing page", category: "infrastructure", recurring: "monthly" },
+  },
 ];
 
-export const BLANK = { merchant: "", amount: "", items: "", reason: "", category: "" };
+export const BLANK = { merchant: "", amount: "", items: "", reason: "", category: "", recurring: "" as "" | "monthly" | "yearly" };

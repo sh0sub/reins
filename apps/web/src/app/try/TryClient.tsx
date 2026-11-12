@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from "rea
 import Link from "next/link";
 import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
-import { auditorWord, isSimId, simId, statusChip, usd } from "@/lib/format";
+import { auditorWord, cadenceText, isSimId, simId, statusChip, usd } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { QuickConnect } from "@/components/ConnectAgent";
 import { BLANK, PRESETS, type Preset } from "./presets";
@@ -30,6 +30,7 @@ interface RuleRow {
   detail: string;
   value?: string;
   limit?: string;
+  ask?: boolean;
 }
 
 const RULE_LABEL: Record<string, string> = {
@@ -45,6 +46,7 @@ const RULE_LABEL: Record<string, string> = {
   blocked_merchant: "Merchant not blocked",
   allowlist: "Merchant allow list",
   velocity: "Velocity",
+  recurring_first: "New subscription",
 };
 
 const rulesOf = (row: LedgerRow): RuleRow[] => (row.decisions.find((d) => d.stage === "hard_rules")?.details as { results?: RuleRow[] } | null)?.results ?? [];
@@ -134,7 +136,7 @@ export default function TryClient({ enabled, judge, agent, mandate, claude = fal
     setWatch((w) => ({ ids, key: (w?.key ?? 0) + 1 }));
   }
 
-  async function send(label: string, purchase: Record<string, string>, key: string, fooledNow = fooled, repeat = 1) {
+  async function send(label: string, purchase: Record<string, string | undefined>, key: string, fooledNow = fooled, repeat = 1) {
     const t0 = Date.now();
     setBusy(key);
     setError(null);
@@ -195,6 +197,7 @@ export default function TryClient({ enabled, judge, agent, mandate, claude = fal
     e.preventDefault();
     const purchase: Record<string, string> = { merchant: form.merchant, amount: form.amount, items: form.items, reason: form.reason };
     if (form.category.trim()) purchase.category = form.category.trim();
+    if (form.recurring) purchase.recurring = form.recurring;
     void send(form.merchant || "Custom", purchase, "form");
   }
 
@@ -313,6 +316,14 @@ export default function TryClient({ enabled, judge, agent, mandate, claude = fal
                     <label htmlFor="t-cat">Category (optional)</label>
                     <input id="t-cat" className="input" placeholder="research" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
                   </div>
+                  <div className="field">
+                    <label htmlFor="t-recurring">Billing</label>
+                    <select id="t-recurring" className="input" value={form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.value as typeof form.recurring })}>
+                      <option value="">One-off</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                  </div>
                   <div>
                     <button className="btn btn-primary" disabled={busy !== null}>
                       {busy === "form" ? "Sending…" : "Send request"}
@@ -426,6 +437,7 @@ function PresetCard({ preset, busy, disabled, onSend }: { preset: Preset; busy: 
           </span>
           <b className="num">
             {preset.repeat ? `${preset.repeat} × ` : ""}${p.amount}
+            {p.recurring === "monthly" ? "/mo" : p.recurring === "yearly" ? "/yr" : ""}
           </b>
         </span>
         <span className="caption">
@@ -470,11 +482,13 @@ function ResultPanel({
       <div className="row between">
         <div className="row">
           <span className={`${chip.className} status-lg`}>{chip.label}</span>
+          {row.recurring && <span className="status status-info">Subscription</span>}
           <b className="num">{usd(Math.round(Number(row.amount) * 100))}</b>
           <span className="muted">{row.merchant}</span>
         </div>
         <span className="caption mono">{row.display_id}</span>
       </div>
+      {row.recurring && <p className="caption num">{cadenceText(row)}</p>}
 
       {row.reason && <p>{row.reason}</p>}
 
@@ -503,7 +517,7 @@ function ResultPanel({
                 <td className="num">{r.value ?? ""}</td>
                 <td className="num">{r.limit ?? ""}</td>
                 <td>
-                  <span className={r.ok ? "status status-ok" : "status status-bad"}>{r.ok ? "Pass" : "Fail"}</span>
+                  <span className={r.ask ? "status status-warn" : r.ok ? "status status-ok" : "status status-bad"}>{r.ask ? "Ask" : r.ok ? "Pass" : "Fail"}</span>
                 </td>
               </tr>
             ))}
@@ -542,7 +556,7 @@ function ResultPanel({
         <div className="stack-s">
           <p className="alert row" role="note">
             <Icon name="inbox" className="ico" />
-            Above the auto-approve limit, so a person decides. In the real flow this card goes to Telegram and the web inbox.
+            {rules.some((r) => r.ask) ? "A new subscription, so a person approves the first charge (even under the auto-approve limit)." : "Above the auto-approve limit, so a person decides."} In the real flow this card goes to Telegram and the web inbox.
           </p>
           <div className="row">
             <button className="btn btn-primary" disabled={busy !== null} onClick={() => onDecide("approve")}>

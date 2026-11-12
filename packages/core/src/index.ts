@@ -7,6 +7,7 @@ export * from "./policy/mockAuditor.ts";
 export * from "./policy/claudeAuditor.ts";
 export * from "./policy/categories.ts";
 export * from "./policy/anomalies.ts";
+export * from "./policy/recurring.ts";
 export * from "./policy/ruleWriter.ts";
 export * from "./policy/answerSummary.ts";
 export * from "./receipts.ts";

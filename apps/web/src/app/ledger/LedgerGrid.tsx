@@ -18,7 +18,7 @@ import { LicenseManager, MasterDetailModule, RowGroupingModule, SetFilterModule,
 import type { LedgerRow } from "@reins/core";
 import { Icon } from "@/components/Icon";
 import { LedgerSkeleton } from "./LedgerSkeleton";
-import { bucketTotal, decisionClass, decisionLabel, fullTime, hardRules, isSimId, recordedChip, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
+import { bucketTotal, cadenceText, decisionClass, decisionLabel, fullTime, hardRules, isSimId, recordedChip, shortPayId, shortTime, showKo, simId, statusChip, usdAmount } from "@/lib/format";
 
 // Community for filter/sort/CSV/row selection; Enterprise for row grouping (agent), master/detail (row expansion), set filters and the status bar.
 // No license key: AG Grid shows its trial watermark/console notice (#30 decision, see worklog).
@@ -48,6 +48,20 @@ function DecisionCell(p: CustomCellRendererProps<LedgerRow>) {
   if (!p.data) return null;
   const d = decisionLabel(p.data);
   return <Chip value={d} className={decisionClass(d)} />;
+}
+/** Item text with a "Subscription" chip in front for recurring requests (the chip stays visible when a long item truncates). */
+function ItemCell(p: CustomCellRendererProps<LedgerRow>) {
+  if (!p.data) return null;
+  return (
+    <span>
+      {p.data.recurring && (
+        <span className="status status-info" style={{ marginRight: 6 }} title={cadenceText(p.data) ?? undefined}>
+          Subscription
+        </span>
+      )}
+      {p.data.items}
+    </span>
+  );
 }
 function StatusCell(p: CustomCellRendererProps<LedgerRow>) {
   if (!p.data) return null;
@@ -133,6 +147,7 @@ function CardCell(p: CustomCellRendererProps<LedgerRow>) {
         </div>
         <div className="ledger-card-chips">
           <Chip value={st.label} className={st.className} />
+          {row.recurring && <Chip value="Subscription" className="status status-info" />}
         </div>
       </div>
     </div>
@@ -206,6 +221,12 @@ function Detail(p: ICellRendererParams<LedgerRow>) {
         <dd>
           {row.payment ? `${row.payment.reconciled}${row.payment.reconcile_note ? ` · ${row.payment.reconcile_note}` : ""}${row.payment.reconciled_at ? ` · ${fullTime(row.payment.reconciled_at)}` : ""}` : "n/a"}
         </dd>
+        {row.recurring && (
+          <>
+            <dt>Subscription</dt>
+            <dd>{cadenceText(row)}</dd>
+          </>
+        )}
         <dt>Agent said</dt>
         <dd>“{row.agent_reason}”</dd>
         {row.anomalies?.length > 0 && (
@@ -267,7 +288,7 @@ function paidSum(p: IAggFuncParams<LedgerRow>): number {
 }
 
 /** Columns of the accounting CSV, in order. Some are hidden in the grid (Agent when grouped, most columns on a phone) and are still exported. */
-const CSV_COLUMNS = ["created_at", "id", "agent_name", "items", "merchant", "amount", "decision", "status", "paypal", "recon", "risk"];
+const CSV_COLUMNS = ["created_at", "id", "agent_name", "items", "merchant", "amount", "recurring", "decision", "status", "paypal", "recon", "risk"];
 
 /**
  * "Download CSV for accounting": the grid's own export. Ticked rows only when any are ticked, otherwise every row the filters leave;
@@ -387,6 +408,8 @@ export function LedgerGrid({
     };
     const agent: ColDef<LedgerRow> = { headerName: "Agent", field: "agent_name", rowGroup: group, hide: group || narrow, enableRowGroup: true, filter: "agSetColumnFilter" };
     // Group/grand totals sum only paid rows (blocked and failed requests were never charged).
+    // CSV only: subscription cadence ("monthly" / "yearly"; empty for a one-off purchase)
+    const recurringCol: ColDef<LedgerRow> = { colId: "recurring", headerName: "Recurring", hide: true, suppressColumnsToolPanel: true, valueGetter: (p) => p.data?.recurring ?? "" };
     const amount: ColDef<LedgerRow> = { headerName: "Amount", colId: "amount", valueGetter: (p) => (p.data ? Number(p.data.amount) : null), valueFormatter: money, aggFunc: paidSum, type: "rightAligned", width: narrow ? 84 : 96, minWidth: narrow ? 74 : 96, filter: "agNumberColumnFilter", suppressHeaderFilterButton: true };
     if (narrow) {
       return [
@@ -405,13 +428,14 @@ export function LedgerGrid({
         { colId: "paypal", headerName: "PayPal ID", hide: true, valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null },
         { colId: "recon", headerName: "Recon", hide: true, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a") },
         { colId: "risk", headerName: "Risk", hide: true, field: "risk" },
+        recurringCol,
       ];
     }
     return [
       time,
       { headerName: "ID", colId: "id", valueGetter: (p) => p.data?.display_id ?? null, cellRenderer: IdCell, width: 74, sortable: false, filter: false },
       agent,
-      { headerName: "Item", field: "items", flex: 1, minWidth: 140, tooltipField: "items" },
+      { headerName: "Item", field: "items", flex: 1, minWidth: 140, tooltipField: "items", cellRenderer: ItemCell },
       { headerName: "Merchant", field: "merchant", width: 132, minWidth: 120, filter: "agSetColumnFilter" },
       amount,
       // one status column in the grid: the Status chip. The rule engine's own outcome stays available (column menu, filters) and in the CSV as "Rule outcome"
@@ -420,6 +444,7 @@ export function LedgerGrid({
       { headerName: "PayPal ID", colId: "paypal", valueGetter: (p) => p.data?.payment?.capture_id ?? p.data?.payment?.payout_batch_id ?? null, cellRenderer: roomy ? PayPalIdCell : PayPalReconCell, width: roomy ? 92 : 116, suppressHeaderFilterButton: true },
       { headerName: "Recon", colId: "recon", hide: !roomy, valueGetter: (p) => (p.data?.payment?.status === "completed" ? p.data.payment.reconciled : "n/a"), cellRenderer: ReconCell, width: 64, filter: "agSetColumnFilter", suppressHeaderFilterButton: true },
       { headerName: "Risk", field: "risk", width: 64, minWidth: 64, type: "rightAligned", filter: "agNumberColumnFilter", suppressHeaderFilterButton: true },
+      recurringCol,
     ];
   }, [group, narrow, roomy]);
 

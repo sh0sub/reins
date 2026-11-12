@@ -58,6 +58,27 @@ describe("M4 Reins MCP server", () => {
     expect(f.seen).toHaveLength(0);
   });
 
+  it("request_purchase: recurring monthly/yearly is forwarded, other values are rejected before the API", async () => {
+    const f = stubFetch({ "POST /api/requests": { status: 201, body: { ...paid, status: "pending_human", recurring: "monthly" } } });
+    const client = await connect(new ReinsApi("http://x", "rk_live_k", f.fn));
+    const { tools } = await client.listTools();
+    const rp = tools.find((t) => t.name === "request_purchase")!;
+    expect(rp.description).toMatch(/set recurring to "monthly" or "yearly"/);
+    expect((rp.inputSchema.properties as Record<string, unknown>).recurring).toBeTruthy();
+    expect(rp.inputSchema.required).not.toContain("recurring");
+    const args = { merchant: "vercel.com", amount: "20.00", items: "Vercel Pro, monthly", reason: "Hosting plan" };
+    const bad = await client.callTool({ name: "request_purchase", arguments: { ...args, recurring: "weekly" } });
+    expect(bad.isError).toBe(true);
+    expect(f.seen).toHaveLength(0);
+    const ok = await client.callTool({ name: "request_purchase", arguments: { ...args, recurring: "monthly" } });
+    expect(ok.isError).toBeFalsy();
+    expect(f.seen[0]!.body).toMatchObject({ recurring: "monthly" });
+    await client.callTool({ name: "request_purchase", arguments: args });
+    expect((f.seen[1]!.body as Record<string, unknown>).recurring).toBeUndefined();
+    // a subscription and a one-off order of the same thing get different default idempotency keys
+    expect((f.seen[0]!.body as { client_request_id: string }).client_request_id).not.toBe((f.seen[1]!.body as { client_request_id: string }).client_request_id);
+  });
+
   it("get_mandate / get_request_status / list_transactions hit the right routes", async () => {
     const f = stubFetch({
       "GET /api/mandate": { body: { mandate: { monthly_limit: "150.00" } } },

@@ -7,6 +7,8 @@ export interface VerdictRule {
   detail: string;
   value?: string;
   limit?: string;
+  /** Passed, but a person decides (first charge of a new subscription). */
+  ask?: boolean;
 }
 export interface VerdictInput {
   status: string;
@@ -47,6 +49,8 @@ export function verdictLine({ status, llm, rules, auditor, paypal, orderId }: Ve
       if (failed) return { tone: "bad", head: "Blocked", text: llm ? `${plural(failed, "hard rule")} failed, so code denied it; ${said} (advisory only, it cannot override a rule)` : `${plural(failed, "hard rule")} failed; ${said}` };
       return { tone: "bad", head: "Blocked", text: llm ? said1 : "denied" };
     case "pending_human":
+      // subscription guard: code sends the first charge of a new subscription to a person, whatever the auditor said
+      if (rules.some((r) => r.ask)) return { tone: "warn", head: "Needs you", text: `${checks}; new subscription, so code asks a person for the first charge; ${said}` };
       return { tone: "warn", head: "Needs you", text: `${checks}; ${said}` };
     case "awaiting_buyer": {
       // supervised checkout: Reins approved and created the order; the buyer approving it on PayPal is the last step, not a failure
@@ -64,7 +68,7 @@ export function verdictLine({ status, llm, rules, auditor, paypal, orderId }: Ve
 }
 
 /** Rules a judge cares about on every request (the limits); the rest pass on any well-formed request and fold away. */
-export const KEY_RULES = ["per_tx_cap", "merchant_total", "monthly_limit", "allowlist"];
+export const KEY_RULES = ["per_tx_cap", "merchant_total", "monthly_limit", "allowlist", "recurring_first"];
 
 /** Visible rows: every failed rule plus the key limits; `hidden` is how many always-pass rows sit behind "Show all N checks". */
 export function splitRules<T extends Pick<VerdictRule, "rule" | "ok">>(rules: T[]): { shown: T[]; hidden: number } {

@@ -37,7 +37,7 @@ export const SIMULATED_RECONCILE_NOTE = "Reconciliation runs against real PayPal
 
 /** Public demo on the real sandbox where every payment in the window comes from the recorded run: nothing new to ask PayPal about. */
 export const SEEDED_RECONCILE_NOTE =
-  "The ledger's payments come from a recorded sandbox run. Their match state is the one recorded (Transaction Search had not listed them yet, so: not checked), and their times are shifted, so they are not searched here. Payments made live on this demo are reconciled for real.";
+  "The ledger's payments come from a recorded sandbox run. Their match state is the one recorded in the fixture (matched by a later real Transaction Search re-check; it had listed nothing at record time), and their times are shifted, so they are not searched here. Payments made live on this demo are reconciled for real.";
 
 /** Ids that only exist in Reins: the seed's FAKE-… and the in-memory fake PayPal's SIM-…. PayPal can never list them. */
 export const isSimulatedPayPalId = (id: string | null | undefined): boolean => Boolean(id && /^(FAKE|SIM)-/.test(id));

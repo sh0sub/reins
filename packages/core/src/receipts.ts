@@ -1,6 +1,7 @@
 import { getAgent, getMandate, getPaymentByRequest, getRequest, getRequestBySeq, listDecisions, type ReinsDb } from "@reins/db";
 import { centsToValue } from "./money.ts";
 import { displayId } from "./pay/strategies.ts";
+import { annualCents } from "./policy/recurring.ts";
 import { ReinsError, type ReinsContext } from "./service.ts";
 import { receiptUrl, recordedInfo, type RecordedInfo } from "./views.ts";
 
@@ -11,6 +12,8 @@ export interface Receipt {
   agent_name: string;
   merchant: string;
   items: string;
+  /** Subscription cadence and yearly cost; null for a one-off purchase. */
+  recurring: { cadence: "monthly" | "yearly"; annual_amount: string } | null;
   amount: string;
   currency: string;
   paid_at: string;
@@ -59,6 +62,7 @@ export async function getReceipt(ctx: ReinsContext, requestId: string): Promise<
     agent_name: agent?.name ?? r.agentId,
     merchant: r.merchant,
     items: r.items,
+    recurring: r.recurring ? { cadence: r.recurring, annual_amount: centsToValue(annualCents(payment.amountCents, r.recurring)) } : null,
     amount: centsToValue(payment.amountCents),
     currency: payment.currency,
     paid_at: new Date(payment.updatedAt).toISOString(),

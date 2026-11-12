@@ -35,6 +35,25 @@ describe("/try playground", () => {
     expect(ctx.paypal.calls.filter((c) => c === "createOrder")).toHaveLength(1);
   });
 
+  it("subscription preset: $20/month to vercel.com is under the $30 limit and still waits for a person; once approved and paid, the next one pays", async () => {
+    const sub = PRESETS.find((p) => p.id === "subscription")!;
+    expect(sub).toMatchObject({ expect: "Waiting for you", purchase: { merchant: "vercel.com", amount: "20.00", recurring: "monthly", category: "infrastructure" } });
+    const first = await runPlayground(ctx, sub.purchase, { visitor: "sub-visitor-1" });
+    expect(first.row).toMatchObject({ status: "pending_human", recurring: "monthly", annual_amount: "240.00" });
+    expect(first.failed_rules).toEqual([]);
+    // the demo auditor says approve; code still asks (the escalation is not the model's call)
+    expect(first.row.decisions.find((d) => d.stage === "llm")!.decision).toBe("AUTO_APPROVE");
+    const { verdictLine, splitRules } = await import("../src/app/try/verdict.ts");
+    const rules = (first.row.decisions.find((d) => d.stage === "hard_rules")!.details as { results: Array<{ rule: string; ok: boolean; detail: string; ask?: boolean }> }).results;
+    expect(splitRules(rules).shown.map((r) => r.rule)).toContain("recurring_first");
+    expect(verdictLine({ status: "pending_human", llm: { decision: "AUTO_APPROVE", actor: "mock" }, rules, auditor: "configured" }).text).toContain("new subscription, so code asks a person");
+    const { decideRequest } = await import("@reins/core");
+    expect((await decideRequest(ctx, first.row.request_id, "approve", "web")).status).toBe("paid");
+    expect((await runPlayground(ctx, sub.purchase, { visitor: "sub-visitor-1" })).row.status).toBe("paid");
+    // another visitor's playground scope starts fresh: their first subscription still asks
+    expect((await runPlayground(ctx, sub.purchase, { visitor: "sub-visitor-2" })).row.status).toBe("pending_human");
+  });
+
   it("the split preset: five $29 orders to vercel.com, three are paid and the rest are denied by the same-merchant rule", async () => {
     const split = PRESETS.find((p) => p.id === "split")!;
     expect(split.repeat).toBe(5);

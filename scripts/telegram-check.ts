@@ -63,6 +63,8 @@ async function main() {
     amount: "59.00",
     currency: "USD",
     items: 'Report "Agentic Commerce 2026" (PDF)',
+    recurring: null,
+    annual_amount: null,
     agent_reason: "Market sizing for the Q4 memo (task #31)",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

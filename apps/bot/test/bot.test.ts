@@ -69,6 +69,12 @@ describe("M9 cards", () => {
     expect(() => callbackData("ap", "x".repeat(70))).toThrow();
     expect(parseCallback("ap:../../etc")).toBeNull();
   });
+  it("subscription guard: the approval card shows the Subscription marker and the yearly cost; one-off cards do not", () => {
+    const base = { request_id: "req_sub", display_id: "R-0150", amount: "20.00", merchant: "vercel.com", items: "Vercel Pro, monthly", risk: 1, reason: "New subscription" };
+    const card = approvalCard({ ...base, recurring: "monthly", annual_amount: "240.00" } as never, "Playground Agent", 30);
+    expect(card.text).toContain("[Subscription] $20.00 monthly · $240.00 a year");
+    expect(approvalCard({ ...base, recurring: null, annual_amount: null } as never, "Playground Agent", 30).text).not.toContain("Subscription]");
+  });
   it("formats the paid edit like 'Paid $59.00 · Capture 3GH…'", () => {
     const c = resultCard({ status: "paid", display_id: "R-0142", amount: "59.00", merchant: "statista.com", reason: null, receipt: { capture_id: "3GH21XYZ", payout_batch_id: null, amount: "59.00", currency: "USD", merchant: "statista.com", paid_at: "2026-11-01T00:00:00.000Z", receipt_url: null } });
     expect(c.text.split("\n")[0]).toBe("Paid $59.00 · Capture 3GH21X…");

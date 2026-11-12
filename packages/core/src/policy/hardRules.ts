@@ -20,7 +20,9 @@ export type HardRuleId =
   | "blocked_merchant"
   | "allowlist"
   | "velocity"
-  | "merchant_total";
+  | "merchant_total"
+  /** Subscription guard (policy/recurring.ts): never fails; `ask` marks the first charge of a new subscription. */
+  | "recurring_first";
 
 export interface HardRuleResult {
   rule: HardRuleId;
@@ -29,6 +31,8 @@ export interface HardRuleResult {
   /** S6 hard-rule table: what the request had ("$450.00", "fiverr.com") and the mandate limit it was checked against. */
   value?: string;
   limit?: string;
+  /** Passed, but a person decides (the first charge of a new subscription). */
+  ask?: boolean;
 }
 
 export interface HardRuleInput {

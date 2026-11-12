@@ -6,7 +6,7 @@ import type { InboxItem, LedgerRow, Overview } from "@reins/core";
 import { api, ApiError } from "@/lib/api";
 import { useLive } from "@/lib/live";
 import { Icon } from "@/components/Icon";
-import { ago, auditorWord, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, simId, statusChip, usd } from "@/lib/format";
+import { ago, auditorWord, cadenceText, hardRules, linkedRequest, outcomeBucket, riskClass, showKo, simId, statusChip, usd } from "@/lib/format";
 import { RequestDrawer } from "@/components/RequestDrawer";
 
 /** A request waiting longer than this counts as overdue in the queue header. */
@@ -29,6 +29,7 @@ function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: bool
         <span className="row">
           <span className="status status-warn">Needs you</span>
           <span className={riskClass(row.risk)}>Risk {row.risk ?? "?"}</span>
+          {row.recurring && <span className="status status-info">Subscription</span>}
           {row.needs_clarification && <span className="status status-info">Waiting for agent</span>}
           {row.anomalies?.length > 0 && <span className="status status-bad">Unusual pattern</span>}
           <span className="caption mono">{row.display_id}</span>
@@ -37,6 +38,9 @@ function QueueItem({ row, selected, onSelect }: { row: InboxItem; selected: bool
     </li>
   );
 }
+
+/** Checks that send a request to a person instead of failing it. */
+const ASK_KEYS = new Set(["auto", "recurring_first"]);
 
 type MandateCheck = { key: string; label: string; note: string | null; ok: boolean };
 
@@ -54,6 +58,8 @@ function mandateChecks(row: InboxItem, rules: ReturnType<typeof hardRules>, amou
     { key: "monthly_limit", label: "Within monthly cap", note: after == null ? null : after >= 0 ? `${usd(after)} left after` : `${usd(-after)} over`, ok: okOf("monthly_limit") },
     { key: "per_tx_cap", label: "Within per-purchase cap", note: cap == null ? null : `≤ ${usd(cap)}`, ok: okOf("per_tx_cap") },
   ];
+  const sub = rules.find((r) => r.rule === "recurring_first" && (r as { ask?: boolean }).ask);
+  if (sub) out.push({ key: "recurring_first", label: "New subscription", note: "a person approves the first charge", ok: false });
   if (auto != null) out.push({ key: "auto", label: "Under auto-approve limit", note: `$${row.amount} ${amountCents > auto ? ">" : "≤"} ${usd(auto)}`, ok: amountCents <= auto });
   const shown = new Set(["allowlist", "blocked_merchant", "monthly_limit", "per_tx_cap"]);
   for (const r of rules) if (!r.ok && !shown.has(r.rule)) out.splice(out.length - (auto != null ? 1 : 0), 0, { key: r.rule, label: r.detail, note: null, ok: false });
@@ -222,10 +228,14 @@ function Detail({
             </span>
           </div>
           <div className="stack-s" style={{ alignItems: "flex-end" }}>
-            <span className="status status-warn">Needs you</span>
+            <span className="row">
+              {row.recurring && <span className="status status-info">Subscription</span>}
+              <span className="status status-warn">Needs you</span>
+            </span>
             <span className="metric">
               ${row.amount} <span className="caption">{row.currency}</span>
             </span>
+            {row.recurring && <span className="caption num">{cadenceText(row)}</span>}
           </div>
         </div>
       </header>
@@ -254,12 +264,12 @@ function Detail({
           <ul className="checks">
             {checks.map((c) => (
               <li key={c.key} className={c.ok ? undefined : "fail"}>
-                <Icon name={c.ok ? "check" : "warn"} label={c.ok ? "Pass" : "Fail"} />
+                <Icon name={c.ok ? "check" : "warn"} label={c.ok ? "Pass" : ASK_KEYS.has(c.key) ? "Ask" : "Fail"} />
                 <span>
                   {c.label}
                   {c.note && <span className="caption"> · {c.note}</span>}
                 </span>
-                <span className={c.ok ? "status status-ok" : "status status-warn"}>{c.ok ? "PASS" : c.key === "auto" ? "ASK" : "FAIL"}</span>
+                <span className={c.ok ? "status status-ok" : "status status-warn"}>{c.ok ? "PASS" : ASK_KEYS.has(c.key) ? "ASK" : "FAIL"}</span>
               </li>
             ))}
           </ul>
