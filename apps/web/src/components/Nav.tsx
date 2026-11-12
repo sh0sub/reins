@@ -175,7 +175,7 @@ export function SideFoot() {
           {ws.payment_mode === "vaulted" ? "Automatic · vault" : ws.payment_mode === "treasury" ? "Treasury payouts" : "Supervised checkout"}
         </span>
         <Link className="caption" href="/proof">
-          {offline ? "Real sandbox proof: recorded ids" : "Sandbox proof: spike-run ids"}
+          PayPal sandbox proof
         </Link>
         <span className="caption">
           Telegram {ws.telegram_linked ? "linked" : "optional, not linked"}

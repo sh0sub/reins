@@ -31,6 +31,7 @@ import {
   type ReinsContext,
 } from "@reins/core";
 import { TelegramNotifier, createBot, grammyApi } from "@reins/bot";
+import { startKeepWarm } from "./keepWarm.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -146,6 +147,8 @@ export async function createContextFromEnv(rawEnv: Env = process.env): Promise<R
     void resolvePendingPayments(ctx).catch(() => undefined);
   }, Number(env.REINS_EXPIRY_SWEEP_MS ?? 60_000));
   sweep.unref?.();
+  // hosted demo: ping reins-mcp so its free instance does not fall asleep between judges (REINS_KEEPWARM_URL; unset = off)
+  startKeepWarm(env);
   return ctx;
 }
 

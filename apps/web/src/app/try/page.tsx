@@ -17,7 +17,8 @@ export default async function TryPage() {
   const suite = await attackSuite().catch(() => null);
   return (
     <>
-      <TryClient enabled={playgroundEnabled()} judge={judgeMode()} agent={PLAYGROUND_AGENT} mandate={PLAYGROUND_MANDATE} />
+      {/* claude: only whether a key is configured (the stage label says "Claude audit" or "Demo auditor"), never the key */}
+      <TryClient enabled={playgroundEnabled()} judge={judgeMode()} agent={PLAYGROUND_AGENT} mandate={PLAYGROUND_MANDATE} claude={Boolean(process.env.ANTHROPIC_API_KEY)} />
       <div className="stack-l try-extra">
         {playgroundEnabled() && <ConnectAgent />}
         {suite && <AttackSuite suite={suite} />}

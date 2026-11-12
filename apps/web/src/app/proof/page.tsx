@@ -11,7 +11,7 @@ export default function ProofPage() {
         <div>
           <h1>PayPal sandbox proof</h1>
           <p className="tagline">
-            Real sandbox ids from the spike runs that first proved each payment path. <span className="status status-info">recorded, not live</span>
+            Real sandbox ids from the spike runs that first proved each payment path. <span className="status status-info">Recorded sandbox runs</span>
           </p>
         </div>
       </div>
@@ -49,7 +49,7 @@ export default function ProofPage() {
             </dl>
             <p>
               <a className="btn" href={proofLogUrl(p.log)} target="_blank" rel="noreferrer">
-                Spike log: {p.log.split("/").pop()}
+                View run log: {p.log.split("/").pop()}
               </a>
             </p>
           </li>

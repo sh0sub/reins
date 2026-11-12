@@ -63,6 +63,9 @@ services:
       # Shared with reins-mcp: its keyless demo sessions mint per-session demo keys without the per-IP connect limit
       - key: REINS_MCP_MINT_SECRET
         generateValue: true
+      # Keep-warm: reins-web GETs this every 10 minutes so the free reins-mcp instance does not sleep (unset = off)
+      - key: REINS_KEEPWARM_URL
+        value: https://reins-mcp.onrender.com/health
       # ---- secrets (prompted once at Blueprint creation) ----
       - key: PAYPAL_CLIENT_ID
         sync: false

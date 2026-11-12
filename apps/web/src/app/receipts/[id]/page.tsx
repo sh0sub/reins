@@ -27,7 +27,7 @@ export default function ReceiptPage() {
 
   if (error) {
     return (
-      <div className="panel stack" style={{ maxWidth: 560 }}>
+      <div className="panel stack receipt-card">
         <h1>Receipt</h1>
         <p className="alert alert-bad" role="alert">
           {error}
@@ -40,12 +40,12 @@ export default function ReceiptPage() {
       </div>
     );
   }
-  if (!receipt) return <div className="skeleton" style={{ maxWidth: 560, minHeight: 320 }} aria-busy="true" aria-label="Loading receipt" />;
+  if (!receipt) return <div className="skeleton receipt-card" style={{ minHeight: 320 }} aria-busy="true" aria-label="Loading receipt" />;
 
   const paypalId = receipt.payment.capture_id ?? receipt.payment.payout_batch_id ?? receipt.payment.order_id ?? "—";
   const recorded = recordedChip(receipt.recorded);
   return (
-    <article className="panel stack-l" style={{ maxWidth: 560 }} aria-labelledby="receipt-title">
+    <article className="panel stack-l receipt-card" aria-labelledby="receipt-title">
       <header className="stack-s">
         <span className="caption mono">{receipt.display_id} · Reins receipt</span>
         <h1 id="receipt-title">
@@ -80,7 +80,7 @@ export default function ReceiptPage() {
           )}
         </dd>
         <dt>Reconciled</dt>
-        <dd>{receipt.payment.reconciled === "matched" ? "Matched in PayPal Transaction Search" : receipt.payment.reconciled === "mismatch" ? "Mismatch, check the ledger" : "Not checked yet"}</dd>
+        <dd>{receipt.payment.reconciled === "matched" ? "Matched in PayPal Transaction Search" : receipt.payment.reconciled === "mismatch" ? "Mismatch, check the ledger" : "Reconciliation pending"}</dd>
         {recorded && (
           <>
             <dt>Recorded</dt>

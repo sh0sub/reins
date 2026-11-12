@@ -77,6 +77,9 @@ import { RATE_LIMITS, RateLimiter, clientIp } from "./rateLimit.ts";
 /** Seeded agents of the public demo (scripts/seed.ts); with the Playground Agent the only ones a judge may decide for. */
 export const DEMO_AGENT_NAMES = new Set(["Claude Code – DevOps", "Research Scout", "Desk Restock Bot", PLAYGROUND_AGENT]);
 
+/** GET /api/try/requests reads at most this many ids per call (the five-order preset is the largest batch). */
+export const TRY_READ_MAX_IDS = 10;
+
 export const PUBLIC_DEMO_REFUSAL = "This action is disabled on the public demo. Run Reins locally (pnpm judge) to try it.";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -291,6 +294,22 @@ const routes: Route[] = [
     if (visitor.fresh) res.headers.append("set-cookie", playgroundCookie(visitor.id, isHttps(req, url)));
     return res;
   }, { limit: "connect" }),
+  // /try Decision panel: re-reads the caller's own playground rows until they settle (a treasury payout is "paying" for
+  // 20-40 s). Scoped by the reins_try cookie: a row is returned only when its client_request_id carries this visitor's
+  // scope, so other visitors' rows (and every non-playground row) stay out. No admin token needed; ids are capped at 10.
+  toRoute("GET", "/api/try/requests", "public", async (req, ctx, _p, url) => {
+    if (!playgroundEnabled()) throw new ReinsError(403, "try_disabled", "The playground is off here. Run `pnpm judge` or set REINS_TRY=1.");
+    const visitor = readCookie(req, PLAYGROUND_COOKIE);
+    if (!isPlaygroundVisitor(visitor)) return json({ rows: [] });
+    const scope = playgroundScope(visitor);
+    const ids = [...new Set((url.searchParams.get("ids") ?? "").split(","))].filter((s) => /^[A-Za-z0-9_-]{1,64}$/.test(s)).slice(0, TRY_READ_MAX_IDS);
+    const rows = [];
+    for (const id of ids) {
+      const r = await getRequest(ctx.db, id);
+      if (r && r.clientRequestId.startsWith(scope)) rows.push(await getLedgerRow(ctx, id));
+    }
+    return json({ rows });
+  }, { limit: "tryRead" }),
   toRoute("POST", "/api/try/reset", "admin", async (_req, ctx) => {
     if (!judgeMode()) throw new ReinsError(403, "try_disabled", "Reset is only available in judge mode (pnpm judge or REINS_TRY=1).");
     return json(await resetPlayground(ctx));

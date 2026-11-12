@@ -98,7 +98,9 @@ export function timelineItem(n: number, r: { status: string; rules: VerdictRule[
   if (r.status === "denied") return { n, label: "Denied", tone: "bad", reason: failed.map((f) => f.detail).join("; ") || "denied by the auditor" };
   if (r.status === "pending_human") return { n, label: "Waiting for you", tone: "warn", reason: null };
   // supervised checkout (public demo on the real sandbox): approved by Reins, the buyer step on PayPal is still open
-  if (r.status === "awaiting_buyer" || r.status === "paying" || r.status === "approved") return { n, label: "Approved", tone: "ok", reason: r.status === "awaiting_buyer" ? "PayPal order created, waiting for the buyer on PayPal" : null };
+  if (r.status === "awaiting_buyer") return { n, label: "Approved", tone: "ok", reason: "PayPal order created, waiting for the buyer on PayPal" };
+  // treasury payout sent, PayPal has not confirmed it yet (the page re-reads the row until it is Paid)
+  if (r.status === "paying" || r.status === "approved") return { n, label: "Paying", tone: "info", reason: null };
   return { n, label: r.status.replace(/_/g, " "), tone: "info", reason: null };
 }
 
@@ -108,6 +110,7 @@ export function timelineSummary(items: TimelineItem[]): string {
   return [
     [count("Paid"), "paid"],
     [count("Approved"), "approved"],
+    [count("Paying"), "paying"],
     [count("Waiting for you"), "waiting"],
     [count("Denied"), "denied"],
   ]

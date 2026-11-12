@@ -112,6 +112,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" -X POST $WEB/api/cron/reconcile   # 40
 - **데모 데이터 다시 넣기**: 시드는 녹화된 실행(`scripts/demo/fixtures/real-sandbox-run.json`)을 재생하며, 시각은 녹화 종료가 부팅 약 3분 전이 되도록 한 번에 이동된다. 달이 바뀌거나 대기 승인 항목이 만료되면(30분) 데모 녹화 직전에 다시 넣는다. `reins-web` → **Shell**에서 실행: `cd apps/web && node --import tsx ../../scripts/seed.ts --db "$DATABASE_URL"`. 직접 만든 에이전트 같은 다른 데이터가 있으면 거부하는데, 그때는 끝에 `--force`를 붙인다(시드 행만 바뀐다).
 - **처음부터 다시**: `reins-web`에서 Manual Deploy를 하거나 15분 뒤 잠들 때까지 기다린다. 어느 쪽이든 `/tmp`가 비워지고 다음 부팅 때 데모 상태로 다시 시드된다.
 - **로그**: 비밀값·이메일은 찍지 않는다. reconcile은 건수만, Telegram 로그는 `REINS_TELEGRAM_LOG=1`일 때 카드 첫 줄만 남긴다.
+- **keep-warm**: `REINS_KEEPWARM_URL`(render.yaml 기본값 `https://reins-mcp.onrender.com/health`)이 있으면 reins-web이 10분마다 그 URL에 GET을 보내 무료 reins-mcp 인스턴스가 15분 유휴로 잠들지 않게 한다. 비우면 타이머가 없다. 실패는 로그 한 줄만 남기고 무시한다(`apps/web/src/server/keepWarm.ts`). reins-web 자신은 판정자 방문이 깨운다.
 - 서비스 2개는 공개 URL로 통신하므로 region이 같을 필요는 없지만, 지연을 줄이려고 둘 다 `oregon`에 둔다.
 
 ## 수동 실행

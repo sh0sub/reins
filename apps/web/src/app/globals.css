@@ -486,7 +486,7 @@ table.rules thead th { overflow-wrap: normal; }
   .kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
   .kpis-4 .panel-tight { padding: 12px; gap: 2px; }
   .kpis-4 .metric { font-size: 20px; }
-  .kpis-4 .caption { font-size: 11px; line-height: 1.3; }
+  .kpis-4 .caption { font-size: 12px; line-height: 1.3; }
   /* agent chips scroll sideways in one row; search shares a row with the group toggle */
   .ledger-f-agents { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -4px; padding: 0 4px; }
   .ledger-f-agents .chip-btn { flex: none; }
@@ -547,8 +547,10 @@ select.select-version { width: auto; min-width: 150px; font-weight: 700; color: 
 }
 
 /* ---- /try playground ---- */
-.try { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); align-items: start; }
-@media (min-width: 1000px) { .try { grid-template-columns: minmax(320px, 440px) minmax(0, 1fr); } }
+.try { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); align-items: start; grid-template-areas: "quick" "left" "decision"; }
+.try-left { grid-area: left; } .try-decision { grid-area: decision; } .try-quick { grid-area: quick; }
+/* desktop: the Claude Code one-liner sits under the Decision panel in the right column (row 2 takes the rest of the height) */
+@media (min-width: 1000px) { .try { grid-template-columns: minmax(320px, 440px) minmax(0, 1fr); grid-template-areas: "left decision" "left quick"; grid-template-rows: auto 1fr; } }
 .try-limits { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--semantic-typography-label-size); }
 .try-presets { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
 .try-pick:disabled { opacity: 0.6; cursor: wait; }
@@ -657,9 +659,26 @@ select.select-version { width: auto; min-width: 150px; font-weight: 700; color: 
 .fold-card[open] > summary::after { content: "Hide"; }
 .fold-card > summary h2 { margin: 0; }
 .fold-card[open] > summary { margin-bottom: var(--sp-3); }
+/* collapsed, a fold card is one 48 px row: tighter padding than an open panel */
+.fold-card:not([open]) { padding-block: var(--sp-2); }
+.fold-card > summary { align-items: center; }
 .fold-card .fold > summary { gap: var(--sp-3); }
 .try-progress { min-height: 20px; margin: 0; display: flex; align-items: center; gap: var(--sp-2); }
 .try-progress-dot { animation: pulse 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .try-progress-dot { animation: none; } }
+/* Decision panel progress: Hard rules -> audit -> PayPal payout, current stage marked (same marks as the judge tour) */
+.try-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
+.try-stage { display: inline-flex; align-items: center; gap: var(--sp-2); font-weight: 600; font-size: var(--semantic-typography-label-size); color: var(--muted); }
+.try-stage .tour-mark { width: 24px; height: 24px; font-size: 12px; }
+.try-stage.is-now { color: var(--ink); }
+.try-stage.is-now .tour-mark { border-color: var(--semantic-color-action-primary); color: var(--semantic-color-action-primary); }
+.try-stage.is-done .tour-mark { background: var(--semantic-color-status-success-text); border-color: var(--semantic-color-status-success-text); color: #fff; }
+.try-quick .h-card { margin: 0; }
+.try-quick .caption { margin: 0; }
+/* the one-liner wraps instead of scrolling sideways, so the whole command is readable on a phone */
+.try-quick .connect-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* receipt page: the card sits centred in the content column instead of hugging the left edge */
+.receipt-card { max-width: 560px; width: 100%; margin-inline: auto; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
 /* overview head: one sub-line, one filled button, playground toggle next to the period toggle */

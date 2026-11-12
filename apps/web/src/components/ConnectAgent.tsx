@@ -18,6 +18,34 @@ interface Connect {
   mcp_config_local: unknown;
 }
 
+/**
+ * One GET /api/try/connect per page load, shared by the compact card and the full card (each call issues a demo key and
+ * spends the per-IP "connect" bucket). A failure is not cached, so a later mount can retry.
+ */
+let connectOnce: Promise<Connect> | null = null;
+function loadConnect(): Promise<Connect> {
+  connectOnce ??= api<Connect>("/api/try/connect").catch((e: unknown) => {
+    connectOnce = null;
+    throw e;
+  });
+  return connectOnce;
+}
+
+function useConnect(): { info: Connect | null; error: string | null } {
+  const [info, setInfo] = useState<Connect | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadConnect()
+      .then((c) => live && setInfo(c))
+      .catch((e: Error) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return { info, error };
+}
+
 /** One copy button per block; a failed clipboard write says so instead of staying silent. */
 function Copy({ text, label }: { text: string; label: string }) {
   const [state, setState] = useState<string | null>(null);
@@ -50,11 +78,7 @@ function Copy({ text, label }: { text: string; label: string }) {
  * The key is this visitor's own (24 h), so other judges' calls never count against its velocity window.
  */
 export function ConnectAgent() {
-  const [info, setInfo] = useState<Connect | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api<Connect>("/api/try/connect").then(setInfo).catch((e: Error) => setError(e.message));
-  }, []);
+  const { info, error } = useConnect();
   if (error) return null; // not a demo instance: real agents get their own key on the Agents screen
   const stdio = info ? JSON.stringify(info.mcp_config_local, null, 2) : "Loading the demo key…";
   const mcpUrl = info?.mcp_url ?? null;
@@ -143,5 +167,30 @@ export function ConnectAgent() {
         </p>
       </div>
     </details>
+  );
+}
+
+/**
+ * Always-open card next to the Decision panel (under the judge tour on a phone): the keyless Claude Code one-liner of the
+ * public demo, so the strongest path (a real agent over hosted MCP, no key) is visible without scrolling or expanding.
+ * Not rendered when there is no keyless command (local or judge instances): the full card below covers those.
+ */
+export function QuickConnect() {
+  const { info } = useConnect();
+  const keyless = info?.claude_code_command_keyless ?? null;
+  if (!keyless) return null;
+  return (
+    <section className="panel panel-tight stack-s try-quick" aria-labelledby="quick-h">
+      <div className="row between">
+        <h2 id="quick-h" className="h-card">
+          Use it from Claude Code
+        </h2>
+        <Copy text={keyless} label="Copy" />
+      </div>
+      <pre className="mono try-code connect-pre" tabIndex={0} aria-label="claude mcp add command without a key">
+        {keyless}
+      </pre>
+      <p className="caption">One paste, no key: your Claude Code session gets its own demo agent and hits the same rules as this page. More configs under Connect your own agent below.</p>
+    </section>
   );
 }

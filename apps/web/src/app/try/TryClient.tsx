@@ -6,7 +6,9 @@ import type { LedgerRow } from "@reins/core";
 import { api } from "@/lib/api";
 import { auditorWord, isSimId, simId, statusChip, usd } from "@/lib/format";
 import { Icon } from "@/components/Icon";
+import { QuickConnect } from "@/components/ConnectAgent";
 import { BLANK, PRESETS, type Preset } from "./presets";
+import { STAGES, currentStage, isSettling, watchUntilSettled } from "./settle";
 import { runSequence, splitRules, timelineItem, timelineSummary, verdictLine } from "./verdict";
 
 interface Mandate {
@@ -48,7 +50,7 @@ const RULE_LABEL: Record<string, string> = {
 const rulesOf = (row: LedgerRow): RuleRow[] => (row.decisions.find((d) => d.stage === "hard_rules")?.details as { results?: RuleRow[] } | null)?.results ?? [];
 
 /** Screen "Try": send a purchase request as an AI agent and watch the real policy engine decide. */
-export default function TryClient({ enabled, judge, agent, mandate }: { enabled: boolean; judge: boolean; agent: string; mandate: Mandate }) {
+export default function TryClient({ enabled, judge, agent, mandate, claude = false }: { enabled: boolean; judge: boolean; agent: string; mandate: Mandate; claude?: boolean }) {
   const [fooled, setFooled] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,13 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
   const [tour, setTour] = useState<TourDone>({});
   const [tourOpen, setTourOpen] = useState(true);
   const [note, setNote] = useState<string | null>(null);
+  // progress in the Decision panel: "sending" while POST /api/try is open, "paying" while an approved payout settles
+  const [phase, setPhase] = useState<{ kind: "sending" | "paying"; t0: number; fooled: boolean } | null>(null);
+  // ids re-read until they leave paying/approved (key restarts the watch for a new send)
+  const [watch, setWatch] = useState<{ ids: string[]; key: number } | null>(null);
+  const [stillSettling, setStillSettling] = useState(false);
   const verdictRef = useRef<HTMLDivElement>(null);
+  const decisionRef = useRef<HTMLElement>(null);
   useEffect(() => {
     try {
       if (window.localStorage.getItem(TOUR_KEY) === "1") setTourOpen(false);
@@ -82,17 +90,68 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
   useEffect(() => {
     if (!reveal) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    verdictRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: window.innerWidth < 1000 ? "start" : "nearest" });
+    // phone: the whole Decision panel from its top (progress stages, then the verdict) sits just under the sticky nav bar
+    if (window.innerWidth < 1000) decisionRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    else verdictRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
   }, [reveal]);
 
+  /** A re-read row replaces its snapshot everywhere it is shown (current result, five-order timeline) and may finish a tour step. */
+  function applyRows(rows: LedgerRow[]) {
+    const byId = new Map(rows.map((r) => [r.request_id, r]));
+    const fresh = (r: Result): Result => {
+      const row = byId.get(r.row.request_id);
+      return row ? { ...r, row } : r;
+    };
+    setResult((cur) => (cur ? fresh(cur) : cur));
+    setRun((cur) => (cur ? { ...cur, results: cur.results.map(fresh) } : cur));
+    setTour((t) => rows.reduce((acc, row) => tourAfter(acc, { row, auditor: "configured" }), t));
+  }
+
+  useEffect(() => {
+    if (!watch) return;
+    const ctrl = new AbortController();
+    void watchUntilSettled<LedgerRow>({
+      ids: watch.ids,
+      signal: ctrl.signal,
+      read: async (ids) => (await api<{ rows: LedgerRow[] }>(`/api/try/requests?ids=${ids.map(encodeURIComponent).join(",")}`)).rows,
+      onRows: applyRows,
+    }).then((end) => {
+      if (end === "aborted") return;
+      setPhase((p) => (p?.kind === "paying" ? null : p));
+      if (end === "timeout") setStillSettling(true);
+    });
+    return () => ctrl.abort();
+  }, [watch]);
+
+  /** After a send or a decision: keep re-reading every row that is still being paid. */
+  function watchRows(rows: LedgerRow[], t0: number, fooledNow: boolean) {
+    const ids = rows.filter((r) => isSettling(r)).map((r) => r.request_id);
+    if (!ids.length) {
+      setPhase(null);
+      return;
+    }
+    setPhase({ kind: "paying", t0, fooled: fooledNow });
+    setWatch((w) => ({ ids, key: (w?.key ?? 0) + 1 }));
+  }
+
   async function send(label: string, purchase: Record<string, string>, key: string, fooledNow = fooled, repeat = 1) {
+    const t0 = Date.now();
     setBusy(key);
     setError(null);
     setDecided(null);
     setNote(null);
+    setWatch(null);
+    setStillSettling(false);
+    setPhase({ kind: "sending", t0, fooled: fooledNow });
     setRun(repeat > 1 ? { title: label, total: repeat, results: [] } : null);
+    // on a phone the Decision panel sits below the presets: bring its progress into view right away
+    if (window.innerWidth < 1000) {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      decisionRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
+    let settled = false;
     try {
-      await runSequence(
+      const all = await runSequence(
         repeat,
         () => api<Result>("/api/try", { method: "POST", body: { ...purchase, fooled_auditor: fooledNow } }),
         (r, i) => {
@@ -102,10 +161,13 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
           if (i === 1) setReveal((n) => n + 1);
         },
       );
+      watchRows(all.map((r) => r.row), t0, fooledNow);
+      settled = true;
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(null);
+      if (!settled) setPhase(null);
     }
   }
 
@@ -116,6 +178,9 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
       const r = await api<{ removed_requests: number }>("/api/try/reset", { method: "POST" });
       setResult(null);
       setRun(null);
+      setWatch(null);
+      setPhase(null);
+      setStillSettling(false);
       setTour({});
       setDecided(null);
       setNote(`Demo data reset: ${r.removed_requests} playground ${r.removed_requests === 1 ? "request" : "requests"} removed. The seeded ledger is untouched.`);
@@ -139,6 +204,9 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
       const row = await api<LedgerRow>(`/api/requests/${id}/decision`, { method: "POST", body: { action } });
       setResult((r) => (r ? { ...r, row } : r));
       setDecided(action === "approve" ? "Approved by you in this playground." : "Rejected by you in this playground.");
+      // an approval in treasury mode starts a payout: follow it to Paid like an automatic one
+      setStillSettling(false);
+      watchRows([row], Date.now(), false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -179,7 +247,7 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
         </div>
       ) : (
         <div className="try">
-          <div className="stack-l">
+          <div className="stack-l try-left">
             <section className="panel panel-tight stack" aria-labelledby="try-mandate">
               <h2 id="try-mandate" className="h-card row">
                 <span className="status status-info" aria-hidden>
@@ -213,7 +281,6 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
                   <PresetCard key={p.id} preset={p} busy={busy === p.id} disabled={busy !== null} onSend={() => void send(p.title, p.purchase, p.id, fooled, p.repeat ?? 1)} />
                 ))}
               </ul>
-              <SendProgress busy={busy !== null && busy !== "reset"} />
               <label className="try-toggle">
                 <input type="checkbox" checked={fooled} onChange={(e) => setFooled(e.target.checked)} />
                 <span>
@@ -267,16 +334,22 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
                 </p>
               )}
               <p className="caption">
-                The seeded ledger is a recorded real sandbox run (times shifted). The spike runs that proved each PayPal call: <Link href="/proof">sandbox proof</Link>.
+                The ledger starts from a <span title="Replayed from a recorded real PayPal sandbox + Claude run. Ids, amounts and auditor text are as recorded; times are shifted so the run ends just before this demo started.">recorded sandbox run (times shifted)</span>; what you send here is new. <Link href="/proof">PayPal sandbox proof</Link>.
               </p>
               <p className="caption">Playground only: the velocity rule (3 requests per 10 minutes) is relaxed so you can click freely. Every other rule is the real one.</p>
             </section>
           </div>
 
-          <section className="stack try-decision" aria-labelledby="try-result" aria-live="polite">
+          <section ref={decisionRef} className="stack try-decision" aria-labelledby="try-result" aria-live="polite">
             <h2 id="try-result" className="h-card">
               Decision
             </h2>
+            {phase && <DecisionProgress phase={phase.kind} t0={phase.t0} auditor={phase.fooled ? "Fooled auditor (simulated)" : claude ? STAGES[1] : "Demo auditor"} />}
+            {stillSettling && !phase && (
+              <p className="caption" role="status">
+                Still settling with PayPal after 3 minutes. The <Link href="/ledger">ledger</Link> shows it as Paid once PayPal confirms.
+              </p>
+            )}
             {error && (
               <p className="alert alert-bad" role="alert">
                 {error}
@@ -285,12 +358,13 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
             {run && <RunTimeline innerRef={verdictRef} run={run} busy={busy !== null} current={result?.row.request_id ?? null} onPick={setResult} />}
             {!result ? (
               <div className="empty try-empty">
-                <p className="muted">{busy ? "Sending…" : "Nothing sent yet. Press Send $12.98 to start."}</p>
+                <p className="muted">{busy ? "Waiting for the decision…" : "Nothing sent yet. Press Send $12.98 to start."}</p>
               </div>
             ) : (
               <ResultPanel key={result.row.request_id} result={result} busy={busy} decided={decided} verdictRef={run ? undefined : verdictRef} onDecide={(a) => void decide(result.row.request_id, a)} />
             )}
           </section>
+          <QuickConnect />
         </div>
       )}
     </>
@@ -298,27 +372,46 @@ export default function TryClient({ enabled, judge, agent, mandate }: { enabled:
 }
 
 /**
- * Under the preset list while a request is in flight. The server answers in one piece (a $59 order waits several seconds on the
- * auditor), so the steps follow what the request goes through, in order, and the only number shown is the real elapsed time.
+ * Top of the Decision panel while a request is in flight or its payout settles: the three stages with the current one
+ * marked, and the real elapsed seconds since the send. While POST /api/try is open the server answers in one piece, so
+ * the split between hard rules and audit is shown by time (rules take milliseconds); "PayPal payout" is current only once
+ * the answer says the payment is in progress. No invented numbers.
  */
-function SendProgress({ busy }: { busy: boolean }) {
-  const [sec, setSec] = useState(0);
+function DecisionProgress({ phase, t0, auditor }: { phase: "sending" | "paying"; t0: number; auditor: string }) {
+  const [sec, setSec] = useState(() => Math.floor((Date.now() - t0) / 1000));
   useEffect(() => {
-    if (!busy) {
-      setSec(0);
-      return;
-    }
-    const t0 = Date.now();
+    setSec(Math.floor((Date.now() - t0) / 1000));
     const id = setInterval(() => setSec(Math.floor((Date.now() - t0) / 1000)), 500);
     return () => clearInterval(id);
-  }, [busy]);
-  if (!busy) return <p className="caption try-progress" role="status" aria-live="polite" />;
-  const text = sec < 1 ? "Checking hard rules…" : sec < 4 ? "Checking hard rules… asking the auditor…" : "Checking hard rules… asking the auditor… still waiting for its answer (a request that needs a person takes the longest).";
+  }, [t0]);
+  const at = currentStage(phase, sec);
+  const labels = [STAGES[0], auditor, STAGES[2]];
+  const line =
+    phase === "paying"
+      ? "Approved. Waiting for PayPal to confirm the payout (usually 20 to 40 seconds)."
+      : at === 0
+        ? "Checking hard rules…"
+        : "Hard rules done. Waiting for the auditor's answer (a request that needs a person takes the longest).";
   return (
-    <p className="caption try-progress" role="status" aria-live="polite">
-      <span className="dot dot-warn try-progress-dot" aria-hidden />
-      {text} <span className="num">{sec}s</span>
-    </p>
+    <div className="panel panel-tight stack-s try-stages-box">
+      <ol className="try-stages" aria-label="Progress">
+        {labels.map((l, i) => (
+          <li key={l} className={i < at ? "try-stage is-done" : i === at ? "try-stage is-now" : "try-stage"} aria-current={i === at ? "step" : undefined}>
+            <span className="tour-mark" aria-hidden>
+              {i < at ? <Icon name="check" className="ico-s" /> : i + 1}
+            </span>
+            <span>
+              {l}
+              {i < at && <span className="sr-only"> (done)</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="caption try-progress" role="status" aria-live="polite">
+        <span className="dot dot-warn try-progress-dot" aria-hidden />
+        {line} <span className="num" aria-hidden>{sec}s</span>
+      </p>
+    </div>
   );
 }
 
@@ -557,7 +650,7 @@ const STEPS: Array<{ title: string; preset: Preset["id"]; fooled?: boolean; butt
 ];
 
 /** Which tour step a finished request completes (value = request id, used for the closing links). */
-function tourAfter(t: TourDone, r: Result): TourDone {
+function tourAfter(t: TourDone, r: Pick<Result, "row" | "auditor">): TourDone {
   const amount = Number(r.row.amount);
   const id = r.row.request_id;
   // supervised checkout on the real sandbox stops at "awaiting_buyer": approved by Reins without asking anyone counts too

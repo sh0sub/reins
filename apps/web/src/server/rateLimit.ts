@@ -5,6 +5,8 @@
 export const RATE_LIMITS = {
   /** The judge tour sends about ten requests, five of them back to back. */
   try: { capacity: 30, refillPerMinute: 30 },
+  /** /try re-reads its own paying rows every 2 s for up to 3 minutes (one call covers every id of a multi-order run). */
+  tryRead: { capacity: 60, refillPerMinute: 60 },
   demo: { capacity: 5, refillPerMinute: 5 },
   /** Per-visitor demo keys (/api/try/connect): a few page loads, not a key factory. */
   connect: { capacity: 10, refillPerMinute: 5 },
