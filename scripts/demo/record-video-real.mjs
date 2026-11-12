@@ -210,7 +210,6 @@ const SOURCE = {
 };
 const CORNER = "PayPal sandbox · real Claude audits";
 
-const HOOK_HEAD = ["$450 logo, no questions asked?", "Agents are getting wallets.", "Who sets the limit?"];
 const HOOK_SRC = "Stripe newsroom, 2026-09-08 (Meta Muse + Link) · PayPal developer blog, 2025-09-16 (AP2) · PayPal newsroom, 2025-10-28 (Agentic Commerce Services)";
 
 function cardHtml(seg, ci) {
